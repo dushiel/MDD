@@ -25,7 +25,6 @@ ite x y z = (x .+. y) .*. ((-.) x .+. z)
 
 r0 :: Dd Ordinal -> Ordinal -> Dd Ordinal
 r0 d = restrict d False
--- todo make internal low leven functions
 
 r1 :: Dd Ordinal -> Ordinal -> Dd Ordinal
 r1 d = restrict d True
@@ -68,6 +67,8 @@ e__2 = path (Order [3,3]) [2] Neg0
 
 x = (e_2 .*. e__2) .*. e2
 y= e2 .*. e__2
+
+z = makePathWithContext (Order [3,2]) [Neg1,Pos1] [1,2] Neg1
 
 test :: IO ()
 test = do

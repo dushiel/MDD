@@ -9,8 +9,6 @@ import Data.List (sort)
 -- proof of concept GenDDs where no merging of isomorphic nodes happen and no cashing / moization of results during traversal.
 -- GenDDs can model check second order logic formulas containing variables in multiple (disjointed and/or nested) infinite domains.
 
--- todo do you repeat the dc information for finite set of paths ?
--- todo add InfNode reduction
 
 -- |======================================== Data Types + Explanation ==============================================
 
@@ -26,6 +24,7 @@ newtype Ordinal = Order [Int]
 instance Show Ordinal where
     show (Order i) = show i
 
+-- todo add double Ordinal with point in the middle
 -- Where [a0, a1, a2, .. ] stands for a0 + a1 / W + a2 / W2 + ...
 instance Ord Ordinal where
     compare (Order xl) (Order yl) = go xl yl EQ
@@ -42,6 +41,9 @@ instance Eq Ordinal where
 
 data Inf = Dc | Neg1 | Neg0 | Pos1 | Pos0
     deriving (Eq, Show)
+
+-- as we traverse through the graph, we can get nested inference contexts:
+type Context = [Inf]
 
 
 top :: Dd Ordinal
@@ -65,22 +67,38 @@ makeNode (Order i) c
     | otherwise = error "empty ordinal for makeNode"
 
 
-
 -- At the variable class given represented by the ordinal, create a path containing the specified nodes from the list with the given inference rule.
 -- We assume fixed variable classes, it is the responsibility of the user to give the correct ordinal
 makePath :: Ordinal -> [Int] -> Inf -> Dd Ordinal
 makePath (Order varClass) nodeList c
-    | c == Dc = InfNodes (Order varClass) (loopNeg nodeList False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | c == Neg1 = InfNodes (Order varClass) (Leaf False) (loopNeg nodeList False ) (Leaf True) (Leaf False) (Leaf True)
-    | c == Neg0 = InfNodes (Order varClass) (Leaf True) (Leaf False) (loopNeg nodeList True) (Leaf False) (Leaf True)
-    | c == Pos1 = InfNodes (Order varClass) (Leaf False) (Leaf False) (Leaf True) (loopPos nodeList False) (Leaf True)
-    | c == Pos0 = InfNodes (Order varClass) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
+    | c == Dc = InfNodes (Order $ varClass ++ [0]) (loopNeg nodeList False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
+    | c == Neg1 = InfNodes (Order $ varClass ++ [0]) (Leaf False) (loopNeg nodeList False ) (Leaf True) (Leaf False) (Leaf True)
+    | c == Neg0 = InfNodes (Order $ varClass ++ [0]) (Leaf True) (Leaf False) (loopNeg nodeList True) (Leaf False) (Leaf True)
+    | c == Pos1 = InfNodes (Order $ varClass ++ [0]) (Leaf False) (Leaf False) (Leaf True) (loopPos nodeList False) (Leaf True)
+    | c == Pos0 = InfNodes (Order $ varClass ++ [0]) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
     | otherwise = error "empty ordinal or node list for makeNode"
     where
         loopNeg [] end = Leaf $ not end
         loopNeg (n:ns) end = Node (Order $ varClass ++ [n]) (loopNeg ns end) (Leaf end)
         loopPos [] end = Leaf $ not end
         loopPos (n:ns) end = Node (Order $ varClass ++ [n]) (Leaf end) (loopPos ns end)
+
+makePathWithContext :: Ordinal -> Context -> [Int] -> Inf -> Dd Ordinal
+makePathWithContext (Order varClass) varCxt nodeList c = loop [] (replicate (length varClass + 1) 0) varClass varCxt
+    where
+        loop prefix ( _ : suffix) (vCl : xs) (vCxt : ys)
+            | vCxt == Dc = loop (prefix ++ [vCl] ++ suffix) suffix xs ys
+            | vCxt == Neg1 = InfNodes (Order $ prefix ++ [vCl] ++ suffix) (Leaf False) (loop (prefix ++ [vCl]) suffix xs ys ) (Leaf True) (Leaf False) (Leaf True)
+            | vCxt == Neg0 = InfNodes (Order $ prefix ++ [vCl] ++ suffix) (Leaf True) (Leaf False) (loop (prefix ++ [vCl]) suffix xs ys) (Leaf False) (Leaf True)
+            | vCxt == Pos1 = InfNodes (Order $ prefix ++ [vCl] ++ suffix) (Leaf False) (Leaf False) (Leaf True) (loop (prefix ++ [vCl]) suffix xs ys) (Leaf True)
+            | vCxt == Pos0 = InfNodes (Order $ prefix ++ [vCl] ++ suffix) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loop (prefix ++ [vCl]) suffix xs ys)
+        loop _ _ [] [] = makePath (Order varClass) nodeList c
+        loop _ _ _ _ = error "Context and Ordinal have unequal length."
+
+
+-- (Inf a) =>
+
+
 
 
 instance Show a => Show (Dd a) where

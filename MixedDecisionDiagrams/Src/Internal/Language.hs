@@ -81,13 +81,47 @@ ppFormWith trans (Exists ps f) = "Exists {" ++ showSet ps ++ "}: " ++ ppFormWith
 -- ppFormWith trans (AnnounceW is f g) = "[" ++ intercalate ", " is ++ " ?! " ++ ppFormWith trans f ++ "]" ++ ppFormWith trans g
 -- ppFormWith trans (Dia (Dyn s _) f)  = "<" ++ s ++ ">" ++ ppFormWith trans f
 
+substit :: Prp -> Form -> Form -> Form
+substit _ _   Top           = Top
+substit _ _   Bot           = Bot
+substit q psi (PrpF p)      = if p==q then psi else PrpF p
+substit q psi (Neg form)    = Neg (substit q psi form)
+substit q psi (Conj forms)  = Conj (map (substit q psi) forms)
+substit q psi (Disj forms)  = Disj (map (substit q psi) forms)
+substit q psi (Xor  forms)  = Xor  (map (substit q psi) forms)
+substit q psi (Impl f g)    = Impl (substit q psi f) (substit q psi g)
+substit q psi (Equi f g)    = Equi (substit q psi f) (substit q psi g)
+substit q psi (Forall ps f) = if q `elem` ps
+  then error ("substit failed: Substituens "++ show q ++ " in 'Forall " ++ show ps ++ " " ++ show f)
+  else Forall ps (substit q psi f)
+substit q psi (Exists ps f) = if q `elem` ps
+  then error ("substit failed: Substituens " ++ show q ++ " in 'Exists " ++ show ps ++ " " ++ show f)
+  else Exists ps (substit q psi f)
+-- substit q psi (K  i f)     = K  i (substit q psi f)
+-- substit q psi (Kw i f)     = Kw i (substit q psi f)
+-- substit q psi (Ck ags f)   = Ck ags (substit q psi f)
+-- substit q psi (Ckw ags f)  = Ckw ags (substit q psi f)
+-- substit q psi (PubAnnounce f g)   = PubAnnounce (substit q psi f) (substit q psi g)
+-- substit q psi (PubAnnounceW f g)  = PubAnnounceW (substit q psi f) (substit q psi g)
+-- substit q psi (Announce ags f g)  = Announce ags (substit q psi f) (substit q psi g)
+-- substit q psi (AnnounceW ags f g) = AnnounceW ags (substit q psi f) (substit q psi g)
+-- substit _ _   (Dia _ _)           = undefined -- TODO needs substit in dynop! Dia dynop (substit q psi f)
+
+substitSet :: [(Prp,Form)] -> Form -> Form
+substitSet []             f = f
+substitSet ((q,psi):rest) f = substitSet rest (substit q psi f)
+
+substitOutOf :: [Prp] -> [Prp] -> Form -> Form
+substitOutOf truths allps = substitSet [(p, if p `elem` truths then Top else Bot) | p <- allps]
+
+
 booloutofForm :: [Prp] -> [Prp] -> Form
 booloutofForm ps qs = Conj $ [ PrpF p | p <- ps ] ++ [ Neg $ PrpF r | r <- qs \\ ps ]
 
 
 
 defaultVocabulary :: [Prp]
-defaultVocabulary = map (P . Order) [0..4]
+defaultVocabulary = map (P . Order . \x -> [x]) [0..4]
 
 -- instance Arbitrary Prp where
 --   arbitrary = elements defaultVocabulary
