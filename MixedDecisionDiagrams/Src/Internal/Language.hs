@@ -6,6 +6,7 @@ import MixedDecisionDiagrams.Src.MDD
 
 --newtype AgAgent = Ag Agent deriving (Eq,Ord,Show)
 newtype Prp = P Ordinal deriving (Eq,Ord,Show)
+type Agent = String
 --newtype Group = Group [Agent] deriving (Eq,Ord,Show)
 
 ite :: Form -> Form -> Form -> Form
@@ -31,10 +32,10 @@ data Form
   | Equi Form Form              -- ^ Bi-Implication
   | Forall [Prp] Form           -- ^ Boolean Universal Quantification
   | Exists [Prp] Form           -- ^ Boolean Existential Quantification
-  -- | K Agent Form                -- ^ Knowing that
-  -- | Ck [Agent] Form             -- ^ Common knowing that
-  -- | Kw Agent Form               -- ^ Knowing whether
-  -- | Ckw [Agent] Form            -- ^ Common knowing whether
+  | K Agent Form                -- ^ Knowing that
+  | Ck [Agent] Form             -- ^ Common knowing that
+  | Kw Agent Form               -- ^ Knowing whether
+  | Ckw [Agent] Form            -- ^ Common knowing whether
   -- | PubAnnounce Form Form       -- ^ Public announcement that
   -- | PubAnnounceW Form Form      -- ^ Public announcement whether
   -- | Announce [Agent] Form Form  -- ^ (Semi-)Private announcement that
@@ -71,10 +72,10 @@ ppFormWith trans (Impl f g)    = "(" ++ ppFormWith trans f ++ "->" ++ ppFormWith
 ppFormWith trans (Equi f g)    = ppFormWith trans f ++ "=" ++ ppFormWith trans g
 ppFormWith trans (Forall ps f) = "Forall {" ++ showSet ps ++ "}: " ++ ppFormWith trans f
 ppFormWith trans (Exists ps f) = "Exists {" ++ showSet ps ++ "}: " ++ ppFormWith trans f
--- ppFormWith trans (K i f)       = "K " ++ i ++ " " ++ ppFormWith trans f
--- ppFormWith trans (Ck is f)     = "Ck " ++ showSet is ++ " " ++ ppFormWith trans f
--- ppFormWith trans (Kw i f)      = "Kw " ++ i ++ " " ++ ppFormWith trans f
--- ppFormWith trans (Ckw is f)    = "Ckw " ++ showSet is ++ " " ++ ppFormWith trans f
+ppFormWith trans (K i f)       = "K " ++ i ++ " " ++ ppFormWith trans f
+ppFormWith trans (Ck is f)     = "Ck " ++ showSet is ++ " " ++ ppFormWith trans f
+ppFormWith trans (Kw i f)      = "Kw " ++ i ++ " " ++ ppFormWith trans f
+ppFormWith trans (Ckw is f)    = "Ckw " ++ showSet is ++ " " ++ ppFormWith trans f
 -- ppFormWith trans (PubAnnounce f g)  = "[! " ++ ppFormWith trans f ++ "] " ++ ppFormWith trans g
 -- ppFormWith trans (PubAnnounceW f g) = "[?! " ++ ppFormWith trans f ++ "] " ++ ppFormWith trans g
 -- ppFormWith trans (Announce is f g)  = "[" ++ intercalate ", " is ++ " ! " ++ ppFormWith trans f ++ "]" ++ ppFormWith trans g
@@ -97,10 +98,10 @@ substit q psi (Forall ps f) = if q `elem` ps
 substit q psi (Exists ps f) = if q `elem` ps
   then error ("substit failed: Substituens " ++ show q ++ " in 'Exists " ++ show ps ++ " " ++ show f)
   else Exists ps (substit q psi f)
--- substit q psi (K  i f)     = K  i (substit q psi f)
--- substit q psi (Kw i f)     = Kw i (substit q psi f)
--- substit q psi (Ck ags f)   = Ck ags (substit q psi f)
--- substit q psi (Ckw ags f)  = Ckw ags (substit q psi f)
+substit q psi (K  i f)     = K  i (substit q psi f)
+substit q psi (Kw i f)     = Kw i (substit q psi f)
+substit q psi (Ck ags f)   = Ck ags (substit q psi f)
+substit q psi (Ckw ags f)  = Ckw ags (substit q psi f)
 -- substit q psi (PubAnnounce f g)   = PubAnnounce (substit q psi f) (substit q psi g)
 -- substit q psi (PubAnnounceW f g)  = PubAnnounceW (substit q psi f) (substit q psi g)
 -- substit q psi (Announce ags f g)  = Announce ags (substit q psi f) (substit q psi g)

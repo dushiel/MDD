@@ -1,8 +1,12 @@
+
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DataKinds #-}
 module MixedDecisionDiagrams.Src.MDDi where
 import MixedDecisionDiagrams.Src.MDD
 import MixedDecisionDiagrams.Src.MDDmanipulation
 import MixedDecisionDiagrams.Src.DrawMDD
-
+import Data.List(sortBy)
+import Data.Function
 
 -- todo sophisticated test suite,
 
@@ -14,20 +18,23 @@ infixl 4 -.
 
 infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
-(.*.) = intersection
+(.*.) = intersection @True
 
 infixl 3 .+.
 (.+.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
-(.+.) = union
+(.+.) = union @True
 
 ite :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal -> Dd Ordinal
 ite x y z = (x .+. y) .*. ((-.) x .+. z)
 
 r0 :: Dd Ordinal -> Ordinal -> Dd Ordinal
-r0 d = restrict d False
+r0 d = restrict @True d False
 
 r1 :: Dd Ordinal -> Ordinal -> Dd Ordinal
-r1 d = restrict d True
+r1 d = restrict @True d True
+
+--rSet :: Dd Ordinal -> [(Ordinal, Bool)] -> Dd Ordinal
+--rSet d b = restrictSet @True d (sortBy (compare `on` fst) b)
 
 infixl 1 .->.
 (.->.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
