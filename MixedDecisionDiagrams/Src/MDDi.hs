@@ -18,11 +18,11 @@ infixl 4 -.
 
 infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
-(.*.) = intersection @True
+(.*.) = intersection @True []
 
 infixl 3 .+.
 (.+.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
-(.+.) = union @True
+(.+.) = union @True []
 
 ite :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal -> Dd Ordinal
 ite x y z = (x .+. y) .*. ((-.) x .+. z)
