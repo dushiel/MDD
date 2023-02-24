@@ -20,6 +20,7 @@ type DdF2 :: Bool -> Constraint
 class DdF2 a where
     restrict :: forall a . Dd Ordinal -> Bool -> Ordinal -> Dd Ordinal
     restrictSet :: forall a . Dd Ordinal -> [(Ordinal, Bool)] -> Dd Ordinal
+    restrictGen :: forall a . Dd Ordinal -> [((Ordinal, Ordinal), Bool)] -> Dd Ordinal
     intersection :: forall a . Dd Ordinal -> Dd Ordinal  -> Dd Ordinal
     union :: forall a . Dd Ordinal -> Dd Ordinal  -> Dd Ordinal
 
@@ -33,6 +34,15 @@ instance DdF2 True where
         then restrictSet @True (makeNode n Dc) ns
         else negation $ restrictSet @True (makeNode n Dc) ns
     restrictSet d b = restrictSetMain d b
+    -- make a check/case for a finite distance or infinite distance, such that rGen dc with inf distance become a Neg1/etc
+    -- similarly there should be a precheck for Neg1/etc such that we can immediatly rule out if neccessary.
+    -- we can do this on the inf level.
+    -- restrictGen d@(Leaf False) (((n1, n2), b) : ns) = Leaf False
+    -- restrictGen d@(Leaf True) (((n1, n2), b) : ns) = if b
+    --     then restrictGen @True (makePath n Dc) ns -- function that extracts local list?
+    --     else negation $ restrictGen @True (makeNode n Dc) ns
+    -- restrictGen d b = restrictGenMain d b
+
     intersection a (Leaf False) = Leaf False
     intersection (Leaf False) b = Leaf False
     intersection a (Leaf True) = a
