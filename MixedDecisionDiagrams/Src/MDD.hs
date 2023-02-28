@@ -5,7 +5,7 @@ module MixedDecisionDiagrams.Src.MDD where
 
 import Debug.Trace ( trace )
 import Distribution.PackageDescription.Configuration (freeVars)
-import Data.List (sort)
+import Data.List (sort, dropWhileEnd)
 -- proof of concept GenDDs where no merging of isomorphic nodes happen and no cashing / moization of results during traversal.
 -- GenDDs can model check second order logic formulas containing variables in multiple (disjointed and/or nested) infinite domains.
 
@@ -20,6 +20,9 @@ data Dd a =  Node !a !(Dd a) !(Dd a)               -- left = pos, right = neg
 
 -- Decision Diagram model checking uses simultanious traversal, which requires all nodes to be identified by their position in a order
 newtype Ordinal = Order [Int]
+
+safeOrd :: [Int] -> Ordinal
+safeOrd = Order . dropWhileEnd (== 0)
 
 instance Show Ordinal where
     show (Order i) = show i

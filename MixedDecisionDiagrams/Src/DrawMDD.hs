@@ -38,13 +38,13 @@ appLast ss s = init ss ++ [last ss ++ s]
 showTree0' :: Dd Ordinal -> [String]
 showTree0' (Leaf True) = ["   "]
 showTree0' (Leaf False) = ["[0]"]
-showTree0' (Node (Order a) l r) = ("("++show (last a)++")") : concat (indentChildren (map showTree0' [l, r]))
+showTree0' (Node (Order a) l r) = ("("++show ( a)++")") : concat (indentChildren (map showTree0' [l, r]))
 showTree0' x = showTree' x
 
 showTree1' :: Dd Ordinal -> [String]
 showTree1' (Leaf True) = ["[1]"]
 showTree1' (Leaf False) = ["   "]
-showTree1' (Node (Order a) l r) = ("("++show (last a)++")") : concat (indentChildren (map showTree1' [l, r]))
+showTree1' (Node (Order a) l r) = ("("++show ( a)++")") : concat (indentChildren (map showTree1' [l, r]))
 showTree1' x = showTree' x
 
 showTree' :: Dd Ordinal -> [String]
@@ -52,7 +52,7 @@ showTree' :: Dd Ordinal -> [String]
 
 showTree' (Leaf True) = ["[1]"]
 showTree' (Leaf False) = ["[0]"]
-showTree' (Node (Order a) l r) = ("("++show (last a)++")") : concat (indentChildren (map showTree' [l, r]))
+showTree' (Node (Order a) l r) = ("("++show ( a)++")") : concat (indentChildren (map showTree' [l, r]))
 showTree' (InfNodes a dc (Leaf False) (Leaf True) (Leaf False) (Leaf True)) = ("<"++ show a ++ "> dc") : "  ║  " : concat (indentInfChildren [showTree' dc])
 
 showTree' (InfNodes a dc (Leaf False) (Leaf True) (Leaf False) p0) =("<"++ show a ++ "> dc, p0") : "  ║  " : concat (indentInfChildren [showTree' dc, showTree0' p0])

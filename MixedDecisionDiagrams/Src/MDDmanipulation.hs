@@ -94,22 +94,14 @@ isInfNode :: Dd a -> Bool
 isInfNode(InfNodes _ _ _ _ _ _) = True
 isInfNode _ = False
 
-applyElimRule2 :: Inf -> Dd Ordinal -> Dd Ordinal
-applyElimRule2 Dc d@(Node _ posC negC) = if posC == negC then posC else d
-applyElimRule2 Neg0 d@(Node _ posC negC) = if posC == Leaf True then posC else d
-applyElimRule2 Pos0 d@(Node _ posC negC) = if negC == Leaf True then negC else d
-applyElimRule2 Neg1 d@(Node _ posC negC) = if posC == Leaf False then posC else d
-applyElimRule2 Pos1 d@(Node _ posC negC) = if negC == Leaf False then negC else d
-applyElimRule2 _ _ = error "applyElimRule2 got wrong parameters"
+applyElimRule_arg :: Inf -> Dd Ordinal -> Dd Ordinal
+applyElimRule_arg Dc d = applyElimRule @Dc d
+applyElimRule_arg Neg1 d = applyElimRule @Neg1 d
+applyElimRule_arg Neg0 d = applyElimRule @Neg0 d
+applyElimRule_arg Pos1 d = applyElimRule @Pos1 d
+applyElimRule_arg Pos0 d = applyElimRule @Pos0 d
 
-elimInfNode :: Dd Ordinal -> Dd Ordinal
-elimInfNode d@(InfNodes pos dcR n1R n0R p1R p0R) =
-    if (n1R, n0R, p1R, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
-                    (if isInfNode dcR then dcR else
-                        if dcR == Leaf False then Leaf False else
-                            if dcR == Leaf True then Leaf True else
-                                InfNodes pos dcR n1R n0R p1R p0R)
-                    else InfNodes pos dcR n1R n0R p1R p0R
+
 
 
 restrictMain :: Dd Ordinal -> Bool -> Ordinal -> Dd Ordinal
@@ -119,7 +111,7 @@ restrictMain d@(InfNodes position dc n1 n0 p1 p0) b n = let
         n0R = restrictLocal @Neg0 n0 b n
         p1R = restrictLocal @Pos1 p1 b n
         p0R = restrictLocal @Pos0 p0 b n
-        in elimInfNode (InfNodes position dcR n1R n0R p1R p0R)
+        in applyElimRule @Dc (InfNodes position dcR n1R n0R p1R p0R)
 restrictMain _ _ _ = error "restrictMain"
 
 restrictSetMain :: Dd Ordinal -> [(Ordinal, Bool)] -> Dd Ordinal
@@ -129,8 +121,26 @@ restrictSetMain d@(InfNodes position dc n1 n0 p1 p0) bs = let
         n0R = restrictSetLocal @Neg0 n0 bs
         p1R = restrictSetLocal @Pos1 p1 bs
         p0R = restrictSetLocal @Pos0 p0 bs
-        in elimInfNode (InfNodes position dcR n1R n0R p1R p0R)
+        in applyElimRule @Dc (InfNodes position dcR n1R n0R p1R p0R)
 restrictSetMain _ _ = error "restrictMain"
+
+
+-- to keep track of what inference should be used on what (ordinal) level, we add it to a stack called the context.
+-- whenever we meet a (inf)node which is domains ahead of the other (inf)node, we need to infer not only the nodes but also the infnodes in between.
+-- currently we only infer Dc infnodes (Top), but it makes sense to infer allNeg for n1, allPos for p1, and their complements for their complements.
+-- e.g. : [0,0,1] | [0,0,1] | [Neg1,Dc,Neg1] => [0,0,2] | [1,0,1], means to infer [0,0,2]B as neg, then to pass Dc for both and then infer [1,0,1]A as neg, which means to infer [1,0,0] as all neg infnode
+
+-- [0,0,1] | [0,0,1]
+-- [0,0,2] | [1,0,1]
+-- do we have to check on what level the change is?
+-- [2,0,2] | [1,0,1]
+-- no there has to be an infnode for each change in top level, thus we can pop the context
+-- although if it were just [1] or [1,0,0] as a node, then we need to remove the trailing 0's
+-- todo and trim (by popping) the context to the same size
+-- is there a method to do this without checking the sizes of the nodes for each step?
+-- todo we can always have trailing 0s removed/inferred
+-- there is always an infnode before a new class of nodes with semi recursive-MDDs (such that nodes and infnodes are never on the same level)
+
 
 
 intersectionMain :: Context -> Dd Ordinal -> Dd Ordinal -> Dd Ordinal
@@ -138,26 +148,26 @@ intersectionMain  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes posi
         | positionA == positionB =  let
             dcR = intersectionLocal @Dc c dcA dcB
 
-            n1R = unionLocal @Neg1 c
-                (intersectionLocal @Neg1 c n1A n1B) -- overlapping points are by definition not inside the others dc, thus have to be preserved
+            n1R = unionLocal @Neg1 (Neg1 : c)
+                (intersectionLocal @Neg1 (Neg1 : c) n1A n1B) -- overlapping points are by definition not inside the others dc, thus have to be preserved
                 (if n0R' == Leaf True then n1R' else remove_f0s1_from_f1s1 c n0R' n1R') -- holes absorb points under intersection
-            n1R' = unionLocal @Neg1 c -- guaranteed that dcA and dcB do not overlap around the finite points, thus they do not get absorbed
-                (mixedIntersection @Neg1 c n1A dcB dcR) -- keep the points that fit inside B
-                (mixedIntersection @Neg1 c n1B dcA dcR) -- keep the points that fit inside A
+            n1R' = unionLocal @Neg1 (Neg1 : c) -- guaranteed that dcA and dcB do not overlap around the finite points, thus they do not get absorbed
+                (mixedIntersection @Neg1 (Neg1 : c) n1A dcB dcR) -- keep the points that fit inside B
+                (mixedIntersection @Neg1 (Neg1 : c) n1B dcA dcR) -- keep the points that fit inside A
 
-            n0R' = unionLocal @Neg0 c n0A n0B -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
-            n0R = mixedIntersection2 @Neg0 c n0R' dcR -- keep the holes that fit inside dcR
+            n0R' = unionLocal @Neg0 (Neg0 : c) n0A n0B -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
+            n0R = mixedIntersection2 @Neg0 (Neg0 : c) n0R' dcR -- keep the holes that fit inside dcR
             -- if the local hole fits inside dcR but the consequence of n0R' does not fit inside the consequenc of dcR it should return n0R' -> Leaf false
             ------------------------------------
-            p1R = unionLocal @Pos1 c
-                (intersectionLocal @Pos1 c p1A p1B)
+            p1R = unionLocal @Pos1 (Pos1 : c)
+                (intersectionLocal @Pos1 (Pos1 : c) p1A p1B)
                 (if p0R' == Leaf True then p1R' else remove_f0s0_from_f1s0 c p0R' p1R')
-            p1R' = unionLocal @Pos1 c
-                (mixedIntersection @Pos1 c p1A dcB dcR)
-                (mixedIntersection @Pos1 c p1B dcA dcR)
-            p0R' = unionLocal @Pos0 c p0A p0B -- local union then intersection
-            p0R = mixedIntersection2 @Pos0 c p0R' dcR
-            in elimInfNode $ InfNodes positionA dcR n1R n0R p1R p0R
+            p1R' = unionLocal @Pos1 (Pos1 : c)
+                (mixedIntersection @Pos1 (Pos1 : c) p1A dcB dcR)
+                (mixedIntersection @Pos1 (Pos1 : c) p1B dcA dcR)
+            p0R' = unionLocal @Pos0 (Pos0 : c) p0A p0B -- local union then intersection
+            p0R = mixedIntersection2 @Pos0 (Pos0 : c) p0R' dcR
+            in applyElimRule @Dc $ InfNodes positionA dcR n1R n0R p1R p0R
 
         -- todo add context inference here: currently we apply Dc inference
         | positionA > positionB = let -- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
@@ -170,7 +180,7 @@ intersectionMain  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes posi
                 mixedIntersection @Pos1 c p1B a dcR else
                 remove_f0s0_from_f1s0 c p0B (mixedIntersection @Pos1 c p1B a dcR)
             p0R = mixedIntersection2 @Pos0 c p0B dcR
-            in elimInfNode $ InfNodes positionB dcR n1R n0R p1R p0R
+            in applyElimRule @Dc $ InfNodes positionB dcR n1R n0R p1R p0R
 
         | positionA < positionB = let -- replace all the B stuf with (dc: b, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
             dcR = intersectionLocal @Dc c dcA b
@@ -182,7 +192,7 @@ intersectionMain  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes posi
                 mixedIntersection @Pos1 c p1A b dcR else
                 remove_f0s0_from_f1s0 c p0A (mixedIntersection @Pos1 c p1A b dcR)
             p0R = mixedIntersection2 @Pos0 c p0A dcR
-            in elimInfNode $ InfNodes positionA dcR n1R n0R p1R p0R --`debug` ("dcR" ++ show dcR ++ "\n p0A" ++ show p0A)
+            in applyElimRule @Dc $ InfNodes positionA dcR n1R n0R p1R p0R --`debug` ("dcR" ++ show dcR ++ "\n p0A" ++ show p0A)
 intersectionMain c a b = error "no infnodes in intersection main"
 
 
@@ -217,7 +227,7 @@ unionMain  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB d
             (mixedIntersection @Pos0 c p0A dcB dcR) -- remove the holes that do fit in B: if the consequence of p0A after union is the same as the consequence of dcB, then it is also removed. If the consequence is smaller it is kept.
             (mixedIntersection @Pos0 c p0B dcA dcR)
 
-        in elimInfNode (InfNodes positionA dcR n1R n0R p1R p0R)
+        in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
 
     | positionA > positionB = let -- A is inferred to be Top
         dcR = unionLocal @Dc c a dcB --pass along the consequence of B for both dcA and not dcA
@@ -230,7 +240,7 @@ unionMain  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB d
         p0R = let p0R' = mixedIntersection @Pos0 c p0B a dcR in
             if p1B == Leaf False then p0R' else remove_f1s0_from_f0s0 c p1B p0R'
 
-        in elimInfNode (InfNodes positionB dcR n1R n0R p1R p0R)
+        in applyElimRule @Dc (InfNodes positionB dcR n1R n0R p1R p0R)
 
     | positionA < positionB = let
         dcR = unionLocal @Dc c b dcA
@@ -243,7 +253,7 @@ unionMain  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB d
         p0R = let p0R' = mixedIntersection @Pos0 c p0A b dcR in
             if p1A == Leaf False then p0R' else remove_f1s0_from_f0s0 c p1A p0R'
 
-        in elimInfNode (InfNodes positionA dcR n1R n0R p1R p0R)
+        in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
 unionMain _ _ _ = error "missed case?"
 
 
@@ -263,6 +273,14 @@ class DdF4 a where
 
 instance DdF4 Dc where
     applyElimRule d@(Node _ posC negC) = if posC == negC then posC else d
+    applyElimRule d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (n1R, n0R, p1R, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
+                        (if isInfNode dcR then dcR else
+                            if dcR == Leaf False then Leaf False else
+                                if dcR == Leaf True then Leaf True else
+                                    InfNodes pos dcR n1R n0R p1R p0R)
+                        else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule (Leaf b) = Leaf b
     restrictLocal d@(Node position pos_child neg_child) b n
         | n > position = applyElimRule @Dc $ Node position (restrictLocal @Dc pos_child b n) (restrictLocal @Dc neg_child b n)
         | n < position = d -- do not have to apply elimRule
@@ -309,14 +327,22 @@ instance DdF4 Dc where
             let pos_result = intersectionLocal @Dc c a pos_childB
                 neg_result = intersectionLocal @Dc c a neg_childB
             in applyElimRule @Dc (Node positionB pos_result neg_result)
-    intersectionLocal c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        let pos_result = intersectionLocal @Dc c a pos_childB
-            neg_result = intersectionLocal @Dc c a neg_childB
-        in applyElimRule @Dc (Node positionB pos_result neg_result)
+    intersectionLocal c a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB) =
+        if positionA == positionB
+            then
+                error "undefined, multiple options possible for interpreting node in Dc context to sub nodes"
+                -- depends on how you want to model: if property green is true, and you zoom in on that property
+                -- (i.e. property of being green exists out of a bunch of subproperties) do you then get that those multiple properties have to be true together before you have green?
+                -- Or does just 1 have to be true? (e.i. either all have to be true or none have to be true before Propertie is true)
+            else
+                let pos_result = intersectionLocal @Dc c a pos_childB
+                    neg_result = intersectionLocal @Dc c a neg_childB
+                in applyElimRule @Dc (Node positionB pos_result neg_result)
     intersectionLocal c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB _ _ _ _ _) =
-        let pos_result = intersectionLocal @Dc c pos_childA b
-            neg_result = intersectionLocal @Dc c neg_childA b
-        in applyElimRule @Dc (Node positionA pos_result neg_result)
+        if positionA == positionB then error "undefined, multiple options possible for interpreting node in Dc context to sub nodes" else
+            let pos_result = intersectionLocal @Dc c pos_childA b
+                neg_result = intersectionLocal @Dc c neg_childA b
+            in applyElimRule @Dc (Node positionA pos_result neg_result)
     intersectionLocal  c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = intersection @True c a b
     intersectionLocal c a b = error ("how did we get here? " ++ show a ++ "  -  " ++ show b)
 
@@ -347,14 +373,16 @@ instance DdF4 Dc where
             in applyElimRule @Dc (Node positionB pos_result neg_result)
 
     unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB) =
-        let pos_result = unionLocal @Dc c a pos_childB
-            neg_result = unionLocal @Dc c a neg_childB
-        in applyElimRule @Dc (Node positionB pos_result neg_result)
+        if positionA == positionB then error "undefined, multiple options possible for interpreting node in Dc context to sub nodes" else
+            let pos_result = unionLocal @Dc c a pos_childB
+                neg_result = unionLocal @Dc c a neg_childB
+            in applyElimRule @Dc (Node positionB pos_result neg_result)
 
     unionLocal c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
-        let pos_result = unionLocal @Dc c pos_childA b
-            neg_result = unionLocal @Dc c neg_childA b
-        in applyElimRule @Dc (Node positionA pos_result neg_result)
+        if positionA == positionB then error "undefined, multiple options possible for interpreting node in Dc context to sub nodes" -- a possible option: (InfNodes (dcA .*. pos_childB) (n1A .*. pos_childB) (n0A .*. pos_childB) (p1A .*. pos_childB) (p0A .*. pos_childB))
+        else let pos_result = unionLocal @Dc c pos_childA b
+                 neg_result = unionLocal @Dc c neg_childA b
+             in applyElimRule @Dc (Node positionA pos_result neg_result)
 
     unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = union @True c a b
 
@@ -363,10 +391,16 @@ instance DdF4 Dc where
 
 
 
-
-
 instance DdF4 Neg1 where
     applyElimRule d@(Node _ posC negC) = if posC == Leaf False then posC else d
+    applyElimRule d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (dcR, n0R, p1R, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
+                        (if isInfNode n1R then n1R else
+                            if n1R == Leaf False then Leaf False else
+                                if n1R == Leaf True then Leaf True else
+                                    InfNodes pos dcR n1R n0R p1R p0R)
+                        else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule (Leaf b) = Leaf b
 
     restrictLocal d@(Node position pos_child neg_child) b n
         | n > position = applyElimRule @Neg1 $ Node position (restrictLocal @Neg1 pos_child b n) (restrictLocal @Neg1 neg_child b n)
@@ -412,9 +446,19 @@ instance DdF4 Neg1 where
         | positionA > positionB =
             intersectionLocal @Neg1 c a neg_childB
     intersectionLocal c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        Node positionB (Leaf False) (intersectionLocal @Neg1 c a neg_childB)
+        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionB (Leaf False) (intersectionLocal @Neg1 c a neg_childB)
     intersectionLocal c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB _ _ _ _ _) =
-        Node positionA (Leaf False) (intersectionLocal @Neg1 c neg_childA b)
+        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionA (Leaf False) (intersectionLocal @Neg1 c neg_childA b)
     intersectionLocal  c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = intersection @True c a b
     intersectionLocal _ _ _ = error "how did we get here?"
 
@@ -445,11 +489,21 @@ instance DdF4 Neg1 where
             let neg_result = unionLocal @Neg1 c a neg_childB
             in Node positionB pos_childB neg_result
 
-    unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB)
-        = Node positionB (Leaf False) (unionLocal @Neg1 c a neg_childB)
+    unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB) =
+        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionB (Leaf False) (unionLocal @Neg1 c a neg_childB)
 
-    unionLocal c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _)
-        = Node positionA (Leaf False) (unionLocal @Neg1 c neg_childA b)
+    unionLocal c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
+        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionA (Leaf False) (unionLocal @Neg1 c neg_childA b)
 
     unionLocal c  a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = union @True c a b
 
@@ -503,11 +557,22 @@ instance DdF4 Neg1 where
             neg_result = mixedIntersection @Neg1 c neg_childA b dc
         in applyElimRule @Neg1 (Node positionA pos_result neg_result)
 
-    mixedIntersection c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) dc@(Node positionD pos_childD neg_childD) =
-        mixedIntersection @Neg1 c a neg_childB neg_childD
+    mixedIntersection c a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB) dc@(Node positionD pos_childD neg_childD) =
+         --(InfNodes (dcA .*. neg_childB) (n1A .*. neg_childB) (n0A .*. neg_childB) (p1A .*. pos_childB) (p0A .*. neg_childB))
+        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection @Neg1 c a neg_childB neg_childD
 
     mixedIntersection c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) dc =
-        mixedIntersection @Neg1 c a neg_childB dc
+        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection @Neg1 c a neg_childB dc
 
     -- Both InfNodes have been reached - run the usual intersection.
     mixedIntersection c a@(InfNodes {})  b@(InfNodes {}) dc = if intersection @True c a b == dc then Leaf False else intersection @True c a b
@@ -537,12 +602,22 @@ instance DdF4 Neg1 where
 
     -- Single InfNode has been reached, similar to single Leaf node cases.
     mixedIntersection2 c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
-        let pos_result = mixedIntersection2 @Neg1 c pos_childA b
-            neg_result = mixedIntersection2 @Neg1 c neg_childA b
-        in applyElimRule @Neg1 (Node positionA pos_result neg_result)
+        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
+        if positionA == positionB
+            then
+                undefined
+            else
+                let pos_result = mixedIntersection2 @Neg1 c pos_childA b
+                    neg_result = mixedIntersection2 @Neg1 c neg_childA b
+                in applyElimRule @Neg1 (Node positionA pos_result neg_result)
 
     mixedIntersection2 c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        mixedIntersection2 @Neg1 c a neg_childB
+        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection2 @Neg1 c a neg_childB
 
     -- Both InfNodes have been reached - run the usual intersection.
     mixedIntersection2 c a@(InfNodes {})  b@(InfNodes {}) = if union @True c a b == b then Leaf False else union @True c a b
@@ -553,6 +628,14 @@ instance DdF4 Neg1 where
 
 instance DdF4 Neg0 where
     applyElimRule d@(Node _ posC negC) = if posC == Leaf True then posC else d
+    applyElimRule d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (n1R, dcR, p1R, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
+                        (if isInfNode n0R then n0R else
+                            if n0R == Leaf False then Leaf False else
+                                if n0R == Leaf True then Leaf True else
+                                    InfNodes pos dcR n1R n0R p1R p0R)
+                        else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule (Leaf b) = Leaf b
 
     restrictLocal d@(Node position pos_child neg_child) b n
         | n > position = applyElimRule @Neg0 $ Node position (restrictLocal @Neg0 pos_child b n) (restrictLocal @Neg0 neg_child b n)
@@ -604,10 +687,20 @@ instance DdF4 Neg0 where
         | positionA > positionB =
             intersectionLocal @Neg0 c a neg_childB
 
-    intersectionLocal c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        Node positionB (Leaf True) (intersectionLocal @Neg0 c a neg_childB)
+    intersectionLocal c a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB) =
+    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionB (Leaf True) (intersectionLocal @Neg0 c a neg_childB)
     intersectionLocal c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB _ _ _ _ _) =
-        Node positionA (Leaf True) (intersectionLocal @Neg0 c neg_childA b)
+    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionA (Leaf True) (intersectionLocal @Neg0 c neg_childA b)
 
     intersectionLocal  c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = union @False c a b
     intersectionLocal _ _ _ = error "how did we get here?"
@@ -639,11 +732,21 @@ instance DdF4 Neg0 where
             let neg_result = unionLocal @Neg0 c a neg_childB
             in Node positionB pos_childB neg_result
 
-    unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB)
-        = Node positionB (Leaf True) (unionLocal @Neg0 c a neg_childB)
+    unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB) =
+    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionB (Leaf True) (unionLocal @Neg0 c a neg_childB)
 
-    unionLocal c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _)
-        = Node positionA (Leaf True) (unionLocal @Neg0 c neg_childA b)
+    unionLocal c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
+    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionA (Leaf True) (unionLocal @Neg0 c neg_childA b)
 
     unionLocal c  a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = intersection @True c a b
 
@@ -655,7 +758,7 @@ instance DdF4 Neg0 where
     mixedIntersection c (Leaf False) b@(Node positionB pos_childB neg_childB) dc@(Node positionD pos_childD neg_childD)  = mixedIntersection @Neg0 c (Leaf False) neg_childB neg_childD
     mixedIntersection c (Leaf False) b@(Node positionB pos_childB neg_childB) dc  = mixedIntersection @Neg0 c (Leaf False) neg_childB dc
     mixedIntersection c (Leaf False) b@(InfNodes {}) dc = if b == dc then Leaf True else b
-    -- following domain becomes union call, where Leaf False is interpreted as bot, thus b should be returned. -- todo the resulting return should still be removed if it equals dcR
+    -- following domain becomes union call, where Leaf False is interpreted as bot, thus b should be returned.
 
     -- No leafs involved
     mixedIntersection c a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB) dc@(Node positionD pos_childD neg_childD)
@@ -694,9 +797,19 @@ instance DdF4 Neg0 where
             neg_result = mixedIntersection @Neg0 c neg_childA b dc
         in applyElimRule @Neg0 (Node positionA pos_result neg_result)
     mixedIntersection c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) dc@(Node positionD pos_childD neg_childD) =
-        mixedIntersection @Neg0 c a neg_childB neg_childD
+    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection @Neg0 c a neg_childB neg_childD
     mixedIntersection c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) dc =
-        mixedIntersection @Neg0 c a neg_childB dc
+    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection @Neg0 c a neg_childB dc
 
     -- Both InfNodes have been reached - run the usual intersection.
     mixedIntersection c a@(InfNodes {})  b@(InfNodes {}) dc =  if union @False c a b == dc then Leaf True else union @False c a b
@@ -726,11 +839,21 @@ instance DdF4 Neg0 where
 
     -- Single InfNode has been reached, similar to single Leaf node cases.
     mixedIntersection2 c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
-        let pos_result = mixedIntersection2 @Neg0 c pos_childA b
-            neg_result = mixedIntersection2 @Neg0 c neg_childA b
-        in applyElimRule @Neg0 (Node positionA pos_result neg_result)
+    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
+        if positionA == positionB
+            then
+                undefined
+            else
+                let pos_result = mixedIntersection2 @Neg0 c pos_childA b
+                    neg_result = mixedIntersection2 @Neg0 c neg_childA b
+                in applyElimRule @Neg0 (Node positionA pos_result neg_result)
     mixedIntersection2 c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        mixedIntersection2 @Neg0 c a neg_childB
+    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection2 @Neg0 c a neg_childB
 
     -- Both InfNodes have been reached - run the usual intersection.
     mixedIntersection2 c a@(InfNodes {})  b@(InfNodes {}) =  if intersection @True c a b == b then Leaf True else intersection @True c a b
@@ -740,6 +863,14 @@ instance DdF4 Neg0 where
 
 instance DdF4 Pos1 where
     applyElimRule d@(Node _ posC negC) = if negC == Leaf False then negC else d
+    applyElimRule d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (n1R, n0R, dcR, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
+            (if isInfNode p1R then p1R else
+                if p1R == Leaf False then Leaf False else
+                    if p1R == Leaf True then Leaf True else
+                        InfNodes pos dcR n1R n0R p1R p0R)
+            else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule (Leaf b) = Leaf b
     restrictLocal d@(Node position pos_child neg_child) b n
         | n > position = applyElimRule @Pos1 $ Node position (restrictLocal @Pos1 pos_child b n) (restrictLocal @Pos1 neg_child b n)
         | n < position = if b then Node n d d else Leaf False -- do not have to apply elimRule
@@ -790,9 +921,17 @@ instance DdF4 Pos1 where
             intersectionLocal @Pos1 c a pos_childB
 
     intersectionLocal c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        Node positionB (Leaf False) (intersectionLocal @Pos1 c a pos_childB)
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionB (Leaf False) (intersectionLocal @Pos1 c a pos_childB)
     intersectionLocal c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB _ _ _ _ _) =
-        Node positionA (Leaf False) (intersectionLocal @Pos1 c pos_childA b)
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionA (Leaf False) (intersectionLocal @Pos1 c pos_childA b)
 
     intersectionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = intersection @True c a b
 
@@ -823,10 +962,18 @@ instance DdF4 Pos1 where
         | positionA > positionB =
             let pos_result = unionLocal @Pos1 c a pos_childB
             in Node positionB pos_result neg_childB
-    unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB)
-        = Node positionB (unionLocal @Pos1 c a pos_childB) (Leaf False)
-    unionLocal c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _)
-        = Node positionA (unionLocal @Pos1 c pos_childA b) (Leaf False)
+    unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB) =
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionB (unionLocal @Pos1 c a pos_childB) (Leaf False)
+    unionLocal c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionA (unionLocal @Pos1 c pos_childA b) (Leaf False)
     unionLocal c  a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = union @True c a b
 
     mixedIntersection c a (Leaf False) dc = Leaf False
@@ -870,15 +1017,27 @@ instance DdF4 Pos1 where
 
     -- Single InfNode has been reached, similar to single Leaf node cases.
     mixedIntersection c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) dc =
-        let pos_result = mixedIntersection @Pos1 c pos_childA b dc
-            neg_result = mixedIntersection @Pos1 c neg_childA b dc
-        in applyElimRule @Pos1 (Node positionA pos_result neg_result)
+        if positionA == positionB
+            then
+                undefined
+            else
+                let pos_result = mixedIntersection @Pos1 c pos_childA b dc
+                    neg_result = mixedIntersection @Pos1 c neg_childA b dc
+                in applyElimRule @Pos1 (Node positionA pos_result neg_result)
 
 
     mixedIntersection c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) dc@(Node positionD pos_childD neg_childD) =
-        mixedIntersection @Pos1 c a pos_childB pos_childD
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection @Pos1 c a pos_childB pos_childD
     mixedIntersection c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) dc =
-        mixedIntersection @Pos1 c a pos_childB dc
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection @Pos1 c a pos_childB dc
 
     -- Both InfNodes have been reached - run the usual intersection.
     mixedIntersection c a@(InfNodes {})  b@(InfNodes {}) dc = if (intersection @True c a b) == dc then Leaf False else (intersection @True c a b)
@@ -908,13 +1067,21 @@ instance DdF4 Pos1 where
 
     -- Single InfNode has been reached, similar to single Leaf node cases.
     mixedIntersection2 c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
-        let pos_result = mixedIntersection2 @Pos1 c pos_childA b
-            neg_result = mixedIntersection2 @Pos1 c neg_childA b
-        in applyElimRule @Pos1 (Node positionA pos_result neg_result)
+        if positionA == positionB
+            then
+                undefined
+            else
+                let pos_result = mixedIntersection2 @Pos1 c pos_childA b
+                    neg_result = mixedIntersection2 @Pos1 c neg_childA b
+                in applyElimRule @Pos1 (Node positionA pos_result neg_result)
 
 
     mixedIntersection2 c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        mixedIntersection2 @Pos1 c a pos_childB
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection2 @Pos1 c a pos_childB
 
     mixedIntersection2 c a@(InfNodes {})  b@(InfNodes {}) = if union @True c a b == b then Leaf False else union @True c a b
     mixedIntersection2 c a b = undefined `debug` ("pos1" ++ show a ++ "  :  " ++ show b)
@@ -922,6 +1089,14 @@ instance DdF4 Pos1 where
 
 instance DdF4 Pos0 where
     applyElimRule d@(Node _ posC negC) = if negC == Leaf True then negC else d
+    applyElimRule d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (n1R, n0R, p1R, dcR) == (Leaf False, Leaf True, Leaf False, Leaf True) then
+                        (if isInfNode p0R then p0R else
+                            if p0R == Leaf False then Leaf False else
+                                if p0R == Leaf True then Leaf True else
+                                    InfNodes pos dcR n1R n0R p1R p0R)
+                        else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule (Leaf b) = Leaf b
 
 
     restrictLocal d@(Node position pos_child neg_child) b n
@@ -976,9 +1151,17 @@ instance DdF4 Pos0 where
             intersectionLocal @Pos0 c a pos_childB
 
     intersectionLocal c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        Node positionB (Leaf True) (intersectionLocal @Pos0 c a pos_childB)
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionB (Leaf True) (intersectionLocal @Pos0 c a pos_childB)
     intersectionLocal c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB _ _ _ _ _) =
-        Node positionA (Leaf True) (intersectionLocal @Pos0 c pos_childA b)
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionA (Leaf True) (intersectionLocal @Pos0 c pos_childA b)
 
     intersectionLocal  c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = union @False c a b
     intersectionLocal _ _ _ = error "how did we get here?"
@@ -1011,11 +1194,19 @@ instance DdF4 Pos0 where
             let pos_result = unionLocal @Pos0 c a pos_childB
             in Node positionB pos_result neg_childB
 
-    unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB)
-        = Node positionB (unionLocal @Pos0 c a pos_childB) (Leaf True)
+    unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB) =
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionB (unionLocal @Pos0 c a pos_childB) (Leaf True)
 
-    unionLocal c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _)
-        = Node positionA (unionLocal @Pos0 c pos_childA b) (Leaf True)
+    unionLocal c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
+        if positionA == positionB
+            then
+                undefined
+            else
+                Node positionA (unionLocal @Pos0 c pos_childA b) (Leaf True)
 
     unionLocal c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = intersection @True c a b
 
@@ -1063,14 +1254,26 @@ instance DdF4 Pos0 where
 
     -- Single InfNode has been reached, similar to single Leaf node cases.
     mixedIntersection c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) dc =
-        let pos_result = mixedIntersection @Pos0 c pos_childA b dc
-            neg_result = mixedIntersection @Pos0 c neg_childA b dc
-        in applyElimRule @Pos0 (Node positionA pos_result neg_result)
+        if positionA == positionB
+            then
+                undefined
+            else
+                let pos_result = mixedIntersection @Pos0 c pos_childA b dc
+                    neg_result = mixedIntersection @Pos0 c neg_childA b dc
+                in applyElimRule @Pos0 (Node positionA pos_result neg_result)
 
     mixedIntersection c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) dc@(Node positionD pos_childD neg_childD) =
-        mixedIntersection @Pos0 c a neg_childB neg_childD
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection @Pos0 c a neg_childB neg_childD
     mixedIntersection c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) dc =
-        mixedIntersection @Pos0 c a neg_childB dc
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection @Pos0 c a neg_childB dc
 
     -- Both InfNodes have been reached - run the usual intersection.
     mixedIntersection c a@(InfNodes {})  b@(InfNodes {}) dc = if (union @False c a b) == dc then Leaf True else union @False c a b
@@ -1100,12 +1303,20 @@ instance DdF4 Pos0 where
 
     -- Single InfNode has been reached, similar to single Leaf node cases.
     mixedIntersection2 c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
-        let pos_result = mixedIntersection2 @Pos0 c pos_childA b
-            neg_result = mixedIntersection2 @Pos0 c neg_childA b
-        in applyElimRule @Pos0 (Node positionA pos_result neg_result)
+        if positionA == positionB
+            then
+                undefined
+            else
+                let pos_result = mixedIntersection2 @Pos0 c pos_childA b
+                    neg_result = mixedIntersection2 @Pos0 c neg_childA b
+                in applyElimRule @Pos0 (Node positionA pos_result neg_result)
 
     mixedIntersection2 c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        mixedIntersection2 @Pos0 c a neg_childB
+        if positionA == positionB
+            then
+                undefined
+            else
+                mixedIntersection2 @Pos0 c a neg_childB
 
     -- Both InfNodes have been reached - run the usual intersection.
     mixedIntersection2 c a@(InfNodes {})  b@(InfNodes {}) = if (intersection @True c a b) == b then Leaf True else (intersection @True c a b)
@@ -1150,6 +1361,7 @@ remove_f0s1_from_f1s1 c a (Leaf False) = Leaf False
 remove_f0s1_from_f1s1 c a@(Node positionA pos_childA neg_childA) (Leaf True) = remove_f0s1_from_f1s1 c neg_childA (Leaf True)
 remove_f0s1_from_f1s1 c (Leaf False) b@(Node positionB pos_childB neg_childB) = Node positionB pos_childB (remove_f0s1_from_f1s1 c (Leaf False) neg_childB) --if pos_child == Leaf False then pos_child else b@(Node positionB pos_childB neg_childB)
 remove_f0s1_from_f1s1 c (Leaf True) b = b
+remove_f0s1_from_f1s1 c a@(InfNodes {}) (Leaf True) = a
 remove_f0s1_from_f1s1 c (Leaf False) (Leaf True)  =  Leaf False
 
 -- No leafs involved
@@ -1184,6 +1396,7 @@ remove_f1s1_from_f0s1 c a (Leaf True) = Leaf True
 remove_f1s1_from_f0s1 c a@(Node positionA pos_childA neg_childA) (Leaf False) = remove_f1s1_from_f0s1 c neg_childA (Leaf False)
 remove_f1s1_from_f0s1 c (Leaf True) b@(Node positionB pos_childB neg_childB) = Node positionB pos_childB (remove_f1s1_from_f0s1 c (Leaf True) neg_childB) --if pos_child == Leaf False then pos_child else b@(Node positionB pos_childB neg_childB)
 remove_f1s1_from_f0s1 c (Leaf False) b = b
+remove_f1s1_from_f0s1 c a@(InfNodes {}) (Leaf False) = a
 
 remove_f1s1_from_f0s1 c (Leaf True) (Leaf False)  =  Leaf True
 
@@ -1219,7 +1432,7 @@ remove_f0s0_from_f1s0 c a (Leaf False) = Leaf False
 remove_f0s0_from_f1s0 c a@(Node positionA pos_childA neg_childA) (Leaf True) = remove_f0s0_from_f1s0 c pos_childA (Leaf True)
 remove_f0s0_from_f1s0 c (Leaf False) b@(Node positionB pos_childB neg_childB) = Node positionB (remove_f0s0_from_f1s0 c (Leaf False) pos_childB) neg_childB  --if pos_child == Leaf False then pos_child else b@(Node positionB pos_childB neg_childB)
 remove_f0s0_from_f1s0 c (Leaf True) b = b
-
+remove_f0s0_from_f1s0 c a@(InfNodes {}) (Leaf True) = a
 remove_f0s0_from_f1s0 c (Leaf False) (Leaf True)  =  Leaf False
 
 -- No leafs involved
@@ -1255,6 +1468,7 @@ remove_f1s0_from_f0s0 c a (Leaf True) = Leaf True
 remove_f1s0_from_f0s0 c a@(Node positionA pos_childA neg_childA) (Leaf False) = remove_f1s0_from_f0s0 c pos_childA (Leaf False)
 remove_f1s0_from_f0s0 c (Leaf True) b@(Node positionB pos_childB neg_childB) = Node positionB (remove_f1s0_from_f0s0 c (Leaf True) pos_childB) neg_childB  --if pos_child == Leaf False then pos_child else b@(Node positionB pos_childB neg_childB)
 remove_f1s0_from_f0s0 c (Leaf False) b = b
+remove_f1s0_from_f0s0 c a@(InfNodes {}) (Leaf False) = a
 
 remove_f1s0_from_f0s0 c (Leaf True) (Leaf False)  =  Leaf True
 
