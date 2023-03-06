@@ -15,14 +15,15 @@ import Data.Function
 infixl 4 -.
 (-.) :: Dd Ordinal -> Dd Ordinal
 (-.) = negation
+-- i dont think negation needs to keep track of context, right?
 
 infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
-(.*.) = intersection @True []
+(.*.) = intersection @True [Dc]
 
 infixl 3 .+.
 (.+.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
-(.+.) = union @True []
+(.+.) = union @True [Dc]
 
 ite :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal -> Dd Ordinal
 ite x y z = (x .+. y) .*. ((-.) x .+. z)
@@ -50,40 +51,40 @@ infixl 1 .<->.
 
 ------------------------------------ Test
 
-a1 = path (safeOrd [0]) [2] Dc
-a2 = path (safeOrd [0]) [3] Dc
-a_2 = path (safeOrd [1]) [2] Dc
-a__2 = path (safeOrd [3,3]) [2] Dc
+a1 = path (Order [0]) [2] Dc
+a2 = path (Order [0]) [3] Dc
+a_2 = path (Order [1]) [2] Dc
+a__2 = path (Order [3,3]) [2] Dc
 a = a1 .*. a2
-b1 = path (safeOrd [0]) [2] Neg1
-b2 = path (safeOrd [0]) [3] Neg1
-b3 = path (safeOrd [0]) [2,3] Neg1
-b_2 = path (safeOrd [1]) [2] Neg1
-b__2 = path (safeOrd [3,3]) [2] Neg1
+b1 = path (Order [0]) [2] Neg1
+b2 = path (Order [0]) [3] Neg1
+b3 = path (Order [0]) [2,3] Neg1
+b_2 = path (Order [1]) [2] Neg1
+b__2 = path (Order [3,3]) [2] Neg1
 b = b1 .+. b2
-c1 = path (safeOrd [0]) [2] Pos0
-c2 = path (safeOrd [0]) [3] Pos0
-c_2 = path (safeOrd [1]) [2] Pos0
-c__2 = path (safeOrd [3,3]) [2] Pos0
+c1 = path (Order [0]) [2] Pos0
+c2 = path (Order [0]) [3] Pos0
+c_2 = path (Order [1]) [2] Pos0
+c__2 = path (Order [3,3]) [2] Pos0
 c = c1 .*. c2
-d1 = path (safeOrd [0]) [2] Pos1
-d2 = path (safeOrd [0]) [3] Pos1
-d_2 = path (safeOrd [1]) [2] Pos1
-d__2 = path (safeOrd [3,3]) [2] Pos1
+d1 = path (Order [0]) [2] Pos1
+d2 = path (Order [0]) [3] Pos1
+d_2 = path (Order [1]) [2] Pos1
+d__2 = path (Order [3,3]) [2] Pos1
 
-e1 = path (safeOrd [0]) [2] Neg0
-e2 = path (safeOrd [0]) [3] Neg0
-e_2 = path (safeOrd [1]) [2] Neg0
-e__2 = path (safeOrd [3,3]) [2] Neg0
+e1 = path (Order [0]) [2] Neg0
+e2 = path (Order [0]) [3] Neg0
+e_2 = path (Order [1]) [2] Neg0
+e__2 = path (Order [3,3]) [2] Neg0
 
 x = (e_2 .*. e__2) .*. e2
 y= e2 .*. e__2
 
-z = makePathWithContext (safeOrd [3,2]) [Neg1,Pos1] [1,2] Neg1
+z = makePathWithContext (Order [3,2]) [Neg1,Pos1] [1,2] Neg1
 
 -- <[0,0]> -> ([0,1]) -> <[0,2,0]> -> ([0,2,1]) -> [1]
-dcZ =  (path (safeOrd [0]) [1] Dc .->. path (safeOrd [0,2]) [1] Dc) .*. path (safeOrd [0]) [1] Dc
-neg1Z =  (path (safeOrd [0]) [1] Neg1 .*. path (safeOrd [0,2]) [1] Neg1) .*. path (safeOrd [0]) [3] Neg1
+dcZ =  (path (Order [0]) [1] Dc .->. path (Order [0,2]) [1] Dc) .*. path (Order [0]) [1] Dc
+neg1Z =  (path (Order [0]) [1] Neg1 .*. path (Order [0,2]) [1] Neg1) .*. path (Order [0]) [3] Neg1
 
 test :: IO ()
 test = do
@@ -162,8 +163,8 @@ test = do
             ]
 
 {-}
-dc = (path (safeOrd [0]) [2] Dc) .*. (path (safeOrd [1]) [2] Dc)
-b = path (safeOrd [1]) [2] Neg1
+dc = (path (Order [0]) [2] Dc) .*. (path (Order [1]) [2] Dc)
+b = path (Order [1]) [2] Neg1
 
 (dc .*. a) .+. dc == dc
 (dc .+. a) .*. dc == dc

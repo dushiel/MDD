@@ -72,13 +72,14 @@ makeNode (Order i) c
 
 -- At the variable class given represented by the ordinal, create a path containing the specified nodes from the list with the given inference rule.
 -- We assume fixed variable classes, it is the responsibility of the user to give the correct ordinal
+-- give empty list to create empty ZDD, e.g. : makePath (Order [1,2]) [] Neg1
 makePath :: Ordinal -> [Int] -> Inf -> Dd Ordinal
 makePath (Order varClass) nodeList c
-    | c == Dc = InfNodes (Order $ varClass ++ [0]) (loopNeg nodeList False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | c == Neg1 = InfNodes (Order $ varClass ++ [0]) (Leaf False) (loopNeg nodeList False ) (Leaf True) (Leaf False) (Leaf True)
-    | c == Neg0 = InfNodes (Order $ varClass ++ [0]) (Leaf True) (Leaf False) (loopNeg nodeList True) (Leaf False) (Leaf True)
-    | c == Pos1 = InfNodes (Order $ varClass ++ [0]) (Leaf False) (Leaf False) (Leaf True) (loopPos nodeList False) (Leaf True)
-    | c == Pos0 = InfNodes (Order $ varClass ++ [0]) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
+    | c == Dc = InfNodes (Order varClass) (loopNeg nodeList False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
+    | c == Neg1 = InfNodes (Order varClass) (Leaf False) (loopNeg nodeList False ) (Leaf True) (Leaf False) (Leaf True)
+    | c == Neg0 = InfNodes (Order varClass) (Leaf True) (Leaf False) (loopNeg nodeList True) (Leaf False) (Leaf True)
+    | c == Pos1 = InfNodes (Order varClass) (Leaf False) (Leaf False) (Leaf True) (loopPos nodeList False) (Leaf True)
+    | c == Pos0 = InfNodes (Order varClass) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
     | otherwise = error "empty ordinal or node list for makeNode"
     where
         loopNeg [] end = Leaf $ not end
@@ -86,22 +87,55 @@ makePath (Order varClass) nodeList c
         loopPos [] end = Leaf $ not end
         loopPos (n:ns) end = Node (Order $ varClass ++ [n]) (Leaf end) (loopPos ns end)
 
+-- For making paths that take multiple Infnodes through finite types.
+-- used for e.g. [2::Neg1, 1::Neg1, 3::Neg1]
+-- possible to give an empty list for the nodes to be set to positive
+-- place a minus sign before a node nr to set it to negative.
 makePathWithContext :: Ordinal -> Context -> [Int] -> Inf -> Dd Ordinal
-makePathWithContext (Order varClass) varCxt nodeList c = loop [] (replicate (length varClass + 1) 0) varClass varCxt
+makePathWithContext (Order varClass) varCxt nodeList c = loop [] varClass varCxt
     where
-        loop prefix ( _ : suffix) (vCl : xs) (vCxt : ys)
-            | vCxt == Dc = loop (prefix ++ [vCl] ++ suffix) suffix xs ys
-            | vCxt == Neg1 = InfNodes (Order $ prefix ++ [vCl] ++ suffix) (Leaf False) (loop (prefix ++ [vCl]) suffix xs ys ) (Leaf True) (Leaf False) (Leaf True)
-            | vCxt == Neg0 = InfNodes (Order $ prefix ++ [vCl] ++ suffix) (Leaf True) (Leaf False) (loop (prefix ++ [vCl]) suffix xs ys) (Leaf False) (Leaf True)
-            | vCxt == Pos1 = InfNodes (Order $ prefix ++ [vCl] ++ suffix) (Leaf False) (Leaf False) (Leaf True) (loop (prefix ++ [vCl]) suffix xs ys) (Leaf True)
-            | vCxt == Pos0 = InfNodes (Order $ prefix ++ [vCl] ++ suffix) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loop (prefix ++ [vCl]) suffix xs ys)
-        loop _ _ [] [] = makePath (Order varClass) nodeList c
-        loop _ _ _ _ = error "Context and Ordinal have unequal length."
+        loop _ [vCl] [vCxt] = makePath (Order varClass) nodeList c
+        loop prefix (vCl : xs) (vCxt : ys)
+            | vCxt == Dc = loop (prefix ++ [vCl]) xs ys
+            | vCxt == Neg1 = InfNodes (Order $ prefix ++ [vCl]) (Leaf False) (loop (prefix ++ [vCl]) xs ys ) (Leaf True) (Leaf False) (Leaf True)
+            | vCxt == Neg0 = InfNodes (Order $ prefix ++ [vCl]) (Leaf True) (Leaf False) (loop (prefix ++ [vCl]) xs ys) (Leaf False) (Leaf True)
+            | vCxt == Pos1 = InfNodes (Order $ prefix ++ [vCl]) (Leaf False) (Leaf False) (Leaf True) (loop (prefix ++ [vCl]) xs ys) (Leaf True)
+            | vCxt == Pos0 = InfNodes (Order $ prefix ++ [vCl]) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loop (prefix ++ [vCl]) xs ys)
+        loop _ _ _ = error "Context and Ordinal have unequal length."
 
 
--- (Inf a) =>
+ezPath :: EasyPath -> Dd Ordinal
+ezPath p = loop p [] [0] where
+    loop (InfP inf ord (c : cs)) other max
+        | inf == Dc && max<ord = InfNodes (Order ord) (loop c (cs++other) ord) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
+        | inf == Neg1 && max<ord = InfNodes (Order ord) (Leaf False) (loop c (cs++other) ord) (Leaf True) (Leaf False) (Leaf True)
+        | inf == Neg0 && max<ord = InfNodes (Order ord) (Leaf True) (Leaf False) (loop c (cs++other) ord) (Leaf False) (Leaf True)
+        | inf == Pos1 && max<ord = InfNodes (Order ord) (Leaf False) (Leaf False) (Leaf True) (loop c (cs++other) ord) (Leaf True)
+        | inf == Pos0 && max<ord = InfNodes (Order ord) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loop c (cs++other) ord)
+    loop (InfP _ ord (c : cs)) _ max = error $ "Encountered ordinal (ord=" ++ show ord ++ ") smaller or equal than earlier (max=" ++ show max ++ ") in the path, please check the supplied EasyPath."
+    loop (InfP _ _ []) _ _ = error "Cannot end on InfNode / InfP, it should have at least one NodeP as child. Please check the supplied EasyPath."
+
+    loop (NodeP inf children) other max
+        | inf == Dc = loopNeg children False other max
+        | inf == Neg1 = loopNeg children False other max
+        | inf == Neg0 = loopNeg children True other max
+        | inf == Pos1 = loopPos children False other max
+        | inf == Pos0 = loopPos children True other max
+
+    loopNeg [] end [] _ = Leaf $ not end
+    loopNeg [] end (next: other) max = loop next other max
+    loopNeg (n:ns) end other max = if (Order $ map abs n) > (Order max)
+        then if last n <= 0 then Node (Order n) (Leaf end) (loopNeg ns end other n) else Node (Order n) (loopNeg ns end other n) (Leaf end)
+        else error $ "Encountered ordinal (n=" ++ show n ++ ") smaller or equal than earlier (max=" ++ show max ++ ") in the path, please check the supplied EasyPath."
+    loopPos [] end [] _ = Leaf $ not end
+    loopPos [] end (next: other) max = loop next other max
+    loopPos (n:ns) end other max = if (Order $ map abs n) > (Order max)
+        then if last n <= 0 then Node (Order n) (loopPos ns end other n) (Leaf end) else Node (Order n) (Leaf end) (loopPos ns end other n)
+        else error $ "Encountered ordinal (n=" ++ show n ++ ") smaller or equal than earlier (max=" ++ show max ++ ") in the path, please check the supplied EasyPath."
 
 
+data EasyPath = InfP Inf [Int] [EasyPath ] | NodeP Inf [ [Int] ]
+    deriving Show
 
 
 instance Show a => Show (Dd a) where

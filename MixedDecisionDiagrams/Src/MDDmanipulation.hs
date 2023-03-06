@@ -13,6 +13,7 @@ import MixedDecisionDiagrams.Src.MDD
 import Debug.Trace (trace)
 import Data.Kind
 import MixedDecisionDiagrams.Src.DrawMDD
+import Data.List (foldl')
 
 type DdF4 :: Inf -> Constraint
 type DdF2 :: Bool -> Constraint
@@ -138,61 +139,116 @@ restrictSetMain _ _ = error "restrictMain"
 -- although if it were just [1] or [1,0,0] as a node, then we need to remove the trailing 0's
 -- todo and trim (by popping) the context to the same size
 -- is there a method to do this without checking the sizes of the nodes for each step?
--- todo we can always have trailing 0s removed/inferred
+-- we can always have trailing 0s removed/inferred
 -- there is always an infnode before a new class of nodes with semi recursive-MDDs (such that nodes and infnodes are never on the same level)
 
+len :: Ordinal -> Int
+len (Order l) = length l
 
+lastN' :: Int -> [a] -> [a]
+lastN' n xs = foldl' (const . drop 1) xs (drop n xs)
 
 intersectionMain :: Context -> Dd Ordinal -> Dd Ordinal -> Dd Ordinal
 intersectionMain  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
-        | positionA == positionB =  let
-            dcR = intersectionLocal @Dc c dcA dcB
+    | positionA == positionB =  let
+        ct = lastN' (len positionA) c
 
-            n1R = unionLocal @Neg1 (Neg1 : c)
-                (intersectionLocal @Neg1 (Neg1 : c) n1A n1B) -- overlapping points are by definition not inside the others dc, thus have to be preserved
-                (if n0R' == Leaf True then n1R' else remove_f0s1_from_f1s1 c n0R' n1R') -- holes absorb points under intersection
-            n1R' = unionLocal @Neg1 (Neg1 : c) -- guaranteed that dcA and dcB do not overlap around the finite points, thus they do not get absorbed
-                (mixedIntersection @Neg1 (Neg1 : c) n1A dcB dcR) -- keep the points that fit inside B
-                (mixedIntersection @Neg1 (Neg1 : c) n1B dcA dcR) -- keep the points that fit inside A
+        dcR = intersectionLocal @Dc ct dcA dcB
 
-            n0R' = unionLocal @Neg0 (Neg0 : c) n0A n0B -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
-            n0R = mixedIntersection2 @Neg0 (Neg0 : c) n0R' dcR -- keep the holes that fit inside dcR
-            -- if the local hole fits inside dcR but the consequence of n0R' does not fit inside the consequenc of dcR it should return n0R' -> Leaf false
-            ------------------------------------
-            p1R = unionLocal @Pos1 (Pos1 : c)
-                (intersectionLocal @Pos1 (Pos1 : c) p1A p1B)
-                (if p0R' == Leaf True then p1R' else remove_f0s0_from_f1s0 c p0R' p1R')
-            p1R' = unionLocal @Pos1 (Pos1 : c)
-                (mixedIntersection @Pos1 (Pos1 : c) p1A dcB dcR)
-                (mixedIntersection @Pos1 (Pos1 : c) p1B dcA dcR)
-            p0R' = unionLocal @Pos0 (Pos0 : c) p0A p0B -- local union then intersection
-            p0R = mixedIntersection2 @Pos0 (Pos0 : c) p0R' dcR
-            in applyElimRule @Dc $ InfNodes positionA dcR n1R n0R p1R p0R
+        n1R = unionLocal @Neg1 (Neg1 : ct)
+            (intersectionLocal @Neg1 (Neg1 : ct) n1A n1B) -- overlapping points are by definition not inside the others dc, thus have to be preserved
+            (if n0R' == Leaf True then n1R' else remove_f0s1_from_f1s1 c n0R' n1R') -- holes absorb points under intersection
+        n1R' = unionLocal @Neg1 (Neg1 : ct) -- guaranteed that dcA and dcB do not overlap around the finite points, thus they do not get absorbed
+            (mixedIntersection @Neg1 (Neg1 : ct) n1A dcB dcR) -- keep the points that fit inside B
+            (mixedIntersection @Neg1 (Neg1 : ct) n1B dcA dcR) -- keep the points that fit inside A
 
-        -- todo add context inference here: currently we apply Dc inference
-        | positionA > positionB = let -- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
-            dcR = intersectionLocal @Dc c a dcB
-            n1R = if n0B == Leaf True then
-                mixedIntersection @Neg1 c n1B a dcR  else
-                remove_f0s1_from_f1s1 c n0B (mixedIntersection @Neg1 c n1B a dcR)
-            n0R = mixedIntersection2 @Neg0 c n0B dcR --`debug` ( "inter: " ++ show (mixedIntersection2 @Neg0 c n0A dcR) ++ "\n n0A: " ++ show n0A  ++ "\n dcR" ++ show dcR)
-            p1R = if p0B == Leaf True then
-                mixedIntersection @Pos1 c p1B a dcR else
-                remove_f0s0_from_f1s0 c p0B (mixedIntersection @Pos1 c p1B a dcR)
-            p0R = mixedIntersection2 @Pos0 c p0B dcR
-            in applyElimRule @Dc $ InfNodes positionB dcR n1R n0R p1R p0R
+        n0R' = unionLocal @Neg0 (Neg0 : ct) n0A n0B -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
+        n0R = mixedIntersection2 @Neg0 (Neg0 : ct) n0R' dcR -- keep the holes that fit inside dcR
+        -- if the local hole fits inside dcR but the consequence of n0R' does not fit inside the consequenc of dcR it should return n0R' -> Leaf false
+        ------------------------------------
+        p1R = unionLocal @Pos1 (Pos1 : ct)
+            (intersectionLocal @Pos1 (Pos1 : ct) p1A p1B)
+            (if p0R' == Leaf True then p1R' else remove_f0s0_from_f1s0 c p0R' p1R')
+        p1R' = unionLocal @Pos1 (Pos1 : ct)
+            (mixedIntersection @Pos1 (Pos1 : ct) p1A dcB dcR)
+            (mixedIntersection @Pos1 (Pos1 : ct) p1B dcA dcR)
+        p0R' = unionLocal @Pos0 (Pos0 : ct) p0A p0B -- local union then intersection
+        p0R = mixedIntersection2 @Pos0 (Pos0 : ct) p0R' dcR
 
-        | positionA < positionB = let -- replace all the B stuf with (dc: b, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
-            dcR = intersectionLocal @Dc c dcA b
-            n1R = if n0A == Leaf True then
-                mixedIntersection @Neg1 c n1A b dcR  else
-                remove_f0s1_from_f1s1 c n0A (mixedIntersection @Neg1 c n1A b dcR)
-            n0R = mixedIntersection2 @Neg0 c n0A dcR --`debug` ( "inter: " ++ show (mixedIntersection2 @Neg0 c n0A dcR) ++ "\n n0A: " ++ show n0A  ++ "\n dcR" ++ show dcR)
-            p1R = if p0A == Leaf True then
-                mixedIntersection @Pos1 c p1A b dcR else
-                remove_f0s0_from_f1s0 c p0A (mixedIntersection @Pos1 c p1A b dcR)
-            p0R = mixedIntersection2 @Pos0 c p0A dcR
-            in applyElimRule @Dc $ InfNodes positionA dcR n1R n0R p1R p0R --`debug` ("dcR" ++ show dcR ++ "\n p0A" ++ show p0A)
+        in applyElimRule @Dc $ InfNodes positionA dcR n1R n0R p1R p0R
+
+    | positionA > positionB = let (inf : ct) = lastN' (len positionB) c in
+        case inf of
+            Dc -> let -- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
+                dcR = intersectionLocal @Dc (Dc : inf : ct) a dcB
+                n1R = if n0B == Leaf True then
+                    mixedIntersection @Neg1 (Neg1 : inf : ct) n1B a dcR  else
+                    remove_f0s1_from_f1s1 (Neg1 : inf : ct) n0B (mixedIntersection @Neg1 (Neg1 : inf : ct) n1B a dcR)
+                n0R = mixedIntersection2 @Neg0 (Neg0 : inf : ct) n0B dcR --`debug` ( "inter: " ++ show (mixedIntersection2 @Neg0 c n0A dcR) ++ "\n n0A: " ++ show n0A  ++ "\n dcR" ++ show dcR)
+                p1R = if p0B == Leaf True then
+                    mixedIntersection @Pos1 (Pos1 : inf : ct) p1B a dcR else
+                    remove_f0s0_from_f1s0 (Pos1 : inf : ct) p0B (mixedIntersection @Pos1 (Pos1 : inf : ct) p1B a dcR)
+                p0R = mixedIntersection2 @Pos0 (Pos0 : inf : ct) p0B dcR
+                in applyElimRule @Dc $ InfNodes positionB dcR n1R n0R p1R p0R
+
+            Neg1 -> let -- replace all the A stuf with (dc: 0, neg1: a, neg0: 1, pos1: 0, pos0: 1)
+                n1R = unionLocal @Neg1 (Neg1:inf:ct)
+                    (intersectionLocal @Neg1 (Neg1:inf:ct) a n1B)
+                    (if n0B == Leaf True then n1R' else remove_f0s1_from_f1s1 (Neg1:inf:ct) n0B n1R')
+                n1R' = mixedIntersection2 @Neg1 (Neg1:inf:ct) a dcB
+                in applyElimRule @Neg1 $ InfNodes positionB (Leaf False) n1R (Leaf True) (Leaf False) (Leaf True)
+            Neg0 -> let -- replace all the A stuf with (dc: 1, neg1: 0, neg0: a, pos1: 0, pos0: 1)
+                n0R' = unionLocal @Neg0 (Neg0:inf:ct) a n0B
+                n0R = mixedIntersection2 @Neg0 (Neg0:inf:ct) n0R' dcB
+                in applyElimRule @Neg0 $ InfNodes positionB dcB (Leaf False) n0R (Leaf False) (Leaf True)
+            Pos1 -> let -- replace all the A stuf with (dc: 0, neg1: 0, neg0: 1, pos1: a, pos0: 1)
+                p1R = unionLocal @Pos1 (Pos1:inf:ct)
+                    (intersectionLocal @Pos1 (Pos1:inf:ct) a n1B)
+                    (if n0B == Leaf True then p1R' else remove_f0s1_from_f1s1 (Pos1:inf:ct) n0B p1R')
+                p1R' = mixedIntersection2 @Pos1 (Pos1:inf:ct) a dcB
+                in applyElimRule @Pos1 $ InfNodes positionB (Leaf False) (Leaf False) (Leaf True) p1R (Leaf True)
+            Pos0 -> let -- replace all the A stuf with (dc: 1, neg1: 0, neg0: a, pos1: 0, pos0: 1)
+                p0R' = unionLocal @Pos0 (Pos0:inf:ct) a p0B
+                p0R = mixedIntersection2 @Pos0 (Pos0:inf:ct) p0R' dcB
+                in applyElimRule @Pos0 $ InfNodes positionB dcB (Leaf False) (Leaf True) (Leaf False) p0R
+
+
+
+    | positionA < positionB = let (inf : ct) = lastN' (len positionA) c in-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
+        case inf of
+            Dc -> let
+                dcR = intersectionLocal @Dc (Dc : inf : ct) dcA b
+                n1R = if n0A == Leaf True then
+                    mixedIntersection @Neg1 (Neg1 : inf : ct) n1A b dcR  else
+                    remove_f0s1_from_f1s1 (Neg1 : inf : ct) n0A (mixedIntersection @Neg1 (Neg1 : inf : ct) n1A b dcR)
+                n0R = mixedIntersection2 @Neg0 (Neg0 : inf : ct) n0A dcR
+                p1R = if p0A == Leaf True then
+                    mixedIntersection @Pos1 (Pos1 : inf : ct) p1A b dcR else
+                    remove_f0s0_from_f1s0 (Pos1 : inf : ct) p0A (mixedIntersection @Pos1 (Pos1 : inf : ct) p1A b dcR)
+                p0R = mixedIntersection2 @Pos0 (Pos0 : inf : ct) p0A dcR
+                in applyElimRule @Dc $ InfNodes positionA dcR n1R n0R p1R p0R
+
+            Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
+                n1R = unionLocal @Neg1 (Neg1:inf:ct)
+                    (intersectionLocal @Neg1 (Neg1:inf:ct) n1A b)
+                    (if n0A == Leaf True then n1R' else remove_f0s1_from_f1s1 (Neg1:inf:ct) n0A n1R')
+                n1R' = mixedIntersection2 @Neg1 (Neg1:inf:ct) b dcA
+                in applyElimRule @Neg1 $ InfNodes positionA (Leaf False) n1R (Leaf True) (Leaf False) (Leaf True)
+            Neg0 -> let -- replace all the B stuf with (dc: 1, neg1: 0, neg0: b, pos1: 0, pos0: 1)
+                n0R' = unionLocal @Neg0 (Neg0:inf:ct) n0A b
+                n0R = mixedIntersection2 @Neg0 (Neg0:inf:ct) n0R' dcA
+                in applyElimRule @Neg0 $ InfNodes positionA dcA (Leaf False) n0R (Leaf False) (Leaf True)
+            Pos1 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: b, pos0: 1)
+                p1R = unionLocal @Pos1 (Pos1:inf:ct)
+                    (intersectionLocal @Pos1 (Pos1:inf:ct) n1A b )
+                    (if p0A == Leaf True then p1R' else remove_f0s1_from_f1s1 (Pos1:inf:ct) p0A p1R')
+                p1R' = mixedIntersection2 @Pos1 (Pos1:inf:ct) dcA b
+                in applyElimRule @Pos1 $ InfNodes positionA (Leaf False) (Leaf False) (Leaf True) p1R (Leaf True)
+            Pos0 -> let -- replace all the B stuf with (dc: 1, neg1: 0, neg0: b, pos1: 0, pos0: 1)
+                p0R' = unionLocal @Pos0 (Pos0:inf:ct) p0A b
+                p0R = mixedIntersection2 @Pos0 (Pos0:inf:ct) p0R' dcA
+                in applyElimRule @Pos0 $ InfNodes positionA dcB (Leaf False) (Leaf True) (Leaf False) p0R
+
 intersectionMain c a b = error "no infnodes in intersection main"
 
 
@@ -202,58 +258,108 @@ unionMain :: Context -> Dd Ordinal -> Dd Ordinal -> Dd Ordinal
 -- inclusive point (1's ) under union are intersected with the opposite infinite subset (dc) before they are added together
 unionMain  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
     | positionA == positionB =  let
-        dcR = unionLocal @Dc c dcA dcB
+        ct = lastN' (len positionA) c
 
-        n1R = mixedIntersection2 @Neg1 c n1R' dcR -- union the consequences of n1R with dcR, then if they are the same absorb them
-        n1R' = unionLocal @Neg1 c n1A n1B --`debug` show (unionLocal @Neg1 n1A n1B) -- union all points
+        dcR = unionLocal @Dc ct dcA dcB
 
-        n0R = unionLocal @Neg0 c -- union then intersection
-            (intersectionLocal @Neg0 c n0A n0B) -- intersection then union
-            (if n1R' == Leaf False then n0R' else remove_f1s1_from_f0s1 c n1R' n0R')
-        n0R' = unionLocal @Neg0 c
-            (mixedIntersection @Neg0 c n0A dcB dcR) -- remove the holes that do fit in B (unioned away) // note that in consequence this reverts back to to union and is absorbed if consequence of n0A == dcR
-            (mixedIntersection @Neg0 c n0B dcA dcR) -- remove the holes that do fit in A (unioned away)
+        n1R = mixedIntersection2 @Neg1 ct n1R' dcR -- union the consequences of n1R with dcR, then if they are the same absorb them
+        n1R' = unionLocal @Neg1 ct n1A n1B --`debug` show (unionLocal @Neg1 n1A n1B) -- union all points
+
+        n0R = unionLocal @Neg0 ct -- union then intersection
+            (intersectionLocal @Neg0 ct n0A n0B) -- intersection then union
+            (if n1R' == Leaf False then n0R' else remove_f1s1_from_f0s1 ct n1R' n0R')
+        n0R' = unionLocal @Neg0 ct
+            (mixedIntersection @Neg0 ct n0A dcB dcR) -- remove the holes that do fit in B (unioned away) // note that in consequence this reverts back to to union and is absorbed if consequence of n0A == dcR
+            (mixedIntersection @Neg0 ct n0B dcA dcR) -- remove the holes that do fit in A (unioned away)
             --`debug` ("dcB: " ++ show dcB)
 
 
         ------------------------------------
         -- n0R = (n0A cap n0B) cup ((n0A cap neg dcB) cap n1B) cup ((n0B cap neg dcA) cap n1A) <-> (n0A cup n0B) cap n1R* cap neg dcR
-        p1R = mixedIntersection2 @Pos1 c p1R' dcR
-        p1R' = unionLocal @Pos1 c p1A p1B
-        p0R = unionLocal @Pos0 c
-            (intersectionLocal @Pos0 c p0A p0B)
+        p1R = mixedIntersection2 @Pos1 ct p1R' dcR
+        p1R' = unionLocal @Pos1 ct p1A p1B
+        p0R = unionLocal @Pos0 ct
+            (intersectionLocal @Pos0 ct p0A p0B)
             (if p1R' == Leaf False then p0R' else remove_f1s0_from_f0s0 c p1R' p0R')
-        p0R' = unionLocal @Pos0 c
-            (mixedIntersection @Pos0 c p0A dcB dcR) -- remove the holes that do fit in B: if the consequence of p0A after union is the same as the consequence of dcB, then it is also removed. If the consequence is smaller it is kept.
-            (mixedIntersection @Pos0 c p0B dcA dcR)
+        p0R' = unionLocal @Pos0 ct
+            (mixedIntersection @Pos0 ct p0A dcB dcR) -- remove the holes that do fit in B: if the consequence of p0A after union is the same as the consequence of dcB, then it is also removed. If the consequence is smaller it is kept.
+            (mixedIntersection @Pos0 ct p0B dcA dcR)
 
         in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
 
-    | positionA > positionB = let -- A is inferred to be Top
-        dcR = unionLocal @Dc c a dcB --pass along the consequence of B for both dcA and not dcA
-        n1R = mixedIntersection2 @Neg1 c n1B dcR
+    | positionA > positionB = let (inf : ct) = lastN' (len positionB) c in-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
+        case inf of
+            Dc -> let
+                dcR = unionLocal @Dc ct a dcB --pass along the consequence of B for both dcA and not dcA
+                n1R = mixedIntersection2 @Neg1 ct n1B dcR
 
-        n0R = let n0R' = mixedIntersection @Neg0 c n0B a dcR in
-            if n1B == Leaf False then n0R' else remove_f1s1_from_f0s1 c n1B n0R'
+                n0R = let n0R' = mixedIntersection @Neg0 ct n0B a dcR in
+                    if n1B == Leaf False then n0R' else remove_f1s1_from_f0s1 ct n1B n0R'
 
-        p1R = mixedIntersection2 @Pos1 c p1B dcR
-        p0R = let p0R' = mixedIntersection @Pos0 c p0B a dcR in
-            if p1B == Leaf False then p0R' else remove_f1s0_from_f0s0 c p1B p0R'
+                p1R = mixedIntersection2 @Pos1 ct p1B dcR
+                p0R = let p0R' = mixedIntersection @Pos0 ct p0B a dcR in
+                    if p1B == Leaf False then p0R' else remove_f1s0_from_f0s0 ct p1B p0R'
 
-        in applyElimRule @Dc (InfNodes positionB dcR n1R n0R p1R p0R)
+                in applyElimRule @Dc (InfNodes positionB dcR n1R n0R p1R p0R)
 
-    | positionA < positionB = let
-        dcR = unionLocal @Dc c b dcA
-        n1R = mixedIntersection2 @Neg1 c n1A dcR
+            Neg1 -> let -- replace all the A stuf with (dc: 0, neg1: a, neg0: 1, pos1: 0, pos0: 1)
+                n1R' = unionLocal @Neg1 (Neg1:inf:ct) a n1B
+                n1R = mixedIntersection2 @Neg1 (Neg1:inf:ct) n1R' dcB
+                in applyElimRule @Neg1 $ InfNodes positionB (Leaf False) n1R (Leaf True) (Leaf False) (Leaf True)
+            Neg0 -> let -- replace all the A stuf with (dc: 1, neg1: 0, neg0: a, pos1: 0, pos0: 1)
+                n0R = unionLocal @Neg0 (Neg0:inf:ct)
+                    (intersectionLocal @Neg0 (Neg0:inf:ct) a n0B)
+                    (if n1B == Leaf True then n0R' else remove_f1s1_from_f0s1 (Neg0:inf:ct) n1B n0R')
+                n0R' = mixedIntersection2 @Neg0 (Neg0:inf:ct) a dcB
+                in applyElimRule @Neg0 $ InfNodes positionB dcB (Leaf False) n0R (Leaf False) (Leaf True)
+            Pos1 -> let -- replace all the A stuf with (dc: 0, neg1: 0, neg0: 1, pos1: a, pos0: 1)
+                p1R' = unionLocal @Pos1 (Pos1:inf:ct) a p1B
+                p1R = mixedIntersection2 @Pos1 (Pos1:inf:ct) p1R' dcB
+                in applyElimRule @Pos1 $ InfNodes positionB (Leaf False) (Leaf False) (Leaf True) p1R (Leaf True)
+            Pos0 -> let -- replace all the A stuf with (dc: 1, neg1: 0, neg0: a, pos1: 0, pos0: 1)
+                p0R = unionLocal @Pos0 (Pos0:inf:ct)
+                    (intersectionLocal @Pos0 (Pos0:inf:ct) a n0B)
+                    (if p1B == Leaf True then p0R' else remove_f0s1_from_f1s1 (Pos0:inf:ct) p1B p0R')
+                p0R' = mixedIntersection2 @Pos0 (Pos0:inf:ct) a dcB
+                in applyElimRule @Pos0 $ InfNodes positionB dcB (Leaf False) (Leaf True) (Leaf False) p0R
 
-        n0R = let n0R' = mixedIntersection @Neg0 c n0A b dcR in
-            if n1A == Leaf False then n0R' else remove_f1s1_from_f0s1 c n1A n0R'
 
-        p1R = mixedIntersection2 @Pos1 c p1A dcR
-        p0R = let p0R' = mixedIntersection @Pos0 c p0A b dcR in
-            if p1A == Leaf False then p0R' else remove_f1s0_from_f0s0 c p1A p0R'
+    -- c cannot be empty..
+    | positionA < positionB = let (inf : ct) = lastN' (len positionA) c in-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
+        case inf of
+            Dc -> let
+                dcR = unionLocal @Dc ct b dcA
+                n1R = mixedIntersection2 @Neg1 ct n1A dcR
 
-        in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
+                n0R = let n0R' = mixedIntersection @Neg0 ct n0A b dcR in
+                    if n1A == Leaf False then n0R' else remove_f1s1_from_f0s1 ct n1A n0R'
+
+                p1R = mixedIntersection2 @Pos1 ct p1A dcR
+                p0R = let p0R' = mixedIntersection @Pos0 ct p0A b dcR in
+                    if p1A == Leaf False then p0R' else remove_f1s0_from_f0s0 ct p1A p0R'
+
+                in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
+            Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
+                n1R' = unionLocal @Neg1 (Neg1:inf:ct) n1A b
+                n1R = mixedIntersection2 @Neg1 (Neg1:inf:ct) n1R' dcA
+                in applyElimRule @Neg1 $ InfNodes positionA (Leaf False) n1R (Leaf True) (Leaf False) (Leaf True)
+            Neg0 -> let -- replace all the B stuf with (dc: 1, neg1: 0, neg0: b, pos1: 0, pos0: 1)
+                n0R = unionLocal @Neg0 (Neg0:inf:ct)
+                    (intersectionLocal @Neg0 (Neg0:inf:ct) n0A b)
+                    (if n1A == Leaf True then n0R' else remove_f1s1_from_f0s1 (Neg0:inf:ct) n1A n0R')
+                n0R' = mixedIntersection2 @Neg1 (Neg1:inf:ct) b dcA
+                in applyElimRule @Neg0 $ InfNodes positionA dcA (Leaf False) n0R (Leaf False) (Leaf True)
+            Pos1 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: b, pos0: 1)
+                p1R' = unionLocal @Pos1 (Pos1:inf:ct) p1A b
+                p1R = mixedIntersection2 @Pos1 (Pos1:inf:ct) p1R' dcA
+                in applyElimRule @Pos1 $ InfNodes positionA (Leaf False) (Leaf False) (Leaf True) p1R (Leaf True)
+            Pos0 -> let -- replace all the B stuf with (dc: 1, neg1: 0, neg0: b, pos1: 0, pos0: 1)
+                p0R = unionLocal @Pos0 (Pos0:inf:ct)
+                    (intersectionLocal @Pos0 (Pos0:inf:ct) n0A b )
+                    (if p1A == Leaf True then p0R' else remove_f1s1_from_f0s1 (Pos0:inf:ct) p1A p0R')
+                p0R' = mixedIntersection2 @Pos1 (Pos1:inf:ct) dcA b
+                in applyElimRule @Pos0 $ InfNodes positionA dcB (Leaf False) (Leaf True) (Leaf False) p0R
+
 unionMain _ _ _ = error "missed case?"
 
 
@@ -389,6 +495,17 @@ instance DdF4 Dc where
     mixedIntersection = error "mixedintersection only with finite kinds"
     mixedIntersection2 = error "mixedintersection only with finite kinds"
 
+inferInfNode :: Context -> Bool -> Dd Ordinal -> Dd Ordinal
+inferInfNode c bool b@(InfNodes positionB _ _ _ _ _) = let (inf : ct) = lastN' (len positionB) c in-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
+        case inf of
+            Dc -> InfNodes positionB (Leaf bool) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
+            -- todo go in depth also with Dc.. where else is this the case?
+            -- check all Leaf node resulting cases
+            Neg1 -> InfNodes positionB (Leaf True) (Leaf bool) (Leaf True) (Leaf False) (Leaf True)
+            Neg0 -> InfNodes positionB (Leaf False) (Leaf False) (Leaf $ not bool) (Leaf False) (Leaf True)
+            Pos1 -> InfNodes positionB (Leaf True) (Leaf False) (Leaf True) (Leaf bool) (Leaf True)
+            Pos0 -> InfNodes positionB (Leaf False) (Leaf False) (Leaf True) (Leaf False) (Leaf $ not bool)
+            otherwise -> error ""
 
 
 instance DdF4 Neg1 where
@@ -462,13 +579,16 @@ instance DdF4 Neg1 where
     intersectionLocal  c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = intersection @True c a b
     intersectionLocal _ _ _ = error "how did we get here?"
 
+    unionLocal c a@(InfNodes positionA dcA n1A n0A p1A p0A) (Leaf False) = union @False c a (inferInfNode c False a)
+    unionLocal c (Leaf False) b@(InfNodes positionB dcB n1B n0B p1B p0B) = union @False c (inferInfNode c False b) b
     unionLocal c a (Leaf False) =  a
     unionLocal c (Leaf False) b =  b
 
     unionLocal c a@(Node positionA pos_childA neg_childA) (Leaf True) = Node positionA pos_childA (unionLocal @Neg1 c neg_childA (Leaf True))
     unionLocal c (Leaf True) b@(Node positionB pos_childB neg_childB) = Node positionB pos_childB (unionLocal @Neg1 c neg_childB (Leaf True))
-    unionLocal _ (Leaf True) _ = Leaf True
-    unionLocal _ _ (Leaf True) =   Leaf True
+    unionLocal c a@(InfNodes positionA dcA n1A n0A p1A p0A) (Leaf True) = union @True c a (inferInfNode c True a)
+    unionLocal c (Leaf True) b@(InfNodes positionB dcB n1B n0B p1B p0B) = union @True c (inferInfNode c True b) b
+    unionLocal _ (Leaf True) (Leaf True) = Leaf True
 
     -- comparing nodes, allowed mis-matches based on each inference rule
     unionLocal c a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)

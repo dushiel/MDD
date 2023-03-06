@@ -4,19 +4,43 @@ import qualified Data.Map.Strict as Map
 import MixedDecisionDiagrams.Src.MDDi
 import MixedDecisionDiagrams.Src.MDD
 import MixedDecisionDiagrams.Src.Internal.Language
+import MixedDecisionDiagrams.Src.DrawMDD
 
 
---Order 0: world with agents (B + Z)
--- friends share information, distributed knowledge
+-- these will automatically be constrocted as Ordinals when transforming them to Dd's
+labelClass = [2]
+-- Implicit ordinals, responsibility of the use for correct formatting
+-- todo add automatic formatting
+symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" (map (\x -> [x]) [0..])
+conceptLabels = Map.fromList $ zip [1 ..] (map (\x -> labelClass ++ [x]) [1..])
 
-type Class = Ordinal
+vocabulary = ["hell", "hello"] --  my"] -- name is"] -- , "daniel"] --, "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."]
 
-agentClass :: Class
-agentClass = Order [0]
+senToDd = ezPath . sentenceToPath
 
-agents = Map.fromList $ [("alice", Order [1]),("bob", Order [2])] ++ [("ag#" ++ show x, Order [x + 2]) | x <- [1..]]
+sentenceToPath :: String -> EasyPath
+-- e.g. (Dc, 3, [(Neg1, 1, [ (Neg1, [1,2, -3]) ]) ])
+sentenceToPath s = InfP Neg1 [2] [InfP Neg1 [2,x] [NodeP Neg1 (if ' '==y then [] else [([2,x] ++ symbols Map.! y)]) ] | (x, y) <- zip [1..] s ]
 
-knows :: String -> Form
+eFilter v = v .*. (ezPath (InfP Dc [2] [InfP Neg1 [2,x] [NodeP Neg1 [[2,x] ++ symbols Map.! 'e']] | x <- [1 .. 50]]))
+eFilter2 v = v .*. (ezPath (InfP Dc [2] [InfP Neg1 [2,2] [NodeP Neg1 [[2,2] ++ symbols Map.! 'e']]]))
+
+
+vocab_as_MDD = foldr (.+.) bot (map (ezPath . sentenceToPath) vocabulary)
+
+-- [[y], x] -> [[y,x]]
+-- todo use Data.Bimap
+symbolsR :: [(Ordinal, String)]
+symbolsR = zip (map (Order . (++) [2]) $ concatMap (\x -> map (\z -> z ++ [x]) (map (\y -> [y]) [1..50]))  [0..])
+    (concatMap (replicate 50) (map (\x -> [x]) "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-"))
+
+symbolPositionsLabelR :: [(Ordinal, String)]
+symbolPositionsLabelR = zip (map (\x -> Order $ labelClass ++ [x]) [1..]) (map (\x -> "pos" ++ show x)  [1..50])
+
+
+completeRmap :: Map.Map Ordinal String
+completeRmap = Map.fromList $ symbolsR ++ symbolPositionsLabelR ++ (zip (map (\x -> Order $ x) [labelClass]) ["Labels"])
+{-}
 
 -- experiences of concepts are a set of specified evaluations for properties in a Dc context
 -- thus a single concept maps to a unique 1/0 set.
@@ -66,8 +90,19 @@ conceptLabels = Map.fromList $ zip [1 ..] (map (\x -> Order $ [3,0] ++ [x]) [1..
 
 
 
+--Order 0: world with agents (B + Z)
+-- friends share information, distributed knowledge
 
+type Class = Ordinal
 
+agentClass :: Class
+agentClass = Order [0]
+
+agents = Map.fromList $ [("alice", Order [1]),("bob", Order [2])] ++ [("ag#" ++ show x, Order [x + 2]) | x <- [1..]]
+
+knows :: String -> Form
+
+-}
 
 
 
