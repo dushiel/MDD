@@ -12,7 +12,6 @@ module MDDmanipulation where
 import MDD
 import Debug.Trace (trace)
 import Data.Kind
--- import MixedDecisionDiagrams.Src.DrawMDD
 import Data.List (foldl')
 
 type DdF4 :: Inf -> Constraint
