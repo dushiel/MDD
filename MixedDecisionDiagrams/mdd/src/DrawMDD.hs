@@ -1,7 +1,7 @@
 module DrawMDD where
 import MDD
 import System.IO
--- import Test.Hspec
+import Test.Hspec
 import qualified Data.Map as Map
 
 
