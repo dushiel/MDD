@@ -32,18 +32,6 @@ infixl 3 .+.
 ite :: Dd -> Dd -> Dd -> Dd
 ite x y z = (x .+. y) .*. ((-.) x .+. z)
 
-r0 :: Dd -> Ordinal -> Dd
-r0 d = restrict @True d False
-
-r1 :: Dd -> Ordinal -> Dd
-r1 d = restrict @True d True
-
-rSet :: Dd -> [(Ordinal, Bool)] -> Dd
-rSet d b = restrictSet @True d (sortBy (compare `on` fst) b)
-
--- rSet, but then with ranges, such that we can restrict over an infinite domain
-rGen :: Dd -> [((Ordinal, Ordinal), Bool)] -> Dd
-rGen d b = restrictGen @True d (sortBy (compare `on` (fst . fst)) b)
 
 infixl 1 .->.
 (.->.) :: Dd -> Dd -> Dd

@@ -58,31 +58,11 @@ type DdF4 :: Inf -> Constraint
 type DdF2 :: Bool -> Constraint
 
 class DdF2 a where
-    restrict :: forall a . Dd -> Bool -> Ordinal -> Dd
-    restrictSet :: forall a . Dd -> [(Ordinal, Bool)] -> Dd
-    restrictGen :: forall a . Dd -> [((Ordinal, Ordinal), Bool)] -> Dd
     intersection :: forall a . Context -> Dd -> Dd  -> Dd
     union :: forall a . Context -> Dd -> Dd  -> Dd
 
 
 instance DdF2 True where
-    restrict d@(Leaf False) b n = Leaf False
-    restrict d@(Leaf True) b n = if b then makeNode n Dc else negation $ makeNode n Dc
-    restrict d b n = restrictMain d b n
-    restrictSet d@(Leaf False) ((n, b) : ns) = Leaf False
-    restrictSet d@(Leaf True) ((n, b) : ns) = if b
-        then restrictSet @True (makeNode n Dc) ns
-        else negation $ restrictSet @True (makeNode n Dc) ns
-    restrictSet d b = restrictSetMain d b
-    -- make a check/case for a finite distance or infinite distance, such that rGen dc with inf distance become a Neg1/etc
-    -- similarly there should be a precheck for Neg1/etc such that we can immediatly rule out if neccessary.
-    -- we can do this on the inf level.
-    -- restrictGen d@(Leaf False) (((n1, n2), b) : ns) = Leaf False
-    -- restrictGen d@(Leaf True) (((n1, n2), b) : ns) = if b
-    --     then restrictGen @True (makePath n Dc) ns -- function that extracts local list?
-    --     else negation $ restrictGen @True (makeNode n Dc) ns
-    -- restrictGen d b = restrictGenMain d b
-
     intersection c a (Leaf False) = Leaf False
     intersection c (Leaf False) b = Leaf False
     intersection c a (Leaf True) = a
@@ -95,16 +75,7 @@ instance DdF2 True where
     union c a b = unionMain c a b
 
 
-
 instance DdF2 False where
-    restrict d@(Leaf False) b n = if b then makeNode n Dc else negation $ makeNode n Dc
-    restrict d@(Leaf True) b n = Leaf True
-    restrict d b n = restrictMain d b n
-    restrictSet d@(Leaf False) ((n, b) : ns) = if b then
-        restrictSet @False (makeNode n Dc) ns
-        else negation $ restrictSet @False (makeNode n Dc) ns
-    restrictSet d@(Leaf True) ((n, b) : ns) = Leaf True
-    restrictSet d b = restrictSetMain d b
     intersection c a (Leaf True) = Leaf True
     intersection c (Leaf True) b = Leaf True
     intersection c a (Leaf False) = a
@@ -115,14 +86,6 @@ instance DdF2 False where
     union c a (Leaf True) = a
     union c (Leaf True) b = b
     union c a b = unionMain c a b
-
-
-
-
-
-
-
-
 
 
 negation :: Dd -> Dd
@@ -157,25 +120,6 @@ unionLocal_arg Neg0 c a b = unionLocal @Neg0 c a b
 unionLocal_arg Pos1 c a b = unionLocal @Pos1 c a b
 unionLocal_arg Pos0 c a b = unionLocal @Pos0 c a b
 
-restrictMain :: Dd -> Bool -> Ordinal -> Dd
-restrictMain d@(InfNodes position dc n1 n0 p1 p0) b n = let
-        dcR = restrictLocal @Dc dc b n
-        n1R = restrictLocal @Neg1 n1 b n
-        n0R = restrictLocal @Neg0 n0 b n
-        p1R = restrictLocal @Pos1 p1 b n
-        p0R = restrictLocal @Pos0 p0 b n
-        in applyElimRule @Dc (InfNodes position dcR n1R n0R p1R p0R)
-restrictMain _ _ _ = error "restrictMain"
-
-restrictSetMain :: Dd -> [(Ordinal, Bool)] -> Dd
-restrictSetMain d@(InfNodes position dc n1 n0 p1 p0) bs = let
-        dcR = restrictSetLocal @Dc dc bs
-        n1R = restrictSetLocal @Neg1 n1 bs
-        n0R = restrictSetLocal @Neg0 n0 bs
-        p1R = restrictSetLocal @Pos1 p1 bs
-        p0R = restrictSetLocal @Pos0 p0 bs
-        in applyElimRule @Dc (InfNodes position dcR n1R n0R p1R p0R)
-restrictSetMain _ _ = error "restrictMain"
 
 
 -- to keep track of what inference should be used on what (ordinal) level, we add it to a stack called the context.
@@ -482,30 +426,6 @@ instance DdF4 Dc where
                         else InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule (Leaf b) = Leaf b
     applyElimRule (EndInfNode _ _) = error "cannot end on end infnodlet c = lastN' (len positionA) c ine"
-    {-restrictLocal d@(Node position pos_child neg_child) b n
-        | n > position = applyElimRule @Dc $ Node position (restrictLocal @Dc pos_child b n) (restrictLocal @Dc neg_child b n)
-        | n < position = d -- do not have to apply elimRule
-        | n == position = applyElimRule @Dc $
-            if b then Node position pos_child pos_child else Node position neg_child neg_child
-    restrictLocal d@(InfNodes position _ _ _ _ _) b n -- check inference
-        | n > position = restrict @True d b n
-        | n < position = d
-        | n == position = error "n is inf-node.."
-    restrictLocal d@(Leaf _) b n = d
-
-    restrictSetLocal d@(Node position pos_child neg_child) ((n, b) : ns)
-        | n > position = applyElimRule @Dc $ Node position (restrictLocal @Dc pos_child b n) (restrictLocal @Dc neg_child b n)
-        | n < position = d -- do not have to apply elimRule
-        | n == position = applyElimRule @Dc $
-            if b
-                then Node position (restrictSetLocal @Dc pos_child ns) (restrictSetLocal @Dc pos_child ns)
-                else Node position (restrictSetLocal @Dc neg_child ns) (restrictSetLocal @Dc neg_child ns)
-    restrictSetLocal d@(InfNodes position _ _ _ _ _) ((n, b) : ns) -- check inference
-        | n > position = restrictSet @True d ((n, b) : ns)
-        | n < position = d
-        | n == position = error "n is inf-node.."
-    restrictSetLocal d@(Leaf _) _ = d
-    restrictSetLocal d [(n, b)] = restrictLocal @Dc d b n-}
 
     -- Leaf and node
     -- intersectionLocal c a (Leaf False) = Leaf False
@@ -618,31 +538,6 @@ instance DdF4 Neg1 where
                                     InfNodes pos dcR n1R n0R p1R p0R)
                         else InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule (Leaf b) = Leaf b
-
-{-}    restrictLocal d@(Node position pos_child neg_child) b n
-        | n > position = applyElimRule @Neg1 $ Node position (restrictLocal @Neg1 pos_child b n) (restrictLocal @Neg1 neg_child b n)
-        | n < position = if b then Leaf False else Node n d d -- do not have to apply elimRule
-        | n == position = applyElimRule @Neg1 $
-            if b then Node position pos_child pos_child else Node position neg_child neg_child
-    restrictLocal d@(InfNodes position _ _ _ _ _) b n -- check inference
-        | n > position = restrict @True d b n
-        | n < position = if b then Leaf False else Node n d d
-        | n == position = error "n is inf-node.."
-    restrictLocal d@(Leaf _) b n = d
-
-    restrictSetLocal d@(Node position pos_child neg_child) ((n, b) : ns)
-        | n > position = applyElimRule @Neg1 $ Node position (restrictSetLocal @Neg1 pos_child ((n, b) : ns)) (restrictSetLocal @Neg1 neg_child ((n, b) : ns))
-        | n < position = if b then Leaf False else restrictSetLocal @Neg1 (Node n d d) ns -- do not have to apply elimRule
-        | n == position = applyElimRule @Neg1 $
-            if b then Node position (restrictSetLocal @Neg1 pos_child ns) (restrictSetLocal @Neg1 pos_child ns)
-                else Node position (restrictSetLocal @Neg1 neg_child ns) (restrictSetLocal @Neg1 neg_child ns)
-    restrictSetLocal d@(InfNodes position _ _ _ _ _) ((n, b) : ns) -- check inference
-        | n > position = restrictSet @True d ((n, b) : ns)
-        | n < position = if b then Leaf False else restrictSetLocal @Neg1 (Node n d d) ns
-        | n == position = error "n is inf-node.."
-    restrictSetLocal d@(Leaf _) _ = d
-    restrictSetLocal d [(n, b)] = restrictLocal @Neg1 d b n-}
-
 
     intersectionLocal c a (Leaf False) = Leaf False
     intersectionLocal c (Leaf False) b = Leaf False
@@ -864,32 +759,6 @@ instance DdF4 Neg0 where
                         else InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule (Leaf b) = Leaf b
 
-    {-restrictLocal d@(Node position pos_child neg_child) b n
-        | n > position = applyElimRule @Neg0 $ Node position (restrictLocal @Neg0 pos_child b n) (restrictLocal @Neg0 neg_child b n)
-        | n < position = if b then Leaf True else Node n d d -- do not have to apply elimRule
-        | n == position = applyElimRule @Neg0 $
-            if b then Node position pos_child pos_child else Node position neg_child neg_child
-    restrictLocal d@(InfNodes position _ _ _ _ _) b n -- check inference
-        | n > position = restrict @False d b n
-        | n < position = if b then Leaf True else Node n d d
-        | n == position = error "n is inf-node.."
-    restrictLocal d@(Leaf _) b n = d
-
-    restrictSetLocal d@(Node position pos_child neg_child) ((n, b) : ns)
-        | n > position = applyElimRule @Neg0 $ Node position
-            (restrictSetLocal @Neg0 pos_child ((n, b) : ns))
-            (restrictSetLocal @Neg0 neg_child ((n, b) : ns))
-        | n < position = if b then Leaf True else restrictSetLocal @Neg0 (Node n d d) ns -- do not have to apply elimRule
-        | n == position = applyElimRule @Neg0 $
-            if b then Node position (restrictSetLocal @Neg0 pos_child ns) (restrictSetLocal @Neg0 pos_child ns)
-                else Node position (restrictSetLocal @Neg0 neg_child ns) (restrictSetLocal @Neg0 neg_child ns)
-    restrictSetLocal d@(InfNodes position _ _ _ _ _) ((n, b) : ns) -- check inference
-        | n > position = restrictSet @False d ((n, b) : ns)
-        | n < position = if b then Leaf True else restrictSetLocal @Neg0 (Node n d d) ns
-        | n == position = error "n is inf-node.."
-    restrictSetLocal d@(Leaf _) b = d
-    restrictSetLocal d [(n, b)] = restrictLocal @Neg0 d b n-}
-
         -- Leaf and node
     intersectionLocal c a (Leaf True) = Leaf True
     intersectionLocal c (Leaf True) b = Leaf True
@@ -1096,31 +965,6 @@ instance DdF4 Pos1 where
                         InfNodes pos dcR n1R n0R p1R p0R)
             else InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule (Leaf b) = Leaf b
-    {-restrictLocal d@(Node position pos_child neg_child) b n
-        | n > position = applyElimRule @Pos1 $ Node position (restrictLocal @Pos1 pos_child b n) (restrictLocal @Pos1 neg_child b n)
-        | n < position = if b then Node n d d else Leaf False -- do not have to apply elimRule
-        | n == position = applyElimRule @Pos1 $
-            if b then Node position pos_child pos_child else Node position neg_child neg_child
-    restrictLocal d@(InfNodes position _ _ _ _ _) b n -- check inference
-        | n > position = restrict @True d b n
-        | n < position = if b then Node n d d else Leaf False
-        | n == position = error "n is inf-node.."
-    restrictLocal d@(Leaf _) b n = d
-
-    restrictSetLocal d@(Node position pos_child neg_child) ((n, b) : ns)
-        | n > position = applyElimRule @Pos1 $ Node position
-            (restrictSetLocal @Pos1 pos_child ((n, b) : ns))
-            (restrictSetLocal @Pos1 neg_child ((n, b) : ns))
-        | n < position = if b then restrictSetLocal @Pos1 (Node n d d) ns else Leaf False -- do not have to apply elimRule
-        | n == position = applyElimRule @Pos1 $
-            if b then Node position (restrictSetLocal @Pos1 pos_child ns) (restrictSetLocal @Pos1 pos_child ns)
-                else Node position (restrictSetLocal @Pos1 neg_child ns) (restrictSetLocal @Pos1 neg_child ns)
-    restrictSetLocal d@(InfNodes position _ _ _ _ _) ((n, b) : ns) -- check inference
-        | n > position = restrictSet @True d ((n, b) : ns)
-        | n < position = if b then restrictSetLocal @Pos1 (Node n d d) ns else Leaf False
-        | n == position = error "n is inf-node.."
-    restrictSetLocal d@(Leaf _) _ = d
-    restrictSetLocal d [(n, b)] = restrictLocal @Pos1 d b n-}
 
     -- Leaf and node
     intersectionLocal c a (Leaf False) =  Leaf False
@@ -1320,34 +1164,6 @@ instance DdF4 Pos0 where
                         else InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule (Leaf b) = Leaf b
 
-
-    {-restrictLocal d@(Node position pos_child neg_child) b n
-        | n > position = applyElimRule @Pos0 $ Node position (restrictLocal @Pos0 pos_child b n) (restrictLocal @Pos0 neg_child b n)
-        | n < position = if b then Node n d d else Leaf True -- do not have to apply elimRule
-        | n == position = applyElimRule @Pos0 $
-            if b then Node position pos_child pos_child else Node position neg_child neg_child
-    restrictLocal d@(InfNodes position _ _ _ _ _) b n -- check inference
-        | n > position = restrict @False d b n
-        | n < position = if b then Node n d d else Leaf True
-        | n == position = error "n is inf-node.."
-    restrictLocal d@(Leaf _) b n = d
-
-    restrictSetLocal d@(Node position pos_child neg_child) ((n, b) : ns)
-        | n > position = applyElimRule @Pos0 $ Node position
-            (restrictSetLocal @Pos0 pos_child ((n, b) : ns))
-            (restrictSetLocal @Pos0 neg_child ((n, b) : ns))
-        | n < position = if b then restrictSetLocal @Pos0 (Node n d d) ns else Leaf True -- do not have to apply elimRule
-        | n == position = applyElimRule @Pos0 $
-            if b then Node position (restrictSetLocal @Pos0 pos_child ns) (restrictSetLocal @Pos0 pos_child ns)
-                else Node position (restrictSetLocal @Pos0 neg_child ns) (restrictSetLocal @Pos0 neg_child ns)
-    restrictSetLocal d@(InfNodes position _ _ _ _ _) ((n, b) : ns) -- check inference
-        | n > position = restrictSet @False d ((n, b) : ns)
-        | n < position = if b then restrictSetLocal @Pos0 (Node n d d) ns else Leaf True
-        | n == position = error "n is inf-node.."
-    restrictSetLocal d@(Leaf _) _ = d
-    restrictSetLocal d [(n, b)] = restrictLocal @Pos0 d b n-}
-
-
     -- Leaf and node
     intersectionLocal c a (Leaf True) = Leaf True
     intersectionLocal c (Leaf True) b = Leaf True
@@ -1546,30 +1362,6 @@ instance DdF4 Pos0 where
     -- Both InfNodes have been reached - run the usual intersection.
     mixedIntersection2 c a@(InfNodes {})  b@(InfNodes {}) = if (intersection @True c a b) == b then Leaf True else (intersection @True c a b)
     mixedIntersection2 c a b = undefined `debug` ("pos0 - " ++ show a ++ "  :  " ++ show b)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
