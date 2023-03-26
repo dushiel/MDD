@@ -15,7 +15,7 @@ labelClass = [2]
 symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" (map (\x -> [x]) [0..])
 conceptLabels = Map.fromList $ zip [1 ..] (map (\x -> labelClass ++ [x]) [1..])
 
-vocabulary = ["hell", "hello"] --  my"] -- name is"] -- , "daniel"] --, "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."]
+vocabulary = ["hell", "hello my name is", "daniel", "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."]
 
 senToDd = ezPath . sentenceToPath
 

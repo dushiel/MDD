@@ -9,53 +9,57 @@ import Data.List(sortBy)
 import Data.Function
 
 -- todo sophisticated test suite,
+-- have arbitrary formulas, then
+-- restrict should be equal replacing with Top / Bot (for Dc at least or any local type)
+-- negate formula and read all n1 as n0 and p1 as p0 to check symmetries
+--
 
 -- |======================================== Dd Manipulation operators ==============================================
 
 infixl 4 -.
-(-.) :: Dd Ordinal -> Dd Ordinal
+(-.) :: Dd -> Dd
 (-.) = negation
 -- i dont think negation needs to keep track of context, right?
 
 infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
-(.*.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
+(.*.) :: Dd -> Dd -> Dd
 (.*.) = intersection @True [Dc]
 
 infixl 3 .+.
-(.+.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
+(.+.) :: Dd -> Dd -> Dd
 (.+.) = union @True [Dc]
 
-ite :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal -> Dd Ordinal
+ite :: Dd -> Dd -> Dd -> Dd
 ite x y z = (x .+. y) .*. ((-.) x .+. z)
 
-r0 :: Dd Ordinal -> Ordinal -> Dd Ordinal
+r0 :: Dd -> Ordinal -> Dd
 r0 d = restrict @True d False
 
-r1 :: Dd Ordinal -> Ordinal -> Dd Ordinal
+r1 :: Dd -> Ordinal -> Dd
 r1 d = restrict @True d True
 
-rSet :: Dd Ordinal -> [(Ordinal, Bool)] -> Dd Ordinal
+rSet :: Dd -> [(Ordinal, Bool)] -> Dd
 rSet d b = restrictSet @True d (sortBy (compare `on` fst) b)
 
 -- rSet, but then with ranges, such that we can restrict over an infinite domain
-rGen :: Dd Ordinal -> [((Ordinal, Ordinal), Bool)] -> Dd Ordinal
+rGen :: Dd -> [((Ordinal, Ordinal), Bool)] -> Dd
 rGen d b = restrictGen @True d (sortBy (compare `on` (fst . fst)) b)
 
 infixl 1 .->.
-(.->.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
+(.->.) :: Dd -> Dd -> Dd
 (.->.) a b = (-.) a .+. b
 
 infixl 1 .<->.
-(.<->.) :: Dd Ordinal -> Dd Ordinal -> Dd Ordinal
+(.<->.) :: Dd -> Dd -> Dd
 (.<->.) a b = (a .*. b) .+. ((-.) a .*. (-.) b)
 
 ------------------------------------ Test
 
-a1 = path (Order [0]) [2] Dc
-a2 = path (Order [0]) [3] Dc
-a_2 = path (Order [1]) [2] Dc
-a__2 = path (Order [3,3]) [2] Dc
-a = a1 .*. a2
+dc1 = path (Order [0]) [2] Dc
+dc2 = path (Order [0]) [3] Dc
+dc_2 = path (Order [1]) [2] Dc
+dc__2 = path (Order [3,3]) [2] Dc
+dc = dc1 .*. dc2
 b1 = path (Order [0]) [2] Neg1
 b2 = path (Order [0]) [3] Neg1
 b3 = path (Order [0]) [2,3] Neg1
@@ -86,6 +90,8 @@ z = makePathWithContext (Order [3,2]) [Neg1,Pos1] [1,2] Neg1
 dcZ =  (path (Order [0]) [1] Dc .->. path (Order [0,2]) [1] Dc) .*. path (Order [0]) [1] Dc
 neg1Z =  (path (Order [0]) [1] Neg1 .*. path (Order [0,2]) [1] Neg1) .*. path (Order [0]) [3] Neg1
 
+
+
 test :: IO ()
 test = do
     print [show $ snd x | x <- zip results [0 ..], not $ fst x]
@@ -93,22 +99,22 @@ test = do
         results =
             [ (c1 .*. d1) == bot
             , (c1 .+. d1) == top
-            , (a .+. (-.) a) == top
-            , (a .*. (-.) a) == bot
+            , (dc .+. (-.) dc) == top
+            , (dc .*. (-.) dc) == bot
 
             , ((b1 .+. b2) .*. b2) == b2
             , ((b1 .+. b2) .*. b1) == b1
 
             -- double domain (6)
-            , ((a1 .+. a_2) .*. a_2) == a_2
-            , ((a1 .+. a_2) .*. a1) == a1
+            , ((dc1 .+. dc_2) .*. dc_2) == dc_2
+            , ((dc1 .+. dc_2) .*. dc1) == dc1
 
             -- inclusive finite subset dominance and submission (8)
-            , (a1 .*. (b1 .+. b3)) == (b1 .+. b3)
-            , (a1 .+. (b1 .+. b3)) == a1
+            , (dc1 .*. (b1 .+. b3)) == (b1 .+. b3)
+            , (dc1 .+. (b1 .+. b3)) == dc1
             --exclusive
-            , ((a1 .*. e1) .+. e1) == e1
-            , ((a1 .*. e1) .+. a1) == a1
+            , ((dc1 .*. e1) .+. e1) == e1
+            , ((dc1 .*. e1) .+. dc1) == dc1
 
             --double domain inclusive (12)
             , ((b1 .*. b_2) .+. b1) == b1
@@ -158,8 +164,8 @@ test = do
 
             -- mixing all domains (48)
             , (((e_2 .+. c__2) .+. d2) .*. (c__2 .+. d2)) == (c__2 .+. d2)
-            , ((a1 .*. (a2 .*. b2)) .+. (((e_2 .*. c__2) .+. d2) .*. (c__2 .+. d2))) == ((a1 .*. (a2 .*. b2)) .+. ((e_2 .*. c__2) .+. d2))
-            , ((b1 .*. (c2 .*. a2)) .+. (((d__2 .*. c__2) .+. d2) .*. (b__2 .+. d2))) == ((b1 .*. (c2 .*. a2)) .+. ((d__2 .*. b__2) .+. d2))
+            , ((dc1 .*. (dc2 .*. b2)) .+. (((e_2 .*. c__2) .+. d2) .*. (c__2 .+. d2))) == ((dc1 .*. (dc2 .*. b2)) .+. ((e_2 .*. c__2) .+. d2))
+            , ((b1 .*. (c2 .*. dc2)) .+. (((d__2 .*. c__2) .+. d2) .*. (b__2 .+. d2))) == ((b1 .*. (c2 .*. dc2)) .+. ((d__2 .*. b__2) .+. d2))
             ]
 
 {-}
