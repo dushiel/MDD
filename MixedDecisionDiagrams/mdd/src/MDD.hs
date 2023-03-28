@@ -14,8 +14,8 @@ import Data.Type.Ord (OrderingI)
 
 
 data Dd =  Node Int Dd Dd               -- left = pos, right = neg
-                | InfNodes Ordinal Dd Dd Dd Dd Dd    -- sets the inference type when traversing through the tree depending which literal type is inf. We place them at the top (of each sub path of infinite domain). We can have multiple branches due to the multiple possible contexts.
-                | EndInfNode Ordinal Dd
+                | InfNodes Int Dd Dd Dd Dd Dd    -- sets the inference type when traversing through the tree depending which literal type is inf. We place them at the top (of each sub path of infinite domain). We can have multiple branches due to the multiple possible contexts.
+                | EndInfNode Dd
                 | Leaf Bool
     deriving (Eq)
 
@@ -83,9 +83,9 @@ makePath (Order varClass) nodeList c
     | c == Pos0 = InfNodes (Order varClass) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
     | otherwise = error "empty ordinal or node list for makeNode"
     where
-        loopNeg [] end = Leaf $ not end
+        loopNeg [] end = EndInfNode (Leaf $ not end)
         loopNeg (n:ns) end = Node n (loopNeg ns end) (Leaf end)
-        loopPos [] end = Leaf $ not end
+        loopPos [] end = EndInfNode (Leaf $ not end)
         loopPos (n:ns) end = Node n (Leaf end) (loopPos ns end)
 
 -- For making paths that take multiple Infnodes through finite types.
@@ -97,22 +97,22 @@ makePathWithContext (Order varClass) varCxt nodeList c = loop [] varClass varCxt
     where
         loop _ [vCl] [vCxt] = makePath (Order varClass) nodeList c
         loop prefix (vCl : xs) (vCxt : ys)
-            | vCxt == Dc = loop (prefix ++ [vCl]) xs ys
-            | vCxt == Neg1 = InfNodes (Order $ prefix ++ [vCl]) (Leaf False) (loop (prefix ++ [vCl]) xs ys ) (Leaf True) (Leaf False) (Leaf True)
-            | vCxt == Neg0 = InfNodes (Order $ prefix ++ [vCl]) (Leaf True) (Leaf False) (loop (prefix ++ [vCl]) xs ys) (Leaf False) (Leaf True)
-            | vCxt == Pos1 = InfNodes (Order $ prefix ++ [vCl]) (Leaf False) (Leaf False) (Leaf True) (loop (prefix ++ [vCl]) xs ys) (Leaf True)
-            | vCxt == Pos0 = InfNodes (Order $ prefix ++ [vCl]) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loop (prefix ++ [vCl]) xs ys)
+            | vCxt == Dc = loop (prefix ++ [vCl]) xs ys -- todo not only for bdd
+            | vCxt == Neg1 = InfNodes vCl (((!! length prefix) . iterate EndInfNode) (Leaf False)) (loop (prefix ++ [vCl]) xs ys ) (Leaf True) (Leaf False) (Leaf True)
+            | vCxt == Neg0 = InfNodes vCl (((!! length prefix) . iterate EndInfNode) (Leaf True)) (Leaf False) (loop (prefix ++ [vCl]) xs ys) (Leaf False) (Leaf True)
+            | vCxt == Pos1 = InfNodes vCl (((!! length prefix) . iterate EndInfNode) (Leaf False)) (Leaf False) (Leaf True) (loop (prefix ++ [vCl]) xs ys) (Leaf True)
+            | vCxt == Pos0 = InfNodes vCl (((!! length prefix) . iterate EndInfNode) (Leaf True)) (Leaf False) (Leaf True) (Leaf False) (loop (prefix ++ [vCl]) xs ys)
         loop _ _ _ = error "Context and Ordinal have unequal length."
 
-
+{-}
 ezPath :: EasyPath -> Dd
 ezPath p = loop p [] [0] where
     loop (InfP inf ord (c : cs)) other max
-        | inf == Dc && max<ord = InfNodes (Order ord) (loop c (cs++other) ord) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-        | inf == Neg1 && max<ord = InfNodes (Order ord) (Leaf False) (loop c (cs++other) ord) (Leaf True) (Leaf False) (Leaf True)
-        | inf == Neg0 && max<ord = InfNodes (Order ord) (Leaf True) (Leaf False) (loop c (cs++other) ord) (Leaf False) (Leaf True)
-        | inf == Pos1 && max<ord = InfNodes (Order ord) (Leaf False) (Leaf False) (Leaf True) (loop c (cs++other) ord) (Leaf True)
-        | inf == Pos0 && max<ord = InfNodes (Order ord) (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loop c (cs++other) ord)
+        | inf == Dc && max<ord = InfNodes ord (loop c (cs++other) ord) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
+        | inf == Neg1 && max<ord = InfNodes ord (Leaf False) (loop c (cs++other) ord) (Leaf True) (Leaf False) (Leaf True)
+        | inf == Neg0 && max<ord = InfNodes ord (Leaf True) (Leaf False) (loop c (cs++other) ord) (Leaf False) (Leaf True)
+        | inf == Pos1 && max<ord = InfNodes ord (Leaf False) (Leaf False) (Leaf True) (loop c (cs++other) ord) (Leaf True)
+        | inf == Pos0 && max<ord = InfNodes ord (Leaf True) (Leaf False) (Leaf True) (Leaf False) (loop c (cs++other) ord)
     loop (InfP _ ord (c : cs)) _ max = error $ "Encountered ordinal (ord=" ++ show ord ++ ") smaller or equal than earlier (max=" ++ show max ++ ") in the path, please check the supplied EasyPath."
     loop (InfP _ _ []) _ _ = error "Cannot end on InfNode / InfP, it should have at least one NodeP as child. Please check the supplied EasyPath."
 
@@ -137,7 +137,7 @@ ezPath p = loop p [] [0] where
 
 data EasyPath = InfP Inf [Int] [EasyPath ] | NodeP Inf [ [Int] ]
     deriving Show
-
+-}
 
 instance Show Dd where
     show (Leaf True) = "1"
