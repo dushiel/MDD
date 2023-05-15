@@ -171,6 +171,8 @@ intersectionLocal_arg t c a b = case t of
     (Pos1, Absorb) -> absorb @Pos1 c a b
     (Pos0, Absorb) -> absorb @Pos0 c a b
 
+    (_, _) -> error (show t ++ ", " ++ show c ++ ", " ++ show a ++ ", " ++ show b)
+
 unionLocal_arg :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
 unionLocal_arg (i,t) [] (Leaf False) b
     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then b `debug` (show i ++ "b") else b
@@ -204,6 +206,8 @@ unionLocal_arg t c a b = case t of
     (Pos1, Absorb) -> absorb @Pos1 c a b
     (Pos0, Absorb) -> absorb @Pos0 c a b
 
+    (_, _) -> error (show t ++ ", " ++ show c ++ ", " ++ show a ++ ", " ++ show b)
+
 addInfNode :: Int -> Inf -> Dd -> Dd
 addInfNode n inf conseq  =
         case inf of -- only for Dc we need to check the b, since after a hole we interpret the following sub domains in substance (1-set)
@@ -220,6 +224,7 @@ intersectionInferA _ _ (EndInfNode _) = error "EndNode in A"
 intersectionInferA _ _ (Node _ _ _) = error "Node in A"
 
 intersectionInferA c a b = if debugFlag then trace ("intersectionInferA: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ intersectionInferA' c a b else intersectionInferA' c a b
+intersectionInferA' :: [(Inf, FType)] -> Dd -> Dd -> Dd
 intersectionInferA' c@((inf, _) : _) a b@(InfNodes positionB dcB n1B n0B p1B p0B) =
     case inf of
         Dc -> let -- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
@@ -263,6 +268,7 @@ intersectionInferB _ (EndInfNode _) _ = error "EndNode in A"
 intersectionInferB _ (Node _ _ _) _ = error "Node in A"
 
 intersectionInferB c a b = if debugFlag then trace ("intersectionInferB: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ intersectionInferB' c a b else intersectionInferB' c a b
+intersectionInferB' :: [(Inf, FType)] -> Dd -> Dd -> Dd
 intersectionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A)  b =
     case inf of
         Dc -> let
@@ -304,6 +310,7 @@ intersectionInferB' _ _ _ = undefined
 
 intersectionMain :: FuncCtx -> Dd -> Dd -> Dd
 intersectionMain c a b = if debugFlag then trace ("intersectionMain: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ intersectionMain' c a b else intersectionMain' c a b
+intersectionMain' :: FuncCtx -> Dd -> Dd -> Dd
 intersectionMain'  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
     | positionA == positionB =  let
         dcR = intersectionLocal @Dc c dcA dcB --`debug` ("intersection A ("++ show positionA ++ ")==B (" ++ show positionB ++ "), with c = " ++ show c)
@@ -348,6 +355,7 @@ unionInferA _ _ (EndInfNode _) = error "EndNode in A"
 unionInferA _ _ (Node _ _ _) = error "Node in A"
 
 unionInferA c a b = if debugFlag then trace ("unionInferA: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ unionInferA' c a b else unionInferA' c a b
+unionInferA' :: [(Inf, FType)] -> Dd -> Dd -> Dd
 unionInferA' c@((inf, _) : _) a b@(InfNodes positionB dcB n1B n0B p1B p0B) =
     case inf of
         Dc -> let
@@ -393,6 +401,7 @@ unionInferB _ (EndInfNode _) _ = error "EndNode in A"
 unionInferB _ (Node _ _ _) _ = error "Node in A"
 
 unionInferB c a b = if debugFlag then trace ("unionInferB: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ unionInferB' c a b else unionInferB' c a b
+unionInferB' :: [(Inf, FType)] -> Dd -> Dd -> Dd
 unionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A)  b =
     case inf of
         Dc -> let
@@ -438,6 +447,7 @@ unionMain :: FuncCtx -> Dd -> Dd -> Dd
 -- exclusive points (0's / holes) under union are filled unless they are present in both A and B (so only an intersection between them needs to be done)
 -- inclusive point (1's ) under union are intersected with the opposite infinite subset (dc) before they are added together
 unionMain c a b = if debugFlag then trace ("unionMain: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ unionMain' c a b else unionMain' c a b
+unionMain' :: FuncCtx -> Dd -> Dd -> Dd
 unionMain'  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
     | positionA == positionB =  let
 
@@ -566,6 +576,8 @@ instance DdF4 a => Dd1 a where
             else
                 undefined
                 -- inferNodeA_intersection @a c a b
+                -- Node positionB (Leaf False) (intersectionLocal @Neg1 c a neg_childB)
+                -- Node positionB (Leaf True) (intersectionLocal @Neg0 c a neg_childB)
     intersectionLocal2' c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB _ _ _ _ _) =
         if positionA == positionB then error "undefined, multiple options possible for interpreting node in a context to sub nodes" else
             inferNodeB_intersection @a c a b
@@ -702,52 +714,12 @@ instance DdF4 Neg1 where
     intersectionInferA_ c a@(EndInfNode _) b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Neg1, Norm):c) a b
     intersectionInferA_ _ _ _ = undefined
 
-    intersectionLocal c a b = if debugFlag then trace ("intersectionLocal neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ intersectionLocal' @Neg1 c a b else intersectionLocal' @Neg1 c a b
-    intersectionLocal' c a (Leaf False) = false @Neg1
-    intersectionLocal' c (Leaf False) b = Leaf False
-
-   -- comparing nodes, allowed mis-matches based on each inference rule
-    intersectionLocal' c a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
-        -- match
-        | positionA == positionB =
-            let pos_result = intersectionLocal @Neg1 c pos_childA pos_childB
-                neg_result = intersectionLocal @Neg1 c neg_childA neg_childB
-            in applyElimRule @Neg1 (Node positionA pos_result neg_result)
-
-        | positionA < positionB =
-            intersectionLocal @Neg1 c neg_childA b
-        | positionA > positionB =
-            intersectionLocal @Neg1 c a neg_childB
-
-    intersectionLocal' c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
-        if positionA == positionB
-            then
-                undefined
-            else
-                Node positionB (Leaf False) (intersectionLocal @Neg1 c a neg_childB)
-    intersectionLocal' c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB _ _ _ _ _) =
-        -- todo add posB == posA, then we consider node to be AllNegs -> [1]
-        if positionA == positionB
-            then
-                undefined
-            else
-                Node positionA (Leaf False) (intersectionLocal @Neg1 c neg_childA b)
-    intersectionLocal' c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = intersectionMain ((Neg1,Norm):c) a b
-
-    -- continue local traversal
-    intersectionLocal' c a@(Node positionA pos_childA neg_childA) b@(EndInfNode childB) = applyElimRule @Neg1 $ intersectionLocal @Neg1 c neg_childA b
-    intersectionLocal' c a@(EndInfNode childA) b@(Node positionB pos_childB neg_childB) = applyElimRule @Neg1 $ intersectionLocal @Neg1 c a neg_childB
-    -- continue previous super domain traversal
-    intersectionLocal' (c:cs) a@(EndInfNode childA)  b@(EndInfNode childB) = EndInfNode $ intersectionLocal_arg c cs childA childB
-    intersectionLocal' [] a@(EndInfNode childA)  b@(EndInfNode childB) = EndInfNode $ intersection @True [] childA childB
-
-    intersectionLocal' c a@(InfNodes positionA _ _ _ _ _) b@(EndInfNode _) = intersectionInferB ((Neg1,Norm):c) a b
-    intersectionLocal' c a@(EndInfNode _) b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Neg1,Norm):c) a b
-    intersectionLocal' c a b = error (show a ++ show b ++ show c)
+    intersectionLocal c a b = intersectionLocal2' @Neg1 c a b
+        `debug2` ("intersectionLocal neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 
-    unionLocal c a b = if debugFlag then trace ("unionLocal neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ unionLocal' @Neg1 c a b else unionLocal' @Neg1 c a b
+    unionLocal c a b = unionLocal' @Neg1 c a b
+        `debug2` ("unionLocal neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
     unionLocal' c a (Leaf False) =  a
     unionLocal' c (Leaf False) b =  b
 
@@ -941,55 +913,8 @@ instance DdF4 Neg0 where
 
     unionLocal' _ _ _ = error "how did we get here?"
 
-    intersectionLocal c a b = if debugFlag then trace ("intersectionLocal neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ intersectionLocal' @Neg0 c a b else intersectionLocal' @Neg0 c a b
-    intersectionLocal' c (Leaf True) b = b
-    intersectionLocal' c a (Leaf True) = a
-
-    -- comparing nodes, allowed mis-matches based on each inference rule
-    intersectionLocal' c a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
-
-        -- no mismatch, only the appropriate ZDD elim is applied
-        | positionA == positionB =
-            let pos_result = intersectionLocal @Neg0 c pos_childA pos_childB
-                neg_result = intersectionLocal @Neg0 c neg_childA neg_childB
-            in if pos_result == Leaf True then Leaf True else Node positionA pos_result neg_result
-
-        -- mismatch, but with dc inference we continue recursion with the highest (thus lowest valued) node
-        -- refactor into two functions? one for mixed inference rules, one for single
-        | positionA < positionB =
-            let neg_result = intersectionLocal @Neg0 c neg_childA b
-            in Node positionA pos_childA neg_result
-
-        | positionA > positionB =
-            let neg_result = intersectionLocal @Neg0 c a neg_childB
-            in Node positionB pos_childB neg_result
-
-    intersectionLocal' c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB) =
-    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
-        if positionA == positionB
-            then
-                undefined
-            else
-                Node positionB (Leaf True) (intersectionLocal @Neg0 c a neg_childB)
-
-    intersectionLocal' c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) =
-    -- todo add posB == posA, then we consider node to be AllNegs -> [0]
-        if positionA == positionB
-            then
-                undefined
-            else
-                Node positionA (Leaf True) (intersectionLocal @Neg0 c neg_childA b)
-
-    intersectionLocal' c  a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = intersectionMain ((Neg0,Norm):c) a b
-
-    intersectionLocal' c a@(Node positionA pos_childA neg_childA) b@(EndInfNode _) = applyElimRule @Neg0 $ intersectionLocal @Neg0 c neg_childA b
-    intersectionLocal' c a@(EndInfNode _) b@(Node positionB pos_childB neg_childB) = applyElimRule @Neg0 $ intersectionLocal @Neg0 c a neg_childB
-    intersectionLocal' (c:cs) a@(EndInfNode childA) b@(EndInfNode childB) = EndInfNode $ intersectionLocal_arg c cs childA childB
-    intersectionLocal' [] a@(EndInfNode childA)  b@(EndInfNode childB) = EndInfNode $ intersection @False [] childA childB
-
-    intersectionLocal' c a@(InfNodes positionA _ _ _ _ _) b@(EndInfNode _) = intersectionInferB ((Neg0,Norm):c) a b
-    intersectionLocal' c a@(EndInfNode _) b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Neg0,Norm):c) a b
-    intersectionLocal' c a b = error ""
+    intersectionLocal c a b = intersectionLocal2' @Neg0 c a b
+        `debug2` ("intersectionLocal neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 
     absorb c a b =  absorb' @Neg0 c a b
@@ -1085,49 +1010,8 @@ instance DdF4 Pos1 where
     intersectionInferA_ c a@(EndInfNode _) b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Pos1, Norm):c) a b
     intersectionInferA_ _ _ _ = undefined
 
-    intersectionLocal c a b = if debugFlag then trace ("intersectionLocal pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ intersectionLocal' @Pos1 c a b else intersectionLocal' @Pos1 c a b
-    -- Leaf and node
-    intersectionLocal' c a (Leaf False) =  Leaf False
-    intersectionLocal' c (Leaf False) b =  Leaf False
-
-    -- comparing nodes, allowed mis-matches based on each inference rule
-    intersectionLocal' c a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
-        -- match
-        | positionA == positionB =
-            let pos_result = intersectionLocal @Pos1 c pos_childA pos_childB
-                neg_result = intersectionLocal @Pos1 c neg_childA neg_childB
-            in applyElimRule @Pos1 (Node positionA pos_result neg_result)
-
-        -- mismatch with no Bot involved, thus with ZDD types inference we return bot
-        | positionA < positionB =
-            intersectionLocal @Pos1 c pos_childA b
-        | positionA > positionB =
-            intersectionLocal @Pos1 c a pos_childB
-
-    intersectionLocal' c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB) =
-        if positionA == positionB
-            then
-                undefined
-            else
-                Node positionB (Leaf False) (intersectionLocal @Pos1 c a pos_childB)
-    intersectionLocal' c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB _ _ _ _ _) =
-        if positionA == positionB
-            then
-                undefined
-            else
-                Node positionA (Leaf False) (intersectionLocal @Pos1 c pos_childA b)
-
-    intersectionLocal' c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _) = intersectionMain ((Pos1,Norm):c) a b
-
-
-    intersectionLocal' c a@(Node positionA pos_childA neg_childA) b@(EndInfNode _) = applyElimRule @Pos1 $ intersectionLocal @Pos1 c pos_childA b
-    intersectionLocal' c a@(EndInfNode _) b@(Node positionB pos_childB neg_childB) = applyElimRule @Pos1 $ intersectionLocal @Pos1 c a pos_childB
-    intersectionLocal' (c:cs) a@(EndInfNode childA) b@(EndInfNode childB) = EndInfNode $ intersectionLocal_arg c cs childA childB
-    intersectionLocal' [] a@(EndInfNode childA)  b@(EndInfNode childB) = EndInfNode $ intersection @True [] childA childB
-
-    intersectionLocal' c a@(InfNodes positionA _ _ _ _ _) b@(EndInfNode _) = intersectionInferB ((Pos1,Norm):c) a b
-    intersectionLocal' c a@(EndInfNode _) b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Pos1,Norm):c) a b
-    intersectionLocal' c a b = error (show a ++ show b ++ show c)
+    intersectionLocal c a b = intersectionLocal2' @Pos1 c a b
+        `debug2` ("intersectionLocal pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     unionLocal c a b = if debugFlag then trace ("unionLocal pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) $ unionLocal' @Pos1 c a b else unionLocal' @Pos1 c a b
     unionLocal' c a (Leaf False) =  a
@@ -1441,6 +1325,7 @@ instance DdF4 Pos0 where
 
 
 
+remove_f0s1_from_f1s1 :: FuncCtx -> Dd -> Dd -> Dd
 remove_f0s1_from_f1s1 c a b = if debugFlag then trace ("remove_f0s1_from_f1s1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) remove_f0s1_from_f1s1' c a b else remove_f0s1_from_f1s1' c a b
 remove_f0s1_from_f1s1' :: FuncCtx -> Dd -> Dd -> Dd
 remove_f0s1_from_f1s1' c a (Leaf False) = Leaf False
@@ -1475,6 +1360,7 @@ remove_f0s1_from_f1s1' c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes
 remove_f0s1_from_f1s1' c a b = undefined `debug` (show a ++ "  :  " ++ show b)
 
 
+remove_f1s1_from_f0s1 :: FuncCtx -> Dd -> Dd -> Dd
 remove_f1s1_from_f0s1 c a b = if debugFlag then trace ("remove_f1s0_from_f0s0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) remove_f1s1_from_f0s1' c a b else remove_f1s1_from_f0s1' c a b
 remove_f1s1_from_f0s1' :: FuncCtx -> Dd -> Dd -> Dd
 remove_f1s1_from_f0s1' c a (Leaf True) = Leaf True
@@ -1509,6 +1395,7 @@ remove_f1s1_from_f0s1' c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes
 remove_f1s1_from_f0s1' c a b = undefined `debug` (show a ++ "  :  " ++ show b)
 
 
+remove_f0s0_from_f1s0 :: FuncCtx -> Dd -> Dd -> Dd
 remove_f0s0_from_f1s0 c a b = if debugFlag then trace ("remove_f0s0_from_f1s0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) remove_f0s0_from_f1s0' c a b else remove_f0s0_from_f1s0' c a b
 
 remove_f0s0_from_f1s0' :: FuncCtx -> Dd -> Dd -> Dd
@@ -1545,6 +1432,7 @@ remove_f0s0_from_f1s0' c a b = undefined `debug` (show a ++ "  :  " ++ show b)
 
 
 
+remove_f1s0_from_f0s0 :: FuncCtx -> Dd -> Dd -> Dd
 remove_f1s0_from_f0s0 c a b = if debugFlag then trace ("remove_f1s0_from_f0s0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b) remove_f1s0_from_f0s0' c a b else remove_f1s0_from_f0s0' c a b
 remove_f1s0_from_f0s0' :: FuncCtx -> Dd -> Dd -> Dd
 remove_f1s0_from_f0s0' c a (Leaf True) = Leaf True
