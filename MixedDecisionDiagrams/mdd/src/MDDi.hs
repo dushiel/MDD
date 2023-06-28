@@ -2,6 +2,8 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant bracket" #-}
 module MDDi where
 import MDD
 import MDDmanipulation
@@ -22,11 +24,11 @@ infixl 4 -.
 
 infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Dd -> Dd -> Dd
-(.*.) = intersection @True [(Dc, Norm)]
+(.*.) = intersection @True [(Dc, Inter)]
 
 infixl 3 .+.
 (.+.) :: Dd -> Dd -> Dd
-(.+.) = union @True [(Dc, Norm)]
+(.+.) = union @True [(Dc, Union)]
 
 ite :: Dd -> Dd -> Dd -> Dd
 ite x y z = (x .+. y) .*. ((-.) x .+. z)
@@ -81,78 +83,78 @@ z = path [(3, Neg1),(2,Pos1)] [1,2]
 
 test :: IO ()
 test = do
-    mapM_ print ([show $ snd x | x <- zip results [0 ..], not $ fst x])
+    mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
     where
         results =
-            [ (c1 .*. d1) == bot
-            , (c1 .+. d1) == top
---            , (dc .+. (-.) dc) == top
---            , (dc .*. (-.) dc) == bot
---
---            , ((b1 .+. b2) .*. b2) == b2
---            , ((b1 .+. b2) .*. b1) == b1
---
---            -- double domain (6)
---            , ((dc1 .+. dc_2) .*. dc_2) == dc_2
---            , ((dc1 .+. dc_2) .*. dc1) == dc1
---
---            -- inclusive finite subset dominance and submission (8)
---            , (dc1 .*. (b1 .+. b3)) == (b1 .+. b3)
---            , (dc1 .+. (b1 .+. b3)) == dc1
---            --exclusive
---            , ((dc1 .*. e1) .+. e1) == e1
---            , ((dc1 .*. e1) .+. dc1) == dc1
---
---            --double domain inclusive (12)
---            , ((b1 .*. b_2) .+. b1) == b1
---            , ((b1 .*. b_2) .+. b_2) == b_2
---            , ((b1 .+. b_2) .*. b1) == b1
---            , ((b1 .+. b_2) .+. b_2) == (b1 .+. b_2)
---            , ((b1 .*. b_2) .*. b1) == (b1 .*. b_2)
---            , ((b1 .*. b_2) .+. b_2) == b_2
+            [ (c1 .*. d1) == bot `debug` ("############# Test nr: 0 \n\n")
+            , (c1 .+. d1) == top  `debug` ("############# Test nr: 1 \n\n")
+            , (dc .+. (-.) dc) == top  `debug` ("############# Test nr: 2 \n\n")
+            , (dc .*. (-.) dc) == bot  `debug` ("############# Test nr: 3 \n\n")
+
+            , ((b1 .+. b2) .*. b2) == b2  `debug` ("############# Test nr: 4 \n\n")
+            , ((b1 .+. b2) .*. b1) == b1  `debug` ("############# Test nr: 5 \n\n")
+
+            -- double domain (6)
+            , ((dc1 .+. dc_2) .*. dc_2) == dc_2  `debug` ("############# Test nr: 6 \n\n")
+            , ((dc1 .+. dc_2) .*. dc1) == dc1  `debug` ("############# Test nr: 7 \n\n")
+
+            -- inclusive finite subset dominance and submission (8)
+            , (dc1 .*. (b1 .+. b3)) == (b1 .+. b3)  `debug` ("############# Test nr: 8 \n\n")
+            , (dc1 .+. (b1 .+. b3)) == dc1  `debug` ("############# Test nr: 9 \n\n")
+            --exclusive
+            , ((dc1 .*. e1) .+. e1) == e1  `debug` ("############# Test nr: 10 \n\n")
+            , ((dc1 .*. e1) .+. dc1) == dc1  `debug` ("############# Test nr: 11 \n\n")
+
+            --double domain inclusive (12)
+            , ((b1 .*. b_2) .+. b1) == b1  `debug` ("############# Test nr: 12 \n\n")
+            , ((b1 .*. b_2) .+. b_2) == b_2  `debug` ("############# Test nr: 13 \n\n")
+            , ((b1 .+. b_2) .*. b1) == b1  `debug` ("############# Test nr: 14 \n\n")
+            , ((b1 .+. b_2) .+. b_2) == (b1 .+. b_2)  `debug` ("############# Test nr: 15 \n\n")
+            , ((b1 .*. b_2) .*. b1) == (b1 .*. b_2)  `debug` ("############# Test nr: 16 \n\n")
+            , ((b1 .*. b_2) .+. b_2) == b_2  `debug` ("############# Test nr: 17 \n\n")
 --
 --            --double domain exclusive (18)
---            , ((c1 .+. c_2) .*. c1) == c1
---            , ((c1 .+. c_2) .*. c_2) == c_2
---            , ((c1 .*. c_2) .+. c1) == c1
---            , ((c1 .*. c_2) .*. c_2) == (c1 .*. c_2)
---            , ((c1 .+. c_2) .+. c1) == (c1 .+. c_2)
+--            , ((c1 .+. c_2) .*. c1) == c1  `debug` ("############# Test nr: _ \n\n")
+--            , ((c1 .+. c_2) .*. c_2) == c_2  `debug` ("############# Test nr: _ \n\n")
+--            , ((c1 .*. c_2) .+. c1) == c1  `debug` ("############# Test nr: _ \n\n")
+--            , ((c1 .*. c_2) .*. c_2) == (c1 .*. c_2)  `debug` ("############# Test nr: _ \n\n")
+--            , ((c1 .+. c_2) .+. c1) == (c1 .+. c_2)  `debug` ("############# Test nr: _ \n\n")
 --
 --            --double domain inclusive s0 (23)
---            , ((d1 .*. d_2) .+. d1) == d1
---            , ((d1 .*. d_2) .+. d_2) == d_2
---            , ((d1 .+. d_2) .*. d1) == d1
---            , ((d1 .+. d_2) .+. d_2) == (d1 .+. d_2)
---            , ((d1 .*. d_2) .*. d1) == (d1 .*. d_2)
---            , ((d1 .*. d_2) .+. d_2) == d_2
+--            , ((d1 .*. d_2) .+. d1) == d1  `debug` ("############# Test nr: _ \n\n")
+--            , ((d1 .*. d_2) .+. d_2) == d_2  `debug` ("############# Test nr: _ \n\n")
+--            , ((d1 .+. d_2) .*. d1) == d1  `debug` ("############# Test nr: _ \n\n")
+--            , ((d1 .+. d_2) .+. d_2) == (d1 .+. d_2)  `debug` ("############# Test nr: _ \n\n")
+--            , ((d1 .*. d_2) .*. d1) == (d1 .*. d_2)  `debug` ("############# Test nr: _ \n\n")
+--            , ((d1 .*. d_2) .+. d_2) == d_2  `debug` ("############# Test nr: _ \n\n")
 --
 --            --double domain exclusive s0 (29)
---            , ((e1 .*. e_2) .+. e1) == e1
---            , ((e1 .*. e_2) .+. e_2) == e_2
---            , ((e1 .+. e_2) .*. e1) == e1
---            , ((e1 .+. e_2) .+. e_2) == (e1 .+. e_2)
---            , ((e1 .*. e_2) .*. e1) == (e1 .*. e_2)
---            , ((e1 .*. e_2) .+. e_2) == e_2
+--            , ((e1 .*. e_2) .+. e1) == e1  `debug` ("############# Test nr: _ \n\n")
+--            , ((e1 .*. e_2) .+. e_2) == e_2  `debug` ("############# Test nr: _ \n\n")
+--            , ((e1 .+. e_2) .*. e1) == e1  `debug` ("############# Test nr: _ \n\n")
+--            , ((e1 .+. e_2) .+. e_2) == (e1 .+. e_2)  `debug` ("############# Test nr: _ \n\n")
+--            , ((e1 .*. e_2) .*. e1) == (e1 .*. e_2)  `debug` ("############# Test nr: _ \n\n")
+--            , ((e1 .*. e_2) .+. e_2) == e_2  `debug` ("############# Test nr: _ \n\n")
 --
 --            -- some triple domain cases (35)
---            , ((e_2 .*. e__2).+. e_2) == e_2
---            , ((c_2 .*. c__2).+. c_2) == c_2
---            , ((d_2 .*. d__2).+. d_2) == d_2
---            , ((b_2 .*. b__2).+. b_2) == b_2
---            , (((e_2 .*. e__2) .*. e2) .+. (e__2 .*. e2)) == (e__2 .*. e2)
---            , (((c_2 .*. c__2) .*. c2) .+. (c__2 .*. c2)) == (c__2 .*. c2)
---            , (((d_2 .*. d__2) .*. d2) .+. (d__2 .*. d2)) == (d__2 .*. d2)
---            , (((b_2 .*. b__2) .*. b2) .+. (b__2 .*. b2)) == (b__2 .*. b2)
+--            , ((e_2 .*. e__2).+. e_2) == e_2  `debug` ("############# Test nr: _ \n\n")
+--            , ((c_2 .*. c__2).+. c_2) == c_2  `debug` ("############# Test nr: _ \n\n")
+--            , ((d_2 .*. d__2).+. d_2) == d_2  `debug` ("############# Test nr: _ \n\n")
+--            , ((b_2 .*. b__2).+. b_2) == b_2  `debug` ("############# Test nr: _ \n\n")
+--            , (((e_2 .*. e__2) .*. e2) .+. (e__2 .*. e2)) == (e__2 .*. e2)  `debug` ("############# Test nr: _ \n\n")
+--            , (((c_2 .*. c__2) .*. c2) .+. (c__2 .*. c2)) == (c__2 .*. c2)  `debug` ("############# Test nr: _ \n\n")
+--            , (((d_2 .*. d__2) .*. d2) .+. (d__2 .*. d2)) == (d__2 .*. d2)  `debug` ("############# Test nr: _ \n\n")
+--            , (((b_2 .*. b__2) .*. b2) .+. (b__2 .*. b2)) == (b__2 .*. b2)  `debug` ("############# Test nr: _ \n\n")
 --
---            , (((e_2 .+. e__2) .+. e2) .*. (e__2 .+. e2)) == (e__2 .+. e2)
---            , (((c_2 .+. c__2) .+. c2) .*. (c__2 .+. c2)) == (c__2 .+. c2)
---            , (((d_2 .+. d__2) .+. d2) .*. (d__2 .+. d2)) == (d__2 .+. d2)
---            , (((b_2 .+. b__2) .+. b2) .*. (b__2 .+. b2)) == (b__2 .+. b2)
+--            , (((e_2 .+. e__2) .+. e2) .*. (e__2 .+. e2)) == (e__2 .+. e2)  `debug` ("############# Test nr: _ \n\n")
+--            , (((c_2 .+. c__2) .+. c2) .*. (c__2 .+. c2)) == (c__2 .+. c2)  `debug` ("############# Test nr: _ \n\n")
+--            , (((d_2 .+. d__2) .+. d2) .*. (d__2 .+. d2)) == (d__2 .+. d2)  `debug` ("############# Test nr: _ \n\n")
+--            , (((b_2 .+. b__2) .+. b2) .*. (b__2 .+. b2)) == (b__2 .+. b2)  `debug` ("############# Test nr: _ \n\n")
 --
 --            -- mixing all domains (48)
---            , (((e_2 .+. c__2) .+. d2) .*. (c__2 .+. d2)) == (c__2 .+. d2)
---            , ((dc1 .*. (dc2 .*. b2)) .+. (((e_2 .*. c__2) .+. d2) .*. (c__2 .+. d2))) == ((dc1 .*. (dc2 .*. b2)) .+. ((e_2 .*. c__2) .+. d2))
---            , ((b1 .*. (c2 .*. dc2)) .+. (((d__2 .*. c__2) .+. d2) .*. (b__2 .+. d2))) == ((b1 .*. (c2 .*. dc2)) .+. ((d__2 .*. b__2) .+. d2))
+--            , (((e_2 .+. c__2) .+. d2) .*. (c__2 .+. d2)) == (c__2 .+. d2)  `debug` ("############# Test nr: _ \n\n")
+--            , ((dc1 .*. (dc2 .*. b2)) .+. (((e_2 .*. c__2) .+. d2) .*. (c__2 .+. d2))) == ((dc1 .*. (dc2 .*. b2)) .+. ((e_2 .*. c__2) .+. d2))  `debug` ("############# Test nr: _ \n\n")
+--            , ((b1 .*. (c2 .*. dc2)) .+. (((d__2 .*. c__2) .+. d2) .*. (b__2 .+. d2))) == ((b1 .*. (c2 .*. dc2)) .+. ((d__2 .*. b__2) .+. d2))  `debug` ("############# Test nr: _ \n\n")
             ]
 
 {-}

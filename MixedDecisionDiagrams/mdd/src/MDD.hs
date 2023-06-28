@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use camelCase" #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module MDD where
 
 import Debug.Trace ( trace )
@@ -64,24 +65,24 @@ makeLocalPath' [] _ _ = error "empty context"
 
 makeLocalPath' [(i, inf)] nodeList l
     | inf == Dc = InfNodes i (loopDc nodeList False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg1 = InfNodes i (close $ Leaf False) (loopNeg nodeList False ) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg0 = InfNodes i (close $ Leaf True) (Leaf False) (loopNeg nodeList True) (Leaf False) (Leaf True)
-    | inf == Pos1 = InfNodes i (close $ Leaf False) (Leaf False) (Leaf True) (loopPos nodeList False) (Leaf True)
-    | inf == Pos0 = InfNodes i (close $ Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
+    | inf == Neg1 = InfNodes i ( Leaf False) (loopNeg nodeList False ) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (loopNeg nodeList True) (Leaf False) (Leaf True)
+    | inf == Pos1 = InfNodes i ( Leaf False) (Leaf False) (Leaf True) (loopPos nodeList False) (Leaf True)
+    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
     where
-        loopDc (n:ns) end = if n <=0 then Node (abs n) (close (Leaf end)) (loopNeg ns end) else Node n (loopNeg ns end) (close (Leaf end))
-        loopNeg [] end = close (Leaf $ not end)
+        loopDc (n:ns) end = if n <=0 then Node (abs n) ((Leaf True)) (loopNeg ns end) else Node n (loopNeg ns end) ((Leaf False))
+        loopNeg [] end = (Leaf $ not end)
         loopNeg (n:ns) end = if n <=0 then Node (abs n) (Leaf end) (loopNeg ns end) else Node n (loopNeg ns end) (Leaf end)
-        loopPos [] end = close (Leaf $ not end)
+        loopPos [] end = (Leaf $ not end)
         loopPos (n:ns) end = if n <=0 then Node (abs n) (loopNeg ns end) (Leaf end) else Node n (Leaf end) (loopPos ns end)
         close = (!! l) . iterate EndInfNode
 
 makeLocalPath' ((i, inf):cs) nodeList l
     | inf == Dc = InfNodes i (makeLocalPath' cs nodeList (l+1)) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg1 = InfNodes i (close $ Leaf False) (makeLocalPath' cs nodeList (l+1) ) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg0 = InfNodes i (close $ Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1)) (Leaf False) (Leaf True)
-    | inf == Pos1 = InfNodes i (close $ Leaf False) (Leaf False) (Leaf True) (makeLocalPath' cs nodeList (l+1)) (Leaf True)
-    | inf == Pos0 = InfNodes i (close $ Leaf True) (Leaf False) (Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1))
+    | inf == Neg1 = InfNodes i ( Leaf True) (makeLocalPath' cs nodeList (l+1) ) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1)) (Leaf False) (Leaf True)
+    | inf == Pos1 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (makeLocalPath' cs nodeList (l+1)) (Leaf True)
+    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1))
     where
         close = (!! l) . iterate EndInfNode
 
