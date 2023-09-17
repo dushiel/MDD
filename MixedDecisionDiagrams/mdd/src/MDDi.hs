@@ -112,14 +112,14 @@ test = do
             , ((b1 .+. b_2) .+. b_2) == (b1 .+. b_2)  `debug` ("############# Test nr: 15 \n\n")
             , ((b1 .*. b_2) .*. b1) == (b1 .*. b_2)  `debug` ("############# Test nr: 16 \n\n")
             , ((b1 .*. b_2) .+. b_2) == b_2  `debug` ("############# Test nr: 17 \n\n")
---
---            --double domain exclusive (18)
---            , ((c1 .+. c_2) .*. c1) == c1  `debug` ("############# Test nr: _ \n\n")
---            , ((c1 .+. c_2) .*. c_2) == c_2  `debug` ("############# Test nr: _ \n\n")
---            , ((c1 .*. c_2) .+. c1) == c1  `debug` ("############# Test nr: _ \n\n")
---            , ((c1 .*. c_2) .*. c_2) == (c1 .*. c_2)  `debug` ("############# Test nr: _ \n\n")
---            , ((c1 .+. c_2) .+. c1) == (c1 .+. c_2)  `debug` ("############# Test nr: _ \n\n")
---
+
+            --double domain exclusive (18)
+            , ((c1 .+. c_2) .*. c1) == c1  `debug` ("############# Test nr: 18 \n\n")
+            , ((c1 .+. c_2) .*. c_2) == c_2  `debug` ("############# Test nr: 19 \n\n")
+            , ((c1 .*. c_2) .+. c1) == c1  `debug` ("############# Test nr: 20 \n\n")
+            , ((c1 .*. c_2) .*. c_2) == (c1 .*. c_2)  `debug` ("############# Test nr: 21 \n\n")
+            , ((c1 .+. c_2) .+. c1) == (c1 .+. c_2)  `debug` ("############# Test nr: 22 \n\n")
+
 --            --double domain inclusive s0 (23)
 --            , ((d1 .*. d_2) .+. d1) == d1  `debug` ("############# Test nr: _ \n\n")
 --            , ((d1 .*. d_2) .+. d_2) == d_2  `debug` ("############# Test nr: _ \n\n")

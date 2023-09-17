@@ -12,13 +12,6 @@ packages:
   original:
     hackage: containers-0.6.5.1
 - completed:
-    hackage: hspec-2.9.7@sha256:68732c76946f111db3ecf28fa1ab11f1468c287448b139e57d543bd25a382cf0,1709
-    pantry-tree:
-      sha256: f54a762e7394ac5165bffffb3e11a5fbf421216d0b141abc07e35104354185c9
-      size: 583
-  original:
-    hackage: hspec-2.9.7
-- completed:
     hackage: bimap-0.5.0@sha256:aba506d02a1c93fc2b50dcbe728d2a4d07cca89b7033945418061a0b08576ebd,1889
     pantry-tree:
       sha256: 285f5e86640f4bef3b7a60991defb8dd4b3714f8c294495d1136da182c1315a3

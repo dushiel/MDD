@@ -28,6 +28,9 @@ import Data.Data (ConIndex, Constr)
 -- todo shift the contexts: stack current only when diving deeper, not when starting.
 
 
+-- | !! 2 design decisions, either the finite typ[e recopy the infinite types consequences (which means we need to constantly check for absorbs after each change) or the finite types have the add on
+
+
 -- create stack also for function calls: only mixed and absorb can be added
 -- add additional context types: mixed and absorb
 
@@ -67,9 +70,9 @@ import Data.Data (ConIndex, Constr)
 type FuncCtx = [(Inf, FType)]
 
 debugFlag :: Bool
-debugFlag = True
+debugFlag = False
 debugFlag2 :: Bool
-debugFlag2 = True
+debugFlag2 = False
 
 data FType = Union | Inter | Mixed | Absorb | Remove
     deriving (Eq, Show)
@@ -231,11 +234,11 @@ intersectionInferA' c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0
             n1R = (if n0B == Leaf True then
                     absorb @Neg1 c (mixedIntersection @Neg1 c n1B a) dcR  else
                     remove_outercomplement_from @Neg1 c n0B (absorb @Neg1 c (mixedIntersection @Neg1 c n1B a) dcR))
-            n0R = mixedIntersection @Neg0 c n0B dcR --`debug` ( "inter: " ++ show (mixedIntersection @Neg0 c n0A dcR) ++ "\n n0A: " ++ show n0A  ++ "\n dcR" ++ show dcR)
+            n0R = absorb @Neg0 c (mixedIntersection @Neg0 c n0B dcR) dcR --`debug` ( "inter: " ++ show (mixedIntersection @Neg0 c n0A dcR) ++ "\n n0A: " ++ show n0A  ++ "\n dcR" ++ show dcR)
             p1R = if p0B == Leaf True then
                 absorb @Pos1 c (mixedIntersection @Pos1 c p1B a) dcR else
                 remove_outercomplement_from @Pos1 c p0B (absorb @Pos1 c (mixedIntersection @Pos1 c p1B a) dcR)
-            p0R = mixedIntersection @Pos0 c p0B dcR
+            p0R = absorb @Neg0 c (mixedIntersection @Pos0 c p0B dcR) dcR
             in applyElimRule @Dc $ InfNodes positionB dcR n1R n0R p1R p0R
 
         Neg1 -> let -- replace all the A stuf with (dc: 0, neg1: a, neg0: 1, pos1: 0, pos0: 1)
@@ -275,12 +278,12 @@ intersectionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) 
             n1R = (if n0A == Leaf True then
                 absorb @Neg1 c (mixedIntersection @Neg1 c n1A b) dcR  else
                 remove_outercomplement_from @Neg1 c n0A (absorb @Neg1 c (mixedIntersection @Neg1 c n1A b) dcR))
-            n0R = mixedIntersection @Neg0 c n0A dcR
+            n0R = absorb @Neg0 c (mixedIntersection @Neg0 c n0A dcR) dcR
             p1R = if p0A == Leaf True then
                 absorb @Pos1 c (mixedIntersection @Pos1 c p1A b) dcR else
                 remove_outercomplement_from @Pos1 c p0A (absorb @Pos1 c (mixedIntersection @Pos1 c p1A b) dcR)
-            p0R = mixedIntersection @Pos0 c p0A dcR
-            in (applyElimRule @Dc $ InfNodes positionA dcR n1R n0R p1R p0R) `debug` ("\n\n ------ " ++ show (applyElimRule @Dc $  InfNodes positionA dcR n1R n0R p1R p0R))
+            p0R = absorb @Pos0 c (mixedIntersection @Pos0 c p0A dcR) dcR `debug` ("\n"++ show (absorb @Pos0 c (mixedIntersection @Pos0 c p0A dcR) dcR) ++ "\n" ++ show (mixedIntersection @Pos0 c p0A dcR)++"\n")
+            in (applyElimRule @Dc $ InfNodes positionA dcR n1R n0R p1R p0R) `debug` ("\n\n ------ " ++ show ( InfNodes positionA dcR n1R n0R p1R p0R))
 
         Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
             n1R = unionLocal @Neg1 c
@@ -404,12 +407,12 @@ unionInferA' c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = le
     case inf of
         Dc -> let
             dcR = unionLocal @Dc c  a dcB --pass along the consequence of B for both dcA and not dcA
-            n1R = mixedIntersection @Neg1 c n1B dcR -- todo MixedUnion!
+            n1R = absorb @Neg1 c (mixedIntersection @Neg1 c n1B (negation dcR)) dcR -- todo MixedIntersection!
 
             n0R = let n0R' = mixedIntersection @Neg0 c n0B a in
                 if n1B == Leaf False then absorb @Neg0 c n0R' dcR else absorb @Neg0 c (remove_outercomplement_from @Neg0 c n1B n0R') dcR
 
-            p1R = mixedIntersection @Pos1 c p1B dcR
+            p1R = absorb @Pos1 c (mixedIntersection @Pos1 c p1B (negation dcR)) dcR
             p0R = let p0R' = mixedIntersection @Pos0 c p0B a in
                 if p1B == Leaf False then absorb @Pos0 c p0R' dcR else absorb @Pos0 c (remove_outercomplement_from @Pos0 c p1B p0R') dcR
 
@@ -450,15 +453,15 @@ unionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = le
     case inf of
         Dc -> let
             dcR = unionLocal @Dc c b dcA
-                `debug` "dcR"
-            n1R = mixedIntersection @Neg1 c n1A dcR
-                `debug` "n1R"
+                `debug` ("\ndcR \t = " ++ show (unionLocal @Dc c b dcA))
+            n1R = absorb @Neg1 c (mixedIntersection @Neg1 c n1A (negation dcR)) dcR
+                `debug` ("\nn1R (n1A ^ dcR) @ dcR \t = " ++ show (absorb @Neg1 c (mixedIntersection @Neg1 c n1A (negation dcR)) dcR))
 
             n0R = let n0R' = mixedIntersection @Neg0 c n0A b in
                 if n1A == Leaf False then absorb @Neg0 c  n0R' dcR else  absorb @Neg0 c (remove_outercomplement_from @Neg0 c n1A n0R') dcR
                 `debug` "n0R"
 
-            p1R = mixedIntersection @Pos1 c p1A dcR
+            p1R = absorb @Pos1 c (mixedIntersection @Pos1 c p1A (negation dcR)) dcR
                 `debug` "p1R"
             p0R = let p0R' =  mixedIntersection @Pos0 c p0A b in
                 if p1A == Leaf False then absorb @Pos0 c p0R' dcR else absorb @Pos0 c (remove_outercomplement_from @Pos0 c p1A p0R') dcR
@@ -601,6 +604,7 @@ unionMain' c a b = error "no 2 StartInfNode's in intersection main"
 class Dd1 a where
     intersectionLocal' :: FuncCtx -> Dd -> Dd -> Dd
     mixedIntersection' :: FuncCtx -> Dd -> Dd -> Dd
+    mixedUnion' :: FuncCtx -> Dd -> Dd -> Dd
     unionLocal' :: FuncCtx -> Dd -> Dd -> Dd
     remove_outercomplement_from' :: FuncCtx -> Dd -> Dd -> Dd
     absorb' :: FuncCtx -> Dd -> Dd -> Dd
@@ -782,9 +786,49 @@ instance (DdF4 a) => Dd1 a where
     mixedIntersection' c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB dcB n1B n0B p1B p0B) =
         undefined
     -- Both InfNodes have been reached - run the usual intersection.
-    mixedIntersection' (c:cs) (EndInfNode a)  (EndInfNode b) = if a == b then false @a else a
-    mixedIntersection' [] (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- applyInfElimRule @a $ intersection @True [] a (negate_maybe @a b)
+    mixedIntersection' c (EndInfNode a)  (EndInfNode b) = if (intersection @True c a b) == b then false @a else (intersection @True c a b) `debug3` ("mixedinter endinf - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)
+    --mixedIntersection' [] (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- applyInfElimRule @a $ intersection @True [] a (negate_maybe @a b)
     mixedIntersection' c a b = undefined `debug2` ("mixedinter - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)
+
+    -- performs a local union, but a intersection afterwards --todo better naming!
+    mixedUnion' c l@(Leaf _) b = if l == true @a then true @a else b
+
+    mixedUnion' c a l@(Leaf _) = if l == true @a then true @a else a -- should return else a, but that leaf true
+
+    -- No leafs involved
+    mixedUnion' c a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
+
+        -- No mismatch
+        | positionA == positionB =
+            let pos_result = mixedUnion @a c pos_childA pos_childB
+                neg_result = mixedUnion @a c neg_childA neg_childB
+            in applyElimRule @a (Node positionA pos_result neg_result)
+
+        -- Mismatch
+        | positionA > positionB = inferNodeA @a (mixedUnion @a) c a b
+        | positionA < positionB =
+            let pos_result = mixedUnion @a c pos_childA b
+                neg_result = mixedUnion @a c neg_childA b
+            in applyElimRule @a (Node positionA pos_result neg_result)
+
+    -- Single InfNode has been reached, similar to single Leaf node cases.
+    mixedUnion' c a@(Node positionA pos_childA neg_childA)  b@(EndInfNode _) =
+                let pos_result = mixedUnion @a c pos_childA b
+                    neg_result = mixedUnion @a c neg_childA b
+                in applyElimRule @a (Node positionA pos_result neg_result)
+
+    mixedUnion' c a@(EndInfNode _) b@(Node positionB pos_childB neg_childB) =
+        inferNodeA @a (mixedUnion @a) c a b
+
+    mixedUnion' c a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB) =
+        undefined
+    mixedUnion' c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB dcB n1B n0B p1B p0B) =
+        undefined
+    -- Both InfNodes have been reached - run the usual intersection.
+    mixedUnion' c (EndInfNode a)  (EndInfNode b) = if (union @True c a b) == b then false @a else (union @True c a b) `debug3` ("mixedunion endinf - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)
+    -- mixedUnion' [] (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- applyInfElimRule @a $ intersection @True [] a (negate_maybe @a b)
+    mixedUnion' c a b = undefined `debug2` ("mixedunion - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)
+
 
     absorb' c a@(Leaf _) dc = if a == dc then false @a else a
 
@@ -829,6 +873,7 @@ class DdF4 a where
     intersectionLocal :: FuncCtx -> Dd -> Dd -> Dd
     unionLocal :: FuncCtx -> Dd -> Dd -> Dd
     mixedIntersection :: FuncCtx -> Dd -> Dd -> Dd
+    mixedUnion :: FuncCtx -> Dd -> Dd -> Dd
     absorb :: FuncCtx -> Dd -> Dd -> Dd
     remove_outercomplement_from :: FuncCtx -> Dd -> Dd -> Dd
 
@@ -894,6 +939,7 @@ instance DdF4 Dc where
 
 
     mixedIntersection c a b = error "mixedintersection only with finite kinds"
+    mixedUnion c a b = error "mixedintersection only with finite kinds"
     absorb = error "mixedintersection only with finite kinds"
     remove_outercomplement_from = error ""
 
@@ -961,6 +1007,8 @@ instance DdF4 Neg1 where
     mixedIntersection c a b = mixedIntersection' @Neg1 c a b
         `debug2` ("mixedIntersection neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
+    mixedUnion c a b = mixedUnion' @Neg1 c a b
+        `debug2` ("mixedUnion neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     remove_outercomplement_from c a b =  remove_outercomplement_from' @Neg1 c a b
         `debug2` ("remove_f0s1_from_f1s1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
@@ -1015,6 +1063,10 @@ instance DdF4 Neg0 where
 
     mixedIntersection c a b = mixedIntersection' @Neg0 c a b  `debug2` ("mixedIntersection neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
+    mixedUnion c a b = mixedUnion' @Neg0 c a b
+        `debug2` ("mixedUnion neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+
+
     remove_outercomplement_from c a b =  remove_outercomplement_from' @Neg0 c a b
         `debug2` ("remove_f0s1_from_f1s1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
@@ -1063,6 +1115,9 @@ instance DdF4 Pos1 where
     inferNodeB _ c a b = error ("infernodeB: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     mixedIntersection c a b = mixedIntersection' @Pos1 c a b  `debug2` ("mixedIntersection pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+
+    mixedUnion c a b = mixedUnion' @Pos1 c a b
+        `debug2` ("mixedUnion pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     remove_outercomplement_from c a b =  remove_outercomplement_from' @Pos1 c a b
         `debug2` ("remove_f0s1_from_f1s1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
@@ -1116,10 +1171,11 @@ instance DdF4 Pos0 where
         applyElimRule @Pos0 $ f c a (Node positionA b (Leaf True))
     inferNodeB _ _ _ _ = undefined
 
-    --mixedIntersection c a (Leaf False) = Leaf True
-    --mixedIntersection c a (Leaf True) = a
     mixedIntersection c a b = mixedIntersection' @Pos0 c a b
         `debug2` ("mixedIntersection: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+
+    mixedUnion c a b = mixedUnion' @Pos0 c a b
+        `debug2` ("mixedUnion pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     remove_outercomplement_from c a b =  remove_outercomplement_from' @Pos0 c a b
         `debug2` ("remove_f0s1_from_f1s1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
@@ -1133,6 +1189,8 @@ instance DdF4 Pos0 where
 debug :: c -> String -> c
 debug f s = if debugFlag then trace s f else f
 
+debug3 :: c -> String -> c
+debug3 = flip trace
 
 debug2 :: a -> String -> a
 debug2 f s = if debugFlag2 then trace (colorize s) f else f

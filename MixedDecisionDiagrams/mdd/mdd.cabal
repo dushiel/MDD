@@ -25,6 +25,8 @@ source-repository head
 
 library
   exposed-modules:
+      AliceLanguage.Language1
+      AliceLanguage.Language2
       DrawMDD
       Example
       Internal.Language
