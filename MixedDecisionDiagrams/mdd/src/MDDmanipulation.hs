@@ -70,7 +70,7 @@ import Data.Data (ConIndex, Constr)
 type FuncCtx = [(Inf, FType)]
 
 debugFlag :: Bool
-debugFlag = False
+debugFlag = True
 debugFlag2 :: Bool
 debugFlag2 = False
 
