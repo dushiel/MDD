@@ -67,6 +67,13 @@ import Data.Data (ConIndex, Constr)
 -- I chose to let the variant depent on types instead of arguments or tags to reduce memory usage and its reading.
 -- letting the compiler figure out which low-level functions should be stringed together *should* be faster than deciding this during run time. (not tested yet)
 
+
+
+-- if one of the two zdd paths, to be unioned, does not exist durring recursion with mixedunion, then union the consequences with the missing zdd's bdd counterpart
+
+-- absorb decing choice: make 2, union and intersection, if the 0 and 1 zdds are never constructed to be smalleer and larger (respectively) then we could have only 1 absorb. evenmore so we could combine the absorb with the mixed intersection / mixed union, which is probably best for perfornace
+-- the aborb needs not perform an intersection or union after the endleaf (in the consequence), but it needs to treat the leaves differently based on its context
+
 type FuncCtx = [(Inf, FType)]
 
 debugFlag :: Bool
@@ -348,9 +355,9 @@ intersectionMain'  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes pos
             ++ "\n\t n0A = " ++ show(n0A)
             ++ "\n\t n0B = " ++ show(n0B)
             ++ "\n")
-        n0R = absorb @Neg0 c (mixedIntersection @Neg0 c n0R' (negation dcR)) dcR-- keep the holes that fit inside dcR
-            `debug` ("\nn0R \t (n0R' ^ dcR) @ dcR = " ++ show (absorb @Neg0 c (mixedIntersection @Neg0 c n0R' (negation dcR)) dcR)
-            ++ "\n\t (n0R' ^ dcR) = " ++ show(mixedIntersection @Neg0 c n0R' (negation dcR))
+        n0R = absorb @Neg0 c (mixedIntersection @Neg0 c n0R' dcR) dcR-- keep the holes that fit inside dcR
+            `debug` ("\nn0R \t (n0R' ^ dcR) @ dcR = " ++ show (absorb @Neg0 c (mixedIntersection @Neg0 c n0R' dcR) dcR)
+            ++ "\n\t (n0R' ^ dcR) = " ++ show(mixedIntersection @Neg0 c n0R' dcR)
             ++ "\n\t dcR = " ++ show dcR
             ++ "\n")
         -- if the local hole fits inside dcR but the consequence of n0R' does not fit inside the consequenc of dcR it should return n0R' -> Leaf false
@@ -385,9 +392,9 @@ intersectionMain'  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes pos
             ++ "\n\t p0A = " ++ show(p0A)
             ++ "\n\t p0B = " ++ show(p0B)
             ++ "\n")
-        p0R = absorb @Pos0 c (mixedIntersection @Pos0 c p0R' (negation dcR)) dcR
-            `debug` ("\np0R \t (p0R' ^ dcR) @ dcR = " ++ show (absorb @Pos0 c (mixedIntersection @Pos0 c p0R' (negation dcR)) dcR)
-            ++ "\n\t (p0R' ^ dcR) = " ++ show(mixedIntersection @Pos0 c p0R' (negation dcR))
+        p0R = absorb @Pos0 c (mixedIntersection @Pos0 c p0R' dcR) dcR
+            `debug` ("\np0R \t (p0R' ^ dcR) @ dcR = " ++ show (absorb @Pos0 c (mixedIntersection @Pos0 c p0R' dcR) dcR)
+            ++ "\n\t (p0R' ^ dcR) = " ++ show(mixedIntersection @Pos0 c p0R' dcR)
             ++ "\n\t dcR = " ++ show dcR
             ++ "\n")
         in applyElimRule @Dc $ InfNodes positionA dcR n1R n0R p1R p0R -- todo applyElimRule @a?
@@ -454,19 +461,21 @@ unionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = le
         Dc -> let
             dcR = unionLocal @Dc c b dcA
                 `debug` ("\ndcR \t = " ++ show (unionLocal @Dc c b dcA))
-            n1R = absorb @Neg1 c (mixedIntersection @Neg1 c n1A (negation dcR)) dcR
-                `debug` ("\nn1R (n1A ^ dcR) @ dcR \t = " ++ show (absorb @Neg1 c (mixedIntersection @Neg1 c n1A (negation dcR)) dcR))
+            n1R = absorb @Neg1 c (mixedUnion @Neg1 c n1A dcR) dcR
+                `debug` ("\nn1R (n1A ^ dcR) @ dcR \t = " ++ show (absorb @Neg1 c (mixedUnion @Neg1 c n1A dcR) dcR))
 
-            n0R = let n0R' = mixedIntersection @Neg0 c n0A b in
-                if n1A == Leaf False then absorb @Neg0 c  n0R' dcR else  absorb @Neg0 c (remove_outercomplement_from @Neg0 c n1A n0R') dcR
-                `debug` "n0R"
+            n0R = (let n0R' = mixedIntersection @Neg0 c n0A b in
+                if n1A == Leaf False then absorb @Neg0 c  n0R' dcR else  absorb @Neg0 c (remove_outercomplement_from @Neg0 c n1A n0R') dcR)
+                `debug` ("n0R' = " ++ show (mixedIntersection @Neg0 c n0A b) ++ "\n")
+                `debug` ("n0R' @ dcR = " ++ show (absorb @Neg0 c  (mixedIntersection @Neg0 c n0A b) dcR))
 
-            p1R = absorb @Pos1 c (mixedIntersection @Pos1 c p1A (negation dcR)) dcR
-                `debug` "p1R"
-            p0R = let p0R' =  mixedIntersection @Pos0 c p0A b in
-                if p1A == Leaf False then absorb @Pos0 c p0R' dcR else absorb @Pos0 c (remove_outercomplement_from @Pos0 c p1A p0R') dcR
-                `debug` "p0R"
-            in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
+            p1R = absorb @Pos1 c (mixedUnion @Pos1 c p1A dcR) dcR
+                `debug` ("\np1R (p1A ^ dcR) @ dcR \t = " ++ show (absorb @Pos1 c (mixedUnion @Pos1 c p1A dcR) dcR))
+            p0R = (let p0R' =  mixedIntersection @Pos0 c p0A b in
+                if p1A == Leaf False then absorb @Pos0 c p0R' dcR else absorb @Pos0 c (remove_outercomplement_from @Pos0 c p1A p0R') dcR)
+                `debug` ("p0R' = " ++ show (mixedIntersection @Pos0 c p0A b) ++ "\n")
+                `debug` ("p0R' @ dcR = " ++ show (absorb @Pos0 c (mixedIntersection @Pos0 c p0A b) dcR) ++ "\n")
+            in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R) `debug` ("result unionInferB" ++ show (InfNodes positionA dcR n1R n0R p1R p0R))
         Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
             n1R' = unionLocal @Neg1 c n1A b
             n1R = mixedIntersection @Neg1 c n1R' dcA
@@ -475,7 +484,9 @@ unionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = le
             n0R = intersectionLocal @Neg0 c
                 (unionLocal @Neg0 c n0A b)
                 (if n1A == Leaf True then n0R' else remove_outercomplement_from @Neg0 c n1A n0R')
+                `debug` ("n0R = (n0A U b) ^ (n1A / n0R') = \n " ++ show n0R)
             n0R' = mixedIntersection @Neg0 c b dcA
+                `debug` ("n0R' = (b ^ dcA) = \n " ++ show n0R')
             in applyElimRule @Neg0 $ InfNodes positionA dcA (Leaf False) n0R (Leaf False) (Leaf True)
         Pos1 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: b, pos0: 1)
             p1R' = unionLocal @Pos1 c p1A b
@@ -485,7 +496,9 @@ unionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = le
             p0R = intersectionLocal @Pos0 c
                 (unionLocal @Pos0 c n0A b )
                 (if p1A == Leaf True then p0R' else remove_outercomplement_from @Pos0 c p1A p0R')
+                `debug` ("p0R = (p0A U b) ^ (p1A / p0R') = \n " ++ show p0R)
             p0R' = mixedIntersection @Pos0 c b dcA
+                `debug` ("p0R' = (b ^ dcA) = \n " ++ show p0R')
             in applyElimRule @Pos0 $ InfNodes positionA dcA (Leaf False) (Leaf True) (Leaf False) p0R
 unionInferB' _ _ _ = undefined
 
@@ -504,9 +517,9 @@ unionMain'  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB 
             ++ "\n\t dcB = " ++ show dcB
             ++ "\n")
 
-        n1R = absorb @Neg1 c (mixedIntersection @Neg1 c n1R' (negation dcR)) dcR
-            `debug` ("\nn1R \t (n1R' ^  -. dcR) @ dcR = " ++ show (absorb @Neg1 c (mixedIntersection @Neg1 c n1R' (negation dcR)) dcR)
-            ++ "\n\t (n1R' ^ dcR) = " ++ show (mixedIntersection @Neg1 c n1R' dcR)
+        n1R = absorb @Neg1 c (mixedUnion @Neg1 c n1R' dcR) dcR
+            `debug` ("\nn1R \t (n1R' ^  -. dcR) @ dcR = " ++ show (absorb @Neg1 c (mixedUnion @Neg1 c n1R' dcR) dcR)
+            ++ "\n\t (n1R' ^ dcR) = " ++ show (mixedUnion @Neg1 c n1R' dcR)
             ++ "\n\t n1R' = " ++ show n1R'
             ++ "\n\t dcR = " ++ show dcR
             ++ "\n")
@@ -530,16 +543,16 @@ unionMain'  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB 
                 ++ "\n\t n0R' = " ++ show n0R'
                 ++ "\n")
         n0R' = intersectionLocal @Neg0 c
-            (mixedIntersection @Neg0 c n0A dcB) -- remove the holes that do fit in B (unioned away) // note that in consequence this reverts back to to union and is absorbed if consequence of n0A == dcR
-            (mixedIntersection @Neg0 c n0B dcA) -- remove the holes that do fit in A (unioned away)
+            (mixedUnion @Neg0 c n0A dcB) -- remove the holes that do fit in B (unioned away) // note that in consequence this reverts back to to union and is absorbed if consequence of n0A == dcR
+            (mixedUnion @Neg0 c n0B dcA) -- remove the holes that do fit in A (unioned away)
             `debug` ("\nn0R' \t (n0A ^ dcB) ^ (n0B ^ dcA) = " ++ show (intersectionLocal @Neg0 c
-                (mixedIntersection @Neg0 c n0A dcB)
-                (mixedIntersection @Neg0 c n0B dcA))
+                (mixedUnion @Neg0 c n0A dcB)
+                (mixedUnion @Neg0 c n0B dcA))
                 ++ "\n\t (n0A ^ dcB) ^ (n0B ^ dcA) = " ++ show (intersectionLocal @Neg0 c
-                                                (mixedIntersection @Neg0 c n0A dcB)
-                                                (mixedIntersection @Neg0 c n0B dcA))
-                ++ "\n\t (n0A ^ dcB) = " ++ show (mixedIntersection @Neg0 c n0A dcB)
-                ++ "\n\t (n0B ^ dcA) = " ++ show (mixedIntersection @Neg0 c n0B dcA)
+                                                (mixedUnion @Neg0 c n0A dcB)
+                                                (mixedUnion @Neg0 c n0B dcA))
+                ++ "\n\t (n0A ^ dcB) = " ++ show (mixedUnion @Neg0 c n0A dcB)
+                ++ "\n\t (n0B ^ dcA) = " ++ show (mixedUnion @Neg0 c n0B dcA)
                 ++ "\n\t dcR = " ++ show dcR
                 ++ "\n\t n0A = " ++ show n0A
                 ++ "\n\t n0B = " ++ show n0B
@@ -549,8 +562,8 @@ unionMain'  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB 
 
         ------------------------------------
         -- n0R = (n0A cap n0B) cup ((n0A cap neg dcB) cap n1B) cup ((n0B cap neg dcA) cap n1A) <-> (n0A cup n0B) cap n1R* cap neg dcR
-        p1R = absorb @Pos1 c (mixedIntersection @Neg1 c p1R' (negation dcR)) dcR
-            `debug` ("\np1R \t (p1R' ^ dcR) @ dcR = " ++ show (absorb @Pos1 c (mixedIntersection @Neg1 c p1R' (negation dcR)) dcR)
+        p1R = absorb @Pos1 c (mixedUnion @Pos1 c p1R' dcR) dcR
+            `debug` ("\np1R \t (p1R' ^ dcR) @ dcR = " ++ show (absorb @Pos1 c (mixedUnion @Pos1 c p1R' dcR) dcR)
             ++ "\n\t p1R' = " ++ show p1R'
             ++ "\n\t dcR = " ++ show dcR
             ++ "\n")
@@ -574,16 +587,16 @@ unionMain'  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB 
             ++ "\n\t p0R' = " ++ show p0R'
             ++ "\n")
         p0R' = intersectionLocal @Pos0 c
-            (mixedIntersection @Pos0 c p0A dcB) -- remove the holes that do fit in B: if the consequence of p0A after union is the same as the consequence of dcB, then it is also removed. If the consequence is smaller it is kept.
-            (mixedIntersection @Pos0 c p0B dcA)
+            (mixedUnion @Pos0 c p0A dcB) -- remove the holes that do fit in B: if the consequence of p0A after union is the same as the consequence of dcB, then it is also removed. If the consequence is smaller it is kept.
+            (mixedUnion @Pos0 c p0B dcA)
             `debug` ("\np0R' \t  ((p0A ^ dcB) ^ (p0B ^ dcA)) \t = " ++ show (intersectionLocal @Pos0 c
-                                                (mixedIntersection @Pos0 c p0A dcB)
-                                                (mixedIntersection @Pos0 c p0B dcA))
+                                                (mixedUnion @Pos0 c p0A dcB)
+                                                (mixedUnion @Pos0 c p0B dcA))
                 ++ "\n\t (p0A ^ dcB) ^ (p0B ^ dcA) = " ++ show (intersectionLocal @Pos0 c
-                                                (mixedIntersection @Pos0 c p0A dcB)
-                                                (mixedIntersection @Pos0 c p0B dcA))
-                ++ "\n\t (p0A ^ dcB) = " ++ show (mixedIntersection @Pos0 c p0A dcB)
-                ++ "\n\t (p0B ^ dcA) = " ++ show (mixedIntersection @Pos0 c p0B dcA)
+                                                (mixedUnion @Pos0 c p0A dcB)
+                                                (mixedUnion @Pos0 c p0B dcA))
+                ++ "\n\t (p0A ^ dcB) = " ++ show (mixedUnion @Pos0 c p0A dcB)
+                ++ "\n\t (p0B ^ dcA) = " ++ show (mixedUnion @Pos0 c p0B dcA)
                 ++ "\n\t dcR = " ++ show dcR
                 ++ "\n\t p0A = " ++ show p0A
                 ++ "\n\t p0B = " ++ show p0B
@@ -751,10 +764,14 @@ instance (DdF4 a) => Dd1 a where
     unionLocal' c a@(EndInfNode _) b@(InfNodes positionB _ _ _ _ _) = unionInferA_ @a c a b
     unionLocal' c a b = error (show c ++ show a ++ show b)
 
--- B == leaf
-    mixedIntersection' c l@(Leaf _) b = if l == false @a then false @a else b
-
-    mixedIntersection' c a l@(Leaf _) = if l == false @a then false @a else a
+    mixedIntersection' c l@(Leaf _) (Leaf _) = if l == false @a then false @a else Leaf False-- if n then 1 if n' then 0
+    -- exception cases where zdd and its polar are not false @a, and dc is not a leaf.
+    mixedIntersection' c l@(Leaf False) b = Leaf False
+    mixedIntersection' c l@(Leaf True) b = b
+    -- exception where the zdd is not a leaf and dc is
+    mixedIntersection' c a l@(Leaf False) = Leaf False
+    -- note that the a cannot be larger than 1 thus, the positive polarity of the zdd cannot not be one in this case (since it will always be largerthan dcR under intersection)
+    mixedIntersection' c a l@(Leaf True) = a
 
     -- No leafs involved
     mixedIntersection' c a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
@@ -790,10 +807,16 @@ instance (DdF4 a) => Dd1 a where
     --mixedIntersection' [] (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- applyInfElimRule @a $ intersection @True [] a (negate_maybe @a b)
     mixedIntersection' c a b = undefined `debug2` ("mixedinter - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)
 
-    -- performs a local union, but a intersection afterwards --todo better naming!
-    mixedUnion' c l@(Leaf _) b = if l == true @a then true @a else b
 
-    mixedUnion' c a l@(Leaf _) = if l == true @a then true @a else a -- should return else a, but that leaf true
+
+    mixedUnion' c l@(Leaf _) (Leaf _) = if l == false @a then false @a else Leaf True-- if n then 1 if n' then 0
+    -- exception cases where zdd and its polar are not false @a, and dc is not a leaf.
+    mixedUnion' c l@(Leaf True) b = Leaf True
+    mixedUnion' c l@(Leaf False) b = b
+    -- exception where the zdd is not a leaf and dc is
+    mixedUnion' c a l@(Leaf True) = Leaf True
+    -- note that the a cannot be smaller than 0 thus, the negative polarity of the zdd cannot not be one in this case (since it will always be smaller than dcR under intersection)
+    mixedUnion' c a l@(Leaf False) = a
 
     -- No leafs involved
     mixedUnion' c a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
@@ -824,7 +847,7 @@ instance (DdF4 a) => Dd1 a where
         undefined
     mixedUnion' c a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB dcB n1B n0B p1B p0B) =
         undefined
-    -- Both InfNodes have been reached - run the usual intersection.
+    -- Both InfNodes have been reached - run the usual union.
     mixedUnion' c (EndInfNode a)  (EndInfNode b) = if (union @True c a b) == b then false @a else (union @True c a b) `debug3` ("mixedunion endinf - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)
     -- mixedUnion' [] (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- applyInfElimRule @a $ intersection @True [] a (negate_maybe @a b)
     mixedUnion' c a b = undefined `debug2` ("mixedunion - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)

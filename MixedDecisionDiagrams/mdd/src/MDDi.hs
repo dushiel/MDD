@@ -44,11 +44,11 @@ infixl 1 .<->.
 
 ------------------------------------ Test
 
-dc1 = path [(0, Dc)] [2]
-dc2 = path [(0, Dc)] [3]
+dc2 = path [(0, Dc)] [2]
+dc3 = path [(0, Dc)] [3]
 dc_2 = path [(1, Dc)] [2]
 dc__2 = path [(1, Dc),(2,Dc)] [2]
-dc = dc1 .*. dc2
+dc = dc2 .*. dc3
 n2 = path [(0, Neg1)] [2]
 n3 = path [(0, Neg1)] [3]
 n23 = path [(0, Neg1)] [2,3]
@@ -95,15 +95,15 @@ test = do
             , ((n2 .+. n3) .*. n2) == n2  `debug` ("############# Test nr: 5 \n\n")
 
             -- double domain (6)
-            , ((dc1 .+. dc_2) .*. dc_2) == dc_2  `debug` ("############# Test nr: 6 \n\n")
-            , ((dc1 .+. dc_2) .*. dc1) == dc1  `debug` ("############# Test nr: 7 \n\n")
+            , ((dc2 .+. dc_2) .*. dc_2) == dc_2  `debug` ("############# Test nr: 6 \n\n")
+            , ((dc2 .+. dc_2) .*. dc2) == dc2  `debug` ("############# Test nr: 7 \n\n")
 
             -- inclusive finite subset dominance and submission (8)
-            , (dc1 .*. (n2 .+. n23)) == (n2 .+. n23)  `debug` ("############# Test nr: 8 \n\n")
-            , (dc1 .+. (n2 .+. n23)) == dc1  `debug` ("############# Test nr: 9 \n\n")
+            , (dc2 .*. (n2 .+. n23)) == (n2 .+. n23)  `debug` ("############# Test nr: 8 \n\n")
+            , (dc2 .+. (n2 .+. n23)) == dc2  `debug` ("############# Test nr: 9 \n\n")
             --exclusive
-            , ((dc1 .*. n'2) .+. n'2) == n'2  `debug` ("############# Test nr: 10 \n\n")
-            , ((dc1 .*. n'2) .+. dc1) == dc1  `debug` ("############# Test nr: 11 \n\n")
+            , ((dc2 .*. n'2) .+. n'2) == n'2  `debug` ("############# Test nr: 10 \n\n")
+            , ((dc2 .*. n'2) .+. dc2) == dc2  `debug` ("############# Test nr: 11 \n\n")
 
             --double domain inclusive (12)
             , ((n2 .*. n_2) .+. n2) == n2  `debug` ("############# Test nr: 12 \n\n")
@@ -153,8 +153,8 @@ test = do
 --
 --            -- mixing all domains (48)
 --            , (((n'_2 .+. p'__2) .+. p3) .*. (p'__2 .+. p3)) == (p'__2 .+. p3)  `debug` ("############# Test nr: _ \n\n")
---            , ((dc1 .*. (dc2 .*. n3)) .+. (((n'_2 .*. p'__2) .+. p3) .*. (p'__2 .+. p3))) == ((dc1 .*. (dc2 .*. n3)) .+. ((n'_2 .*. p'__2) .+. p3))  `debug` ("############# Test nr: _ \n\n")
---            , ((n2 .*. (p'3 .*. dc2)) .+. (((p__2 .*. p'__2) .+. p3) .*. (n__2 .+. p3))) == ((n2 .*. (p'3 .*. dc2)) .+. ((p__2 .*. n__2) .+. p3))  `debug` ("############# Test nr: _ \n\n")
+--            , ((dc2 .*. (dc3 .*. n3)) .+. (((n'_2 .*. p'__2) .+. p3) .*. (p'__2 .+. p3))) == ((dc2 .*. (dc3 .*. n3)) .+. ((n'_2 .*. p'__2) .+. p3))  `debug` ("############# Test nr: _ \n\n")
+--            , ((n2 .*. (p'3 .*. dc3)) .+. (((p__2 .*. p'__2) .+. p3) .*. (n__2 .+. p3))) == ((n2 .*. (p'3 .*. dc3)) .+. ((p__2 .*. n__2) .+. p3))  `debug` ("############# Test nr: _ \n\n")
             ]
 
 {-}
