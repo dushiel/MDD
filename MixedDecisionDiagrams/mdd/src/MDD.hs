@@ -58,17 +58,21 @@ path :: [(Int, Inf)] -> [Int] -> Dd
 path = makeLocalPath
 
 makeLocalPath :: [(Int, Inf)] -> [Int] -> Dd
-makeLocalPath a b = makeLocalPath' a b 1
+makeLocalPath a b = unpackEndInf $ makeLocalPath' a b 1
+
+unpackEndInf :: Dd -> Dd
+unpackEndInf (EndInfNode d) = d
+unpackEndInf _ = error "not possible"
 
 makeLocalPath' :: [(Int, Inf)] -> [Int] -> Int -> Dd
 makeLocalPath' [] _ _ = error "empty context"
 
 makeLocalPath' [(i, inf)] nodeList l
-    | inf == Dc = InfNodes i (loopDc nodeList False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg1 = InfNodes i ( Leaf False) (loopNeg nodeList False ) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (loopNeg nodeList True) (Leaf False) (Leaf True)
-    | inf == Pos1 = InfNodes i ( Leaf False) (Leaf False) (Leaf True) (loopPos nodeList False) (Leaf True)
-    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
+    | inf == Dc = EndInfNode $ InfNodes i (loopDc nodeList False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg1 = EndInfNode $ InfNodes i ( Leaf False) (loopNeg nodeList False ) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg0 = EndInfNode $ InfNodes i ( Leaf True) (Leaf False) (loopNeg nodeList True) (Leaf False) (Leaf True)
+    | inf == Pos1 = EndInfNode $ InfNodes i ( Leaf False) (Leaf False) (Leaf True) (loopPos nodeList False) (Leaf True)
+    | inf == Pos0 = EndInfNode $ InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
     where
         loopDc (n:ns) end = if n <=0 then Node (abs n) ((Leaf True)) (loopNeg ns end) else Node n (loopNeg ns end) ((Leaf False))
         loopNeg [] end = (Leaf $ not end)
@@ -78,11 +82,11 @@ makeLocalPath' [(i, inf)] nodeList l
         close = (!! l) . iterate EndInfNode
 
 makeLocalPath' ((i, inf):cs) nodeList l
-    | inf == Dc = InfNodes i (makeLocalPath' cs nodeList (l+1)) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg1 = InfNodes i ( Leaf True) (makeLocalPath' cs nodeList (l+1) ) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1)) (Leaf False) (Leaf True)
-    | inf == Pos1 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (makeLocalPath' cs nodeList (l+1)) (Leaf True)
-    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1))
+    | inf == Dc = EndInfNode $ InfNodes i (makeLocalPath' cs nodeList (l+1)) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg1 = EndInfNode $ InfNodes i ( Leaf True) (makeLocalPath' cs nodeList (l+1) ) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg0 = EndInfNode $ InfNodes i ( Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1)) (Leaf False) (Leaf True)
+    | inf == Pos1 = EndInfNode $ InfNodes i ( Leaf True) (Leaf False) (Leaf True) (makeLocalPath' cs nodeList (l+1)) (Leaf True)
+    | inf == Pos0 = EndInfNode $ InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1))
     where
         close = (!! l) . iterate EndInfNode
 
