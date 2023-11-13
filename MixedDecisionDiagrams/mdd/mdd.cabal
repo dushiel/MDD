@@ -18,6 +18,10 @@ build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
+    src/Internal/Language.hs
+    src/AliceLanguage/Language1.hs
+    src/AliceLanguage/Language2.hs
+    src/Lib.hs
 
 source-repository head
   type: git
@@ -27,6 +31,7 @@ library
   exposed-modules:
       AliceLanguage.Language1
       AliceLanguage.Language2
+      DotMDD
       DrawMDD
       Example
       Internal.Language
@@ -47,6 +52,8 @@ library
     , base >=4.7 && <5
     , bimap
     , containers
+    , graphviz
+    , text
   default-language: Haskell2010
 
 executable mdd-exe
@@ -61,21 +68,7 @@ executable mdd-exe
     , base >=4.7 && <5
     , bimap
     , containers
+    , graphviz
     , mdd
-  default-language: Haskell2010
-
-test-suite mdd-test
-  type: exitcode-stdio-1.0
-  main-is: Spec.hs
-  other-modules:
-      Paths_mdd
-  hs-source-dirs:
-      test
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      ansi-terminal
-    , base >=4.7 && <5
-    , bimap
-    , containers
-    , mdd
+    , text
   default-language: Haskell2010

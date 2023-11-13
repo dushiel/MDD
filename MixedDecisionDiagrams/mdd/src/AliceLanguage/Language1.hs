@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use camelCase" #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
+module AliceLanguage.Language1 where
 import MDDi
 import MDD
 import DrawMDD

@@ -1,3 +1,4 @@
+module AliceLanguage.Language2 where
 import MDDi
 import Prelude hiding (Word)
 
