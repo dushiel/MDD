@@ -9,6 +9,7 @@ import MDD
 import MDDmanipulation
 import DrawMDD
 
+
 -- todo sophisticated test suite,
 -- have arbitrary formulas, then
 -- restrict should be equal replacing with Top / Bot (for Dc at least or any local type)
