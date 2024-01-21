@@ -100,22 +100,6 @@ test :: IO ()
 test = do
     mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
     where
-        results2 =
-            [
-                (n'2 .*. n2) == bot `debug` ("############# Test nr: 2.0 \n\n")
-            ,   (n3 .*. n2) == bot `debug` ("############# Test nr: 2.0 \n\n")
-            ,   (n'3 .+. n'2) == top `debug` ("############# Test nr: 2.0 \n\n")
-            ,   (p3 .*. p2) == bot `debug` ("############# Test nr: 2.0 \n\n")
-            ,   (p'3 .+. p'2) == top `debug` ("############# Test nr: 2.0 \n\n")
-
-            , ((n2 .*. n3) .+. n3) == n3  `debug` ("############# Test nr: 4 \n\n")
-            , ((n2 .*. n3) .+. n2) == n2  `debug` ("############# Test nr: 5 \n\n")
-            , ((dc2 .*. dc3) .+. dc3) == dc3  `debug` ("############# Test nr: 4 \n\n")
-            , ((dc2 .*. dc3) .+. dc2) == dc2  `debug` ("############# Test nr: 5 \n\n")
-            , ((dc2 .+. dc3) .*. dc3) == dc3  `debug` ("############# Test nr: 4 \n\n")
-            , ((dc2 .+. dc3) .*. dc2) == dc2  `debug` ("############# Test nr: 5 \n\n")
-
-            ]
         results =
             [ (p'2 .*. p2) == bot `debug` ("############# Test nr: 0 \n\n")
             , (p'2 .+. p2) == top  `debug` ("############# Test nr: 1 \n\n")
@@ -210,3 +194,22 @@ b = path (Order [1]) [2] Neg1
 (dc .*. a) .+. a == a
 (dc .+. a) .*. a == a
 -}
+
+test2 :: IO ()
+test2 = do
+    mapM_ print ([show $ snd x | x <- zip results2 [(0 :: Int) .. ], not $ fst x])
+    where
+        results2 =
+            [
+                (n'2 .*. n2) == bot `debug` ("############# Test nr: 2.0 \n\n")
+            ,   (n3 .*. n2) == bot `debug` ("############# Test nr: 2.0 \n\n")
+            ,   (n'3 .+. n'2) == top `debug` ("############# Test nr: 2.0 \n\n")
+            ,   (p3 .*. p2) == bot `debug` ("############# Test nr: 2.0 \n\n")
+            ,   (p'3 .+. p'2) == top `debug` ("############# Test nr: 2.0 \n\n")
+
+            , ((n2 .*. n3) .+. n3) == n3  `debug` ("############# Test nr: 4 \n\n")
+            , ((n2 .*. n3) .+. n2) == n2  `debug` ("############# Test nr: 5 \n\n")
+            , ((dc2 .*. dc3) .+. dc3) == dc3  `debug` ("############# Test nr: 4 \n\n")
+            , ((dc2 .*. dc3) .+. dc2) == dc2  `debug` ("############# Test nr: 5 \n\n")
+            , ((dc2 .+. dc3) .*. dc3) == dc3  `debug` ("############# Test nr: 4 \n\n")
+            , ((dc2 .+. dc3) .*. dc2) == dc2  `debug` ("############# Test nr: 5 \n\n")]
