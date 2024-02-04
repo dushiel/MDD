@@ -25,11 +25,11 @@ infixl 4 -.
 
 infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Dd -> Dd -> Dd
-(.*.) = intersection @True [(Dc, Inter)]
+(.*.) = intersection @'True [(Dc, Inter)]
 
 infixl 3 .+.
 (.+.) :: Dd -> Dd -> Dd
-(.+.) = union @True [(Dc, Union)]
+(.+.) = union @'True [(Dc, Union)]
 
 ite :: Dd -> Dd -> Dd -> Dd
 ite x y z = (x .+. y) .*. ((-.) x .+. z)
