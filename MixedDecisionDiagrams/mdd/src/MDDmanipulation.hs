@@ -27,6 +27,8 @@ import System.Console.ANSI
       SGR(Reset, SetColor) )
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.GraphViz.Attributes.Colors.X11 (x11Colour)
+import System.Console.ANSI.Codes (csi)
 
 
 
@@ -177,19 +179,8 @@ intersectionLocal_arg t c a b = case t of
 
     (_, _) -> error (show t ++ ", " ++ show c ++ ", " ++ show a ++ ", " ++ show b)
 
+
 t_and_r_arg :: (Inf, FType) -> Bool -> FuncCtx -> Dd -> Dd -> Dd
-t_and_r_arg (i,t) l [] (Leaf False) b
-    | i `elem` [Dc,Neg1,Pos1] = undefined -- if debugFlag then Leaf False `debug2` (show i ++ "Leaf False") else Leaf False
-    | i `elem` [Neg0,Pos0] = undefined --if debugFlag then b `debug2` (show i ++ "b") else b
-t_and_r_arg (i,t) l [] (Leaf True) b
-    | i `elem` [Dc,Neg1,Pos1] = undefined --if debugFlag then b `debug2` (show i ++ "b") else b
-    | i `elem` [Neg0,Pos0] = undefined --if debugFlag then Leaf True `debug2` (show i ++ "Leaf True") else Leaf True
-t_and_r_arg (i,t) l [] a (Leaf False)
-    | i `elem` [Dc,Neg1,Pos1] = undefined --if debugFlag then Leaf False `debug2` (show i ++ "Leaf False") else Leaf False
-    | i `elem` [Neg0,Pos0] = undefined --if debugFlag then a `debug2` (show i ++ "a") else a
-t_and_r_arg (i,t) l [] a (Leaf True)
-    | i `elem` [Dc,Neg1,Pos1] = undefined --if debugFlag then a `debug2` (show i ++ "a") else a
-    | i `elem` [Neg0,Pos0] = undefined --if debugFlag then Leaf True `debug2` (show i ++ "Leaf True") else Leaf True
 t_and_r_arg t l c a b = case t of
     (Dc, Absorb) -> absorb @Dc c a b
     (Neg1, Absorb) -> absorb @Neg1 c a b
@@ -201,12 +192,18 @@ t_and_r_arg t l c a b = case t of
     (Neg0, T_and_r) -> traverse_and_return @Neg0 l c a b
     (Pos1, T_and_r) -> traverse_and_return @Pos1 l c a b
     (Pos0, T_and_r) -> traverse_and_return @Pos0 l c a b
+    (Dc, Remove) -> remove_outercomplement_from @Dc c a b
+    (Neg1, Remove) -> remove_outercomplement_from @Neg1 c a b
+    (Neg0, Remove) -> remove_outercomplement_from @Neg0 c a b
+    (Pos1, Remove) -> remove_outercomplement_from @Pos1 c a b
+    (Pos0, Remove) -> remove_outercomplement_from @Pos0 c a b
 
     (_, _) -> error (show t ++ ", " ++ show c ++ ", " ++ show a ++ ", " ++ show b)
 
 unionLocal_arg :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
 unionLocal_arg t c a b = unionLocal_arg' t c a b `debug2` ("unionLocal arg t = " ++ show t ++ ", c = " ++ show c ++ ", \n \t a = " ++ show a ++ ", \n \t b = " ++ show b)
 unionLocal_arg' :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
+--todo why am i doing this directly below?
 unionLocal_arg' (i,t) [] (Leaf False) b
     | i `elem` [Dc,Neg1,Pos1] = b `debug2` (show i ++ "b")
     | i `elem` [Neg0,Pos0] = Leaf False `debug2` (show i ++ "Leaf False")
@@ -714,64 +711,64 @@ instance (DdF4 a) => Dd1 a where
     remove_outercomplement_from' c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) -- todo define inner recursion for lobsided intersectio/union: (-. a .^. b)?
         | positionA > positionB = case to_constr @a of
             Dc -> error "remove outer complement from with a dc should not be possible"
-            Neg1 -> applyInfElimRule @a $ t_and_rInferA_ @a False c a b
-            Neg0 -> applyInfElimRule @a $ t_and_rInferA_ @a True c a b
-            Pos1 -> applyInfElimRule @a $ t_and_rInferA_ @a False c a b
-            Pos0 -> applyInfElimRule @a $ t_and_rInferA_ @a True c a b
+            Neg1 -> applyInfElimRule @a $ t_and_rInferA_ @a False ((to_constr @a, Absorb) : c) a b
+            Neg0 -> applyInfElimRule @a $ t_and_rInferA_ @a True ((to_constr @a, Absorb) : c) a b
+            Pos1 -> applyInfElimRule @a $ t_and_rInferA_ @a False ((to_constr @a, Absorb) : c) a b
+            Pos0 -> applyInfElimRule @a $ t_and_rInferA_ @a True ((to_constr @a, Absorb) : c) a b
         | positionA < positionB =  remove_outercomplement_from @a c neg_childA b
         | positionA == positionB =  undefined
     remove_outercomplement_from' c a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB)
         | positionA > positionB =  remove_outercomplement_from @a c a neg_childB
         | positionA < positionB =   case to_constr @a of
             Dc -> error "remove outer complement from with a dc should not be possible"
-            Neg1 -> applyInfElimRule @a $ t_and_rInferB_ @a False c a b
-            Neg0 -> applyInfElimRule @a $ t_and_rInferB_ @a True c a b
-            Pos1 -> applyInfElimRule @a $ t_and_rInferB_ @a False c a b
-            Pos0 -> applyInfElimRule @a $ t_and_rInferB_ @a True c a b
+            Neg1 -> applyInfElimRule @a $ t_and_rInferB_ @a False ((to_constr @a, Absorb) : c) a b
+            Neg0 -> applyInfElimRule @a $ t_and_rInferB_ @a True ((to_constr @a, Absorb) : c) a b
+            Pos1 -> applyInfElimRule @a $ t_and_rInferB_ @a False ((to_constr @a, Absorb) : c) a b
+            Pos0 -> applyInfElimRule @a $ t_and_rInferB_ @a True ((to_constr @a, Absorb) : c) a b
         | positionA == positionB =  undefined
 
     remove_outercomplement_from' c a@(InfNodes{}) b@(EndInfNode d) =
         case to_constr @a of
             Dc -> error "remove outer complement from with a dc should not be possible"
-            Neg1 -> applyInfElimRule @a $ t_and_rInferB_ @a False c a b
-            Neg0 -> applyInfElimRule @a $ t_and_rInferB_ @a True c a b
-            Pos1 -> applyInfElimRule @a $ t_and_rInferB_ @a False c a b
-            Pos0 -> applyInfElimRule @a $ t_and_rInferB_ @a True c a b
+            Neg1 -> applyInfElimRule @a $ t_and_rInferB_ @a False ((to_constr @a, Absorb) : c) a b
+            Neg0 -> applyInfElimRule @a $ t_and_rInferB_ @a True ((to_constr @a, Absorb) : c) a b
+            Pos1 -> applyInfElimRule @a $ t_and_rInferB_ @a False ((to_constr @a, Absorb) : c) a b
+            Pos0 -> applyInfElimRule @a $ t_and_rInferB_ @a True ((to_constr @a, Absorb) : c) a b
     remove_outercomplement_from' c a@(EndInfNode d) b@(InfNodes{}) =
         case to_constr @a of
             Dc -> error "remove outer complement from with a dc should not be possible"
-            Neg1 -> applyInfElimRule @a $ t_and_rInferA_ @a False c a b
-            Neg0 -> applyInfElimRule @a $ t_and_rInferA_ @a True c a b
-            Pos1 -> applyInfElimRule @a $ t_and_rInferA_ @a False c a b
-            Pos0 -> applyInfElimRule @a $ t_and_rInferA_ @a True c a b
+            Neg1 -> applyInfElimRule @a $ t_and_rInferA_ @a False ((to_constr @a, Absorb) : c) a b
+            Neg0 -> applyInfElimRule @a $ t_and_rInferA_ @a True ((to_constr @a, Absorb) : c) a b
+            Pos1 -> applyInfElimRule @a $ t_and_rInferA_ @a False ((to_constr @a, Absorb) : c) a b
+            Pos0 -> applyInfElimRule @a $ t_and_rInferA_ @a True ((to_constr @a, Absorb) : c) a b
 
 
     remove_outercomplement_from' c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
         | positionA == positionB = case to_constr @a of
             Dc -> error "absorb with a dc as first argument should not be possible"
-            Neg1 -> applyInfElimRule @a $ t_and_rMain False c a b
-            Neg0 -> applyInfElimRule @a $ t_and_rMain True c a b
-            Pos1 -> applyInfElimRule @a $ t_and_rMain False c a b
-            Pos0 -> applyInfElimRule @a $ t_and_rMain True c a b
+            Neg1 -> applyInfElimRule @a $ t_and_rMain False ((to_constr @a, Remove):c) a b
+            Neg0 -> applyInfElimRule @a $ t_and_rMain True ((to_constr @a, Remove):c) a b
+            Pos1 -> applyInfElimRule @a $ t_and_rMain False ((to_constr @a, Remove):c) a b
+            Pos0 -> applyInfElimRule @a $ t_and_rMain True ((to_constr @a, Remove):c) a b
         | positionA < positionB = case to_constr @a of
             Dc -> error "remove outer complement from with a dc should not be possible"
-            Neg1 -> applyInfElimRule @a $ t_and_rInferB_ @a False c a b
-            Neg0 -> applyInfElimRule @a $ t_and_rInferB_ @a True c a b
-            Pos1 -> applyInfElimRule @a $ t_and_rInferB_ @a False c a b
-            Pos0 -> applyInfElimRule @a $ t_and_rInferB_ @a True c a b
+            Neg1 -> applyInfElimRule @a $ t_and_rInferB_ @a False ((to_constr @a, Remove):c) a b
+            Neg0 -> applyInfElimRule @a $ t_and_rInferB_ @a True ((to_constr @a, Remove):c) a b
+            Pos1 -> applyInfElimRule @a $ t_and_rInferB_ @a False ((to_constr @a, Remove):c) a b
+            Pos0 -> applyInfElimRule @a $ t_and_rInferB_ @a True ((to_constr @a, Remove):c) a b
         | positionA > positionB = case to_constr @a of
             Dc -> error "remove outer complement from with a dc should not be possible"
-            Neg1 -> applyInfElimRule @a $ t_and_rInferA_ @a False c a b
-            Neg0 -> applyInfElimRule @a $ t_and_rInferA_ @a True c a b
-            Pos1 -> applyInfElimRule @a $ t_and_rInferA_ @a False c a b
-            Pos0 -> applyInfElimRule @a $ t_and_rInferA_ @a True c a b
+            Neg1 -> applyInfElimRule @a $ t_and_rInferA_ @a False ((to_constr @a, Remove):c) a b
+            Neg0 -> applyInfElimRule @a $ t_and_rInferA_ @a True ((to_constr @a, Remove):c) a b
+            Pos1 -> applyInfElimRule @a $ t_and_rInferA_ @a False ((to_constr @a, Remove):c) a b
+            Pos0 -> applyInfElimRule @a $ t_and_rInferA_ @a True ((to_constr @a, Remove):c) a b
     remove_outercomplement_from' c a b = undefined `debug4` (show a ++ "  :  " ++ show b)
 
     intersectionLocal' c a@(Leaf True) b = b
     intersectionLocal' (c:cs) a@(Leaf False) b@(EndInfNode childB ) = intersectionLocal_arg c cs a childB
     intersectionLocal' c a@(Leaf False) b@(Leaf _) = Leaf False -- dc case for leafs
 
-    intersectionLocal' c a@(Leaf False) b@(InfNodes {}) = applyInfElimRule @a $  intersectionInferA_ @a c a b -- leaf with node or end infnode
+    intersectionLocal' c a@(Leaf False) b@(InfNodes {}) = applyInfElimRule @a $ intersectionInferA_ @a c a b -- leaf with node or end infnode
     intersectionLocal' c a@(Leaf False) b = inferNodeA @a (intersectionLocal @a) c a b -- leaf with node or end infnode
 
     intersectionLocal' c a b@(Leaf True) = a
@@ -1004,46 +1001,56 @@ instance (DdF4 a) => Dd1 a where
 
     absorb' c a@(InfNodes {}) b@(InfNodes {}) = case to_constr @a of
         Dc -> error "absorb with a dc as first argument should not be possible"
-        Neg1 -> applyInfElimRule @a $ t_and_rMain True c a b
-        Neg0 -> applyInfElimRule @a $ t_and_rMain False c a b
-        Pos1 -> applyInfElimRule @a $ t_and_rMain True c a b
-        Pos0 -> applyInfElimRule @a $ t_and_rMain False c a b
+        Neg1 -> applyInfElimRule @a $ t_and_rMain True ((to_constr @a, Absorb) : c) a b
+        Neg0 -> applyInfElimRule @a $ t_and_rMain False ((to_constr @a, Absorb) : c) a b
+        Pos1 -> applyInfElimRule @a $ t_and_rMain True ((to_constr @a, Absorb) : c) a b
+        Pos0 -> applyInfElimRule @a $ t_and_rMain False ((to_constr @a, Absorb) : c) a b
 
     absorb' c a@(InfNodes positionA dcA n1A n0A p1A p0A) dc@(Node positionD pos_childD neg_childD)
         | positionA > positionD = inferNodeA @a (absorb @a) c a dc
         | positionA < positionD = case to_constr @a of
             Dc -> error "absorb with a dc as first argument should not be possible"
-            Neg1 -> applyInfElimRule @a $ t_and_rInferA_ @a True c a dc
-            Neg0 -> applyInfElimRule @a $ t_and_rInferA_ @a False c a dc
-            Pos1 -> applyInfElimRule @a $ t_and_rInferA_ @a True c a dc
-            Pos0 -> applyInfElimRule @a $ t_and_rInferA_ @a False c a dc
+            Neg1 -> applyInfElimRule @Dc $ t_and_rInferB_ @Dc True ((Dc, Absorb) : c) a dc
+            Neg0 -> applyInfElimRule @Dc $ t_and_rInferB_ @Dc False ((Dc, Absorb) : c) a dc
+            Pos1 -> applyInfElimRule @Dc $ t_and_rInferB_ @Dc True ((Dc, Absorb) : c) a dc
+            Pos0 -> applyInfElimRule @Dc $ t_and_rInferB_ @Dc False ((Dc, Absorb) : c) a dc
         | otherwise = undefined
     -- add posB == posA, then we consider node to be AllNegs -> [1]
-    absorb' c a@(Node positionA pos_childD neg_childD) dc@(InfNodes positionD dcA n1A n0A p1A p0A)
-        | positionA > positionD =
-            let pos_result = absorb @a c a pos_childD
-                neg_result = absorb @a c a neg_childD
-            in applyElimRule @a (Node positionD pos_result neg_result)
-        | positionA < positionD = case to_constr @a of
+    absorb' c a@(Node positionA pos_childA neg_childA) dc@(InfNodes positionD dcA n1A n0A p1A p0A)
+        | positionA > positionD = case to_constr @a of
             Dc -> error "absorb with a dc as first argument should not be possible"
-            Neg1 -> applyInfElimRule @Dc $ t_and_rInferB_ @Dc True c a dc
-            Neg0 -> applyInfElimRule @Dc $ t_and_rInferB_ @Dc False c a dc
-            Pos1 -> applyInfElimRule @Dc $ t_and_rInferB_ @Dc True c a dc
-            Pos0 -> applyInfElimRule @Dc $ t_and_rInferB_ @Dc False c a dc
+            Neg1 -> applyInfElimRule @a $ t_and_rInferA_ @a True ((to_constr @a, Absorb) : c) a dc
+            Neg0 -> applyInfElimRule @a $ t_and_rInferA_ @a False ((to_constr @a, Absorb) : c) a dc
+            Pos1 -> applyInfElimRule @a $ t_and_rInferA_ @a True ((to_constr @a, Absorb) : c) a dc
+            Pos0 -> applyInfElimRule @a $ t_and_rInferA_ @a False ((to_constr @a, Absorb) : c) a dc
+        | positionA < positionD =
+            let pos_result = absorb @a c a pos_childA
+                neg_result = absorb @a c a neg_childA
+            in applyElimRule @a (Node positionD pos_result neg_result)
         | otherwise = undefined
     absorb' c a@(InfNodes{}) b@(EndInfNode _) = let
         l = not $ (to_constr @a) `elem` [Neg0, Pos0]
-        in applyInfElimRule @Dc $ t_and_rInferB_ @Dc l c a b -- intersectionInferB ((to_constr @a, Absorb):c) a b
+        in applyInfElimRule @Dc $ t_and_rInferB_ @Dc l ((Dc, Absorb) : c) a b -- intersectionInferB ((to_constr @a, Absorb):c) a b
     absorb' c a@(EndInfNode _) b@(InfNodes{}) = let
         l = not $ (to_constr @a) `elem` [Neg0, Pos0]
-        in applyInfElimRule @a $ t_and_rInferA_ @a l c a b -- intersectionInferB ((to_constr @a, Absorb):c) a b
+        in applyInfElimRule @a $ t_and_rInferA_ @a l ((to_constr @a, Absorb) : c) a b -- intersectionInferB ((to_constr @a, Absorb):c) a b
     absorb' c a b = error $ "absorb , " ++ "a = " ++ show a ++ "b = " ++ show b
 
 
     -- use inferA because maybe we need to pop back to top level where absorb or remove_complement is being applied
-    traverse_and_return' l c a@(Leaf _) b@(InfNodes {}) = if a == b && b == Leaf l then Leaf $ not l else applyInfElimRule @a $ t_and_rInferA_ @a l c a b
-    traverse_and_return' l c a@(InfNodes {}) b@(Leaf _) = if a == b && b == Leaf l then Leaf $ not l else applyInfElimRule @a $ t_and_rInferB_ @a l c a b
 
+    traverse_and_return' l c a'@(Leaf a) b'@(Leaf b)
+        | absorb_or_remove c = if a == b && b == l then Leaf $ not l else b'
+        | (a /= b) && b == l = Leaf $ not l
+        | otherwise = b'
+    traverse_and_return' l c a@(Leaf _) b@(InfNodes {})
+        | absorb_or_remove c = if a == b && b == Leaf l then Leaf $ not l else applyInfElimRule @a $ t_and_rInferA_ @a l c a b
+        | (a /= b) && b == Leaf l = Leaf $ not l
+        | otherwise = applyInfElimRule @a $ t_and_rInferA_ @a l c a b
+    traverse_and_return' l c a@(InfNodes {}) b@(Leaf _)
+        | absorb_or_remove c = if a == b && b == Leaf l then Leaf $ not l else applyInfElimRule @a $ t_and_rInferA_ @a l c a b
+        | (a /= b) && b == Leaf l = Leaf $ not l
+        | otherwise = applyInfElimRule @a $ t_and_rInferA_ @a l c a b
     -- for when no Leaf is changed we return a, thus a should be of the right type
     -- test carefully
     -- first check whether the flip needs to happen before applying infelimrule
@@ -1065,6 +1072,7 @@ instance (DdF4 a) => Dd1 a where
     traverse_and_return' l c a@(EndInfNode _) b@(Node positionD pos_childD neg_childD)  =  inferNodeA @a (traverse_and_return @a l) c a b
     traverse_and_return' l c a@(Node positionD pos_childD neg_childD) b@(EndInfNode _)  =  inferNodeB @a (traverse_and_return @a l) c a b
     -- todo if leaf == end for current type, then return b
+    --
     traverse_and_return' l c a@(Node positionA pos_childA neg_childA) b@(Leaf _) = inferNodeB @a (traverse_and_return @a l) c a b
     traverse_and_return' l c a@(Leaf _) b@(Node positionB pos_childB neg_childB) = inferNodeA @a (traverse_and_return @a l) c a b
 
@@ -1089,6 +1097,9 @@ instance (DdF4 a) => Dd1 a where
     traverse_and_return' l c a@(EndInfNode _) b@(InfNodes{}) = applyInfElimRule @a $ t_and_rInferA_ @a l c a b
     traverse_and_return' l c a b = error $ "traverse_and_return , " ++ "a = " ++ show a ++ "b = " ++ show b
 
+absorb_or_remove :: FuncCtx -> Bool
+absorb_or_remove ((_, f) : cs) = if f == Absorb then True else if f == Remove then False else absorb_or_remove cs
+absorb_or_remove [] = error "no absorb or remove in current stack"
 -- holds the debug and class specific functions
 class DdF4 a where
     to_constr :: Inf
@@ -1119,7 +1130,9 @@ class DdF4 a where
 instance DdF4 Dc where
     to_constr = Dc
     applyInfElimRule (Leaf b) = Leaf b
-    applyInfElimRule d = EndInfNode $ applyElimRule @Dc d
+    applyInfElimRule d = case applyElimRule @Dc d of
+        x@(InfNodes {}) -> EndInfNode x
+        x -> x
     applyElimRule d@(Node _ posC negC) = if posC == negC then posC else d
     applyElimRule d@(InfNodes pos dcR n1R n0R p1R p0R) =
         if (n1R, n0R, p1R, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
@@ -1446,9 +1459,9 @@ t_and_rInferA _ [] _ _ = error "empty context"
 t_and_rInferA _ _ _ (Leaf _) = error "Leaf in A"
 t_and_rInferA _ _ _ (EndInfNode _) = error "EndNode in A"
 t_and_rInferA _ _ _ (Node _ _ _) = error "Node in A"
-t_and_rInferA l c a b =  t_and_rInferA' l c a b `debug4` ("t_and_rInferA" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferA' l c a b ))
-t_and_rInferA' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
-t_and_rInferA' l c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let b = EndInfNode b' in
+t_and_rInferA l c a b =  t_and_rInferA' l c a b `debug5` ("t_and_rInferA" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferA' l c a b ))
+t_and_rInferB' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
+t_and_rInferB' l c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let b = EndInfNode b' in
     (if l then
         (case inf of
     --todo for neg0 and neg1; if leaf 0 and leaf 1 and then not l should be returned.. right?
@@ -1501,7 +1514,7 @@ t_and_rInferA' l c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' 
                     p0R = traverse_and_return @Pos0 l c p0A b
                     in InfNodes positionA dcA n1A n0A p1A p0R))
 
-t_and_rInferA' _ _ _ _ = undefined
+t_and_rInferB' l c a b = error (" : " ++ show a ++ show b ++ show c ++ show l)
 
 t_and_rInferB :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
 t_and_rInferB _ [] _ _ = error "empty context"
@@ -1509,16 +1522,16 @@ t_and_rInferB _ _ _ (Leaf _) = error "Leaf in A"
 t_and_rInferB _ _ _ (EndInfNode _) = error "EndNode in A"
 t_and_rInferB _ _ _ (Node _ _ _) = error "Node in A"
 t_and_rInferB l c a b =  t_and_rInferB' l c a b `debug4` ("t_and_rInferB" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferB' l c a b ))
-t_and_rInferB' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
+t_and_rInferA' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
 --todo applyElimRule @a (InfNodes positionB dcR n1R n0R p1R p0R)
-t_and_rInferB' l c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in let
+t_and_rInferA' l c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in let
             dcR = traverse_and_return @Dc l c dcB a
             n1R = traverse_and_return @Neg1 l c n1B a
             n0R = traverse_and_return @Neg0 l c n0B a
             p1R = traverse_and_return @Pos1 l c p1B a
             p0R = traverse_and_return @Pos0 l c p0B a
             in InfNodes positionB dcR n1R n0R p1R p0R
-t_and_rInferB' _ _ _ _ = undefined
+t_and_rInferA' _ _ _ _ = undefined
 
 t_and_rMain :: Bool -> FuncCtx -> Dd -> Dd -> Dd
 t_and_rMain _ [] _ _ = error "empty context"
