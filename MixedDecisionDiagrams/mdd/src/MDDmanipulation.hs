@@ -61,20 +61,6 @@ import System.Console.ANSI.Codes (csi)
 -- Node | InfE
 -- continue local node recursion until InfE or InfS is reached
 
--- Since the structures are fundamental in nature there are many symmetrical functions,
--- and the Infnodes introduce them as a local context during DD manipulation,
--- for which we have defined 2 function classes.
--- one for which Inference rule is used,
--- and a second one for whether output negation should be applied on the result before returning. -- todo This will be removed??
--- It effectively reads all Leaf True as Leaf False and vice versa.
--- It "remebers" whether a call to the function is made from a local F0 context.
--- I chose to let the variant depent on types instead of arguments or tags to reduce memory usage and its reading.
--- letting the compiler figure out which low-level functions should be stringed together *should* be faster than deciding this during run time. (not tested yet)
-
-
-
--- if one of the two zdd paths, to be unioned, does not exist durring recursion with mixedunion, then union the consequences with the missing zdd's bdd counterpart
-
 -- absorb decing choice: make 2, union and intersection, if the 0 and 1 zdds are never constructed to be smalleer and larger (respectively) then we could have only 1 absorb. evenmore so we could combine the absorb with the mixed intersection / mixed union, which is probably best for perfornace
 -- the aborb needs not perform an intersection or union after the endleaf (in the consequence), but it needs to treat the leaves differently based on its context
 
@@ -430,7 +416,7 @@ intersectionMain'  c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A)  
             ++ "\n\t (p0R' ^ dcR) = " ++ show (mixedIntersection @Pos0 c p0R' dcR)
             ++ "\n\t dcR = " ++ show dcR
             ++ "\n")
-        in InfNodes positionA dcR n1R n0R p1R p0R -- todo applyElimRule @a?
+        in InfNodes positionA dcR n1R n0R p1R p0R
     | positionA > positionB = intersectionInferA c a b
     | positionA < positionB = intersectionInferB c a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
 intersectionMain' c a b = error (show a ++ ", " ++ show b ++ ", "++ show c)
@@ -1071,8 +1057,7 @@ instance (DdF4 a) => Dd1 a where
         | positionA < positionB = inferNodeB @a (traverse_and_return @a l) c a b
     traverse_and_return' l c a@(EndInfNode _) b@(Node positionD pos_childD neg_childD)  =  inferNodeA @a (traverse_and_return @a l) c a b
     traverse_and_return' l c a@(Node positionD pos_childD neg_childD) b@(EndInfNode _)  =  inferNodeB @a (traverse_and_return @a l) c a b
-    -- todo if leaf == end for current type, then return b
-    --
+
     traverse_and_return' l c a@(Node positionA pos_childA neg_childA) b@(Leaf _) = inferNodeB @a (traverse_and_return @a l) c a b
     traverse_and_return' l c a@(Leaf _) b@(Node positionB pos_childB neg_childB) = inferNodeA @a (traverse_and_return @a l) c a b
 
@@ -1453,7 +1438,6 @@ instance DdF4 Pos0 where
 
 
 -- tandr simple functions
--- todo add inferred node (its not always dc)
 t_and_rInferA :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
 t_and_rInferA _ [] _ _ = error "empty context"
 t_and_rInferA _ _ _ (Leaf _) = error "Leaf in A"
@@ -1464,7 +1448,6 @@ t_and_rInferB' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
 t_and_rInferB' l c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let b = EndInfNode b' in
     (if l then
         (case inf of
-    --todo for neg0 and neg1; if leaf 0 and leaf 1 and then not l should be returned.. right?
                 Dc -> error "inferring an infnode for a Dc context should not happen.. i think"
                     -- dcR = traverse_and_return @Dc l c dcA b --inter
                     -- n1R = traverse_and_return @Neg1 l c n1A b -- union
@@ -1523,7 +1506,6 @@ t_and_rInferB _ _ _ (EndInfNode _) = error "EndNode in A"
 t_and_rInferB _ _ _ (Node _ _ _) = error "Node in A"
 t_and_rInferB l c a b =  t_and_rInferB' l c a b `debug4` ("t_and_rInferB" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferB' l c a b ))
 t_and_rInferA' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
---todo applyElimRule @a (InfNodes positionB dcR n1R n0R p1R p0R)
 t_and_rInferA' l c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in let
             dcR = traverse_and_return @Dc l c dcB a
             n1R = traverse_and_return @Neg1 l c n1B a
