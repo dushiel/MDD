@@ -4,6 +4,7 @@
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant bracket" #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 module MDDi where
 import MDD
 import MDDmanipulation
@@ -25,11 +26,11 @@ infixl 4 -.
 
 infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Dd -> Dd -> Dd
-(.*.) = intersection @'True [(Dc, Inter)]
+(.*.) a b = applyElimRule @'Dc $ intersection @'True [(Dc, Inter)] a b
 
 infixl 3 .+.
 (.+.) :: Dd -> Dd -> Dd
-(.+.) = union @'True [(Dc, Union)]
+(.+.) a b = applyElimRule @'Dc $ union @'True [(Dc, Union)] a b
 
 ite :: Dd -> Dd -> Dd -> Dd
 ite x y z = (x .+. y) .*. ((-.) x .+. z)
