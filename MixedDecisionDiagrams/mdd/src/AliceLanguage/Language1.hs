@@ -23,43 +23,41 @@ newtype Or = Or' String
 
 
 
-names_alice_currently_knows :: [Name]
-names_alice_currently_knows = ["Blueball, Redball, Bobball, Alice, Bob, Mom1, Dad1, daniel"]
+-- names_alice_currently_knows :: [Name]
+-- names_alice_currently_knows = ["Blueball, Redball, Bobball, Alice, Bob, Mom1, Dad1, daniel"]
 
-properties_alice_currently_knows :: [Name]
-properties_alice_currently_knows = ["tasty", "blue", "small", "big"]
-
-
--- map decision diagram variables to meaningful concepts
-newtype DdM = DdM' (Dd, Map.Map Ordinal Sentence)
-
--- one of names lifted to Dd land,
--- together with information linking its domain to its type (names),
--- and its variables to its instances (name)
-name :: DdM
-name = undefined
-
-object :: DdM
-object = undefined
-
-property :: DdM
-property = undefined
-
-is :: DdM -> DdM -> DdM
-is = undefined
-
-and :: DdM -> DdM -> DdM
-and a b = a .^. b
-
-or :: Sentence -> Sentence -> Sentence
-or a b = a .+. b
-
--- generate function: generate a list of all possible combinations in some order. try to make this order seem random, and an input argument
+-- properties_alice_currently_knows :: [Name]
+-- properties_alice_currently_knows = ["tasty", "blue", "small", "big"]
 
 
-main :: IO ()
-main =  do
-    seed randomIO :: IO Float
-    run seed
+-- -- map decision diagram variables to meaningful concepts
+-- newtype DdM = DdM' (Dd, Map.Map Level Sentence)
+
+-- -- one of names lifted to Dd land,
+-- -- together with information linking its domain to its type (names),
+-- -- and its variables to its instances (name)
+-- name :: DdM
+-- name = undefined
+
+-- object :: DdM
+-- object = undefined
+
+-- property :: DdM
+-- property = undefined
+
+-- is :: DdM -> DdM -> DdM
+-- is = undefined
+
+-- and :: DdM -> DdM -> DdM
+-- and a b = a .^. b
+
+-- or :: Sentence -> Sentence -> Sentence
+-- or a b = a .+. b
+
+-- -- generate function: generate a list of all possible combinations in some order. try to make this order seem random, and an input argument
 
 
+-- main :: IO ()
+-- main =  do
+--     seed randomIO :: IO Float
+--     run seed

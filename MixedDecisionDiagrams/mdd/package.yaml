@@ -33,6 +33,9 @@ dependencies:
 - ansi-terminal
 - text
 - graphviz
+- hashable
+- unordered-containers
+- fmt
 
 ghc-options:
 - -Wall
@@ -58,4 +61,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - mdd
-
+  my-other-main:
+    main: memo_proto.hs
+    source-dirs: src

@@ -33,17 +33,6 @@ bot :: Dd
 bot = Leaf False
 
 
--- With makeNode we can never produce a ZDD with 2 specified nodes. See makePath for the more generalised construction of a (single) path in MDDs.
--- Set the node to pos, except for the positiove inference - there it sets it to neg --todo make this clearer?
-makeNode :: Int -> Inf -> Dd
-makeNode i c
-    | c == Dc = InfNodes i (Node i (Leaf True) (Leaf False)) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | c == Neg1 = InfNodes i (Leaf False) (Node i (Leaf True) (Leaf False)) (Leaf True) (Leaf False) (Leaf True)
-    | c == Neg0 = InfNodes i (Leaf True) (Leaf False) (Node i (Leaf False) (Leaf True)) (Leaf False) (Leaf True)
-    | c == Pos1 = InfNodes i (Leaf False) (Leaf False) (Leaf True) (Node i (Leaf False) (Leaf True)) (Leaf True)
-    | c == Pos0 = InfNodes i (Leaf True) (Leaf False) (Leaf True) (Leaf False) (Node i (Leaf True) (Leaf False))
-    | otherwise = error "empty ordinal for makeNode"
-
 
 -- At the variable class given represented by the ordinal, create a path containing the specified nodes from the list with the given inference rule.
 -- We assume fixed variable classes, it is the responsibility of the user to give the correct ordinal
@@ -54,10 +43,36 @@ makeNode i c
 -- possible to give an empty list for the nodes to be set to positive
 -- place a minus sign before a node nr to set it to negative.
 
-data Transfinite_adress = T [(Int, Inf)] [Int]
+data Level = L [(Int, Inf)] Int deriving (Eq, Show)
 
 path :: [(Int, Inf)] -> [Int] -> Dd
 path = makeLocalPath
+
+makeNode :: Level -> Dd
+makeNode (L a b) = makeNode' a b 1
+
+makeNode' :: [(Int, Inf)] -> Int -> Int -> Dd
+makeNode' [] _ _ = error "empty context"
+makeNode' [(i, inf)] nodePosition l
+    | inf == Dc = InfNodes i (loopDc nodePosition False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg1 = InfNodes i ( Leaf False) (loopNeg nodePosition False ) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (loopNeg nodePosition True) (Leaf False) (Leaf True)
+    | inf == Pos1 = InfNodes i ( Leaf False) (Leaf False) (Leaf True) (loopPos nodePosition False) (Leaf True)
+    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodePosition True)
+    where
+        loopDc n end = if n <=0 then Node (abs n) (Leaf True) (Leaf $ not end) else Node n (Leaf $ not end) (Leaf False)
+        loopNeg n end = if n <=0 then Node (abs n) (Leaf end) (Leaf $ not end) else Node n (Leaf $ not end) (Leaf end)
+        loopPos n end = if n <=0 then Node (abs n) (Leaf $ not end) (Leaf end) else Node n (Leaf end) (Leaf $ not end)
+        close = (!! l) . iterate EndInfNode
+
+makeNode' ((i, inf):cs) nodePosition l
+    | inf == Dc = InfNodes i (makeNode' cs nodePosition (l+1)) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg1 = InfNodes i ( Leaf False) (makeNode' cs nodePosition (l+1) ) (Leaf True) (Leaf False) (Leaf True)
+    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (makeNode' cs nodePosition (l+1)) (Leaf False) (Leaf True)
+    | inf == Pos1 = InfNodes i ( Leaf False) (Leaf False) (Leaf True) (makeNode' cs nodePosition (l+1)) (Leaf True)
+    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (makeNode' cs nodePosition (l+1))
+    where
+        close = (!! l) . iterate EndInfNode
 
 makeLocalPath :: [(Int, Inf)] -> [Int] -> Dd
 makeLocalPath a b = makeLocalPath' a b 1

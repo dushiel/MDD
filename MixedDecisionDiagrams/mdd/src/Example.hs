@@ -9,38 +9,38 @@ import Internal.Language
 import DrawMDD
 
 
--- these will automatically be constrocted as Ordinals when transforming them to Dd's
-labelClass = [2]
--- Implicit ordinals, responsibility of the use for correct formatting
-symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" (map (\x -> [x]) [0..])
-conceptLabels = Map.fromList $ zip [1 ..] (map (\x -> labelClass ++ [x]) [1..])
+-- -- these will automatically be constrocted as Ordinals when transforming them to Dd's
+-- labelClass = [2]
+-- -- Implicit ordinals, responsibility of the use for correct formatting
+-- symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" (map (\x -> [x]) [0..])
+-- conceptLabels = Map.fromList $ zip [1 ..] (map (\x -> labelClass ++ [x]) [1..])
 
-vocabulary = ["hell", "hello my name is", "daniel", "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."]
+-- vocabulary = ["hell", "hello my name is", "daniel", "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."]
 
-senToDd = ezPath . sentenceToPath
+-- senToDd = ezPath . sentenceToPath
 
-sentenceToPath :: String -> EasyPath
--- e.g. (Dc, 3, [(Neg1, 1, [ (Neg1, [1,2, -3]) ]) ])
-sentenceToPath s = InfP Neg1 [2] [InfP Neg1 [2,x] [NodeP Neg1 ([[2,x] ++ symbols Map.! y | ' ' /= y]) ] | (x, y) <- zip [1..] s ]
+-- sentenceToPath :: String -> EasyPath
+-- -- e.g. (Dc, 3, [(Neg1, 1, [ (Neg1, [1,2, -3]) ]) ])
+-- sentenceToPath s = InfP Neg1 [2] [InfP Neg1 [2,x] [NodeP Neg1 ([[2,x] ++ symbols Map.! y | ' ' /= y]) ] | (x, y) <- zip [1..] s ]
 
-eFilter v = v .*. ezPath (InfP Dc [2] [InfP Neg1 [2,x] [NodeP Neg1 [[2,x] ++ symbols Map.! 'e']] | x <- [1 .. 50]])
-eFilter2 v = v .*. ezPath (InfP Dc [2] [InfP Neg1 [2,2] [NodeP Neg1 [[2,2] ++ symbols Map.! 'e']]])
-
-
-vocab_as_MDD = foldr ((.+.) . ezPath . sentenceToPath) bot vocabulary
-
--- [[y], x] -> [[y,x]]
--- todo use Data.Bimap
-symbolsR :: [(Ordinal, String)]
-symbolsR = zip (map (Order . (++) [2]) $ concatMap (\x -> map ((\z -> z ++ [x]) . (\y -> [y])) [1..50])  [0..])
-    (concatMap (replicate 50 . (\x -> [x])) "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-")
-
-symbolPositionsLabelR :: [(Ordinal, String)]
-symbolPositionsLabelR = zip (map (\x -> Order $ labelClass ++ [x]) [1..]) (map (\x -> "pos" ++ show x)  [1..50])
+-- eFilter v = v .*. ezPath (InfP Dc [2] [InfP Neg1 [2,x] [NodeP Neg1 [[2,x] ++ symbols Map.! 'e']] | x <- [1 .. 50]])
+-- eFilter2 v = v .*. ezPath (InfP Dc [2] [InfP Neg1 [2,2] [NodeP Neg1 [[2,2] ++ symbols Map.! 'e']]])
 
 
-completeRmap :: Map.Map Ordinal String
-completeRmap = Map.fromList $ symbolsR ++ symbolPositionsLabelR ++ [(Order labelClass, "Labels")]
+-- vocab_as_MDD = foldr ((.+.) . ezPath . sentenceToPath) bot vocabulary
+
+-- -- [[y], x] -> [[y,x]]
+-- -- todo use Data.Bimap
+-- symbolsR :: [(Ordinal, String)]
+-- symbolsR = zip (map (Order . (++) [2]) $ concatMap (\x -> map ((\z -> z ++ [x]) . (\y -> [y])) [1..50])  [0..])
+--     (concatMap (replicate 50 . (\x -> [x])) "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-")
+
+-- symbolPositionsLabelR :: [(Ordinal, String)]
+-- symbolPositionsLabelR = zip (map (\x -> Order $ labelClass ++ [x]) [1..]) (map (\x -> "pos" ++ show x)  [1..50])
+
+
+-- completeRmap :: Map.Map Ordinal String
+-- completeRmap = Map.fromList $ symbolsR ++ symbolPositionsLabelR ++ [(Order labelClass, "Labels")]
 {-}
 
 -- experiences of concepts are a set of specified evaluations for properties in a Dc context

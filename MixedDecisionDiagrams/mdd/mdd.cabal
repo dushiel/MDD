@@ -52,8 +52,11 @@ library
     , base >=4.7 && <5
     , bimap
     , containers
+    , fmt
     , graphviz
+    , hashable
     , text
+    , unordered-containers
   default-language: Haskell2010
 
 executable mdd-exe
@@ -68,7 +71,42 @@ executable mdd-exe
     , base >=4.7 && <5
     , bimap
     , containers
+    , fmt
     , graphviz
+    , hashable
     , mdd
     , text
+    , unordered-containers
+  default-language: Haskell2010
+
+executable my-other-main
+  main-is: memo_proto.hs
+  other-modules:
+      AliceLanguage.Language1
+      AliceLanguage.Language2
+      DotMDD
+      DrawMDD
+      Example
+      Internal.Language
+      Lib
+      Main
+      MDD
+      MDDi
+      MDDmanipulation
+      ReadMDD
+      Symbolic
+      Paths_mdd
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      ansi-terminal
+    , base >=4.7 && <5
+    , bimap
+    , containers
+    , fmt
+    , graphviz
+    , hashable
+    , text
+    , unordered-containers
   default-language: Haskell2010

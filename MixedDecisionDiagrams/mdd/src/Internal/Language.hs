@@ -5,14 +5,14 @@ import MDD
 -- import Test.QuickCheck
 
 --newtype AgAgent = Ag Agent deriving (Eq,Ord,Show)
-newtype Prp = P Ordinal deriving (Eq,Ord,Show)
+newtype Prp = P Level deriving (Eq,Show)
 type Agent = String
 --newtype Group = Group [Agent] deriving (Eq,Ord,Show)
 
 ite :: Form -> Form -> Form -> Form
 ite f g h = Conj [f `Impl` g, Neg f `Impl` h]
 
-toOrdinal :: Prp -> Ordinal
+toOrdinal :: Prp -> Level
 toOrdinal (P i) = i
 
 data Form
@@ -40,7 +40,7 @@ data Form
   -- | PubAnnounceW Form Form      -- ^ Public announcement whether
   -- | Announce [Agent] Form Form  -- ^ (Semi-)Private announcement that
   -- | AnnounceW [Agent] Form Form -- ^ (Semi-)Private announcement whether
-  deriving (Eq,Ord,Show)
+  deriving (Eq,Show)
 
 class Semantics a where
   isTrue :: a -> Form -> Bool
@@ -122,7 +122,7 @@ booloutofForm ps qs = Conj $ [ PrpF p | p <- ps ] ++ [ Neg $ PrpF r | r <- qs \\
 
 
 defaultVocabulary :: [Prp]
-defaultVocabulary = map (P . Order . \x -> [x]) [0..4]
+defaultVocabulary = map (P . L [(0, Dc)] ) [0..4]
 
 -- instance Arbitrary Prp where
 --   arbitrary = elements defaultVocabulary

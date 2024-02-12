@@ -10,11 +10,8 @@ newtype Word = W String
 names :: [String]
 names = ["Blueball, Redball, Bobball, Alice, Bob, Mom1, Dad1, daniel"]
 
-and :: Sentence -> Sentence -> Sentence
-and a b = a .^. b
+-- and :: Sentence -> Sentence -> Sentence
+-- and a b = a .*. b
 
-or :: Sentence -> Sentence -> Sentence
-or a b = a .+. b
-
-
-
+-- or :: Sentence -> Sentence -> Sentence
+-- or a b = a .+. b
