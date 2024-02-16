@@ -40,6 +40,7 @@ instance Hashable Dd where
 data Context = Context {
   nodelookup :: NodeLookup,
   cache :: Cache,
+  cache_ :: SingleCache,
   func_context :: [(Inf, FType)]
 }
 
@@ -49,6 +50,7 @@ data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | 
 
 type NodeLookup =  HashMap.HashMap NodeId (NodeId, Dd)
 type Cache =  HashMap.HashMap (NodeId, NodeId) Dd
+type SingleCache =  HashMap.HashMap NodeId Dd
 getDd :: Context -> NodeId -> Dd
 getDd Context{nodelookup = nm} node_id = case HashMap.lookup node_id nm of
        Just result -> snd result
@@ -80,6 +82,14 @@ withCache c@Context { cache = nc } (keyA, keyB) func_with_args =
       updatedCache = HashMap.insert (keyA, keyB) result nc
       in (updatedContext { cache = updatedCache }, result)
 
+withCache_ :: Context -> NodeId -> (Context, Dd) -> (Context, Dd)
+withCache_ c@Context { cache_ = nc } key func_with_args =
+  case HashMap.lookup key nc of
+    Just result -> (c, result)
+    Nothing -> let
+      (updatedContext, result) = func_with_args
+      updatedCache = HashMap.insert key result nc
+      in (updatedContext { cache_ = updatedCache }, result)
 
 
 insert :: Int -> Dd -> Context -> (Int, Context)

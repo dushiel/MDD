@@ -29,6 +29,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.GraphViz.Attributes.Colors.X11 (x11Colour)
 import System.Console.ANSI.Codes (csi)
+import Data.Hashable
 
 
 
@@ -99,12 +100,18 @@ instance DdF2 True where
     union' c a b = unionMain c a b
 
 negation :: Context -> Dd -> (Context, Dd)
-negation c (Node position pos_child neg_child) = let
+negation c d@(Node position pos_child neg_child) = withCache_ c (hash d) $ let
     (c', posR) = merge_rule_ negation c (getDd c pos_child)
     (c'', negR) = merge_rule_ negation c' (getDd c' pos_child)
     in (c'', Node position posR negR)
-negation c (InfNodes position dc_n n1_n n0_n p1_n p0_n) = (c, InfNodes position (negation dc_n) (negation n0_n) (negation n1_n) (negation p0_n) (negation p1_n))
-negation c (EndInfNode a) = let
+negation c d@(InfNodes position dc_n n1_n n0_n p1_n p0_n) = withCache_ c (hash d) $ let
+    (c', r_dc) = merge_rule_ negation c $ getDd c dc_n
+    (c'', r_n0) = merge_rule_ negation c $ getDd c' n0_n
+    (c''', r_n1) = merge_rule_ negation c $ getDd c'' n1_n
+    (c'''', r_p0) = merge_rule_ negation c $ getDd c''' p0_n
+    (c''''', r_p1) = merge_rule_ negation c $ getDd c'''' p1_n
+        in (c''''', InfNodes position r_dc r_n1 r_n0 r_p1 r_p0)
+negation c d@(EndInfNode a) = withCache_ c (hash d) $ let
     (c', result) = merge_rule_ negation c (getDd c a)
     in (c', EndInfNode result)
 negation c (Leaf b) = (c, Leaf $ not b)
@@ -119,6 +126,8 @@ applyElimRule_arg Neg1 d = applyElimRule @Neg1 d
 applyElimRule_arg Neg0 d = applyElimRule @Neg0 d
 applyElimRule_arg Pos1 d = applyElimRule @Pos1 d
 applyElimRule_arg Pos0 d = applyElimRule @Pos0 d
+
+
 
 intersectionLocal_arg :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
 intersectionLocal_arg (i,t) [] 0 b
