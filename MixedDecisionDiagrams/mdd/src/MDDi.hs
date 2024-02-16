@@ -26,11 +26,11 @@ infixl 4 -.
 
 infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Dd -> Dd -> Dd
-(.*.) a b = applyElimRule @'Dc $ intersection @'True [(Dc, Inter)] a b
+(.*.) a b = applyElimRule @'Dc $ intersection [(Dc, Inter)] a b
 
 infixl 3 .+.
 (.+.) :: Dd -> Dd -> Dd
-(.+.) a b = applyElimRule @'Dc $ union @'True [(Dc, Union)] a b
+(.+.) a b = applyElimRule @'Dc $ union [(Dc, Union)] a b
 
 ite :: Dd -> Dd -> Dd -> Dd
 ite x y z = (x .+. y) .*. ((-.) x .+. z)

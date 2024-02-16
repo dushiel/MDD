@@ -38,6 +38,7 @@ library
       Lib
       Main
       MDD
+      MDD_types
       MDDi
       MDDmanipulation
       ReadMDD
@@ -91,6 +92,7 @@ executable my-other-main
       Lib
       Main
       MDD
+      MDD_types
       MDDi
       MDDmanipulation
       ReadMDD
