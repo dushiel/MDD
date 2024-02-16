@@ -43,7 +43,7 @@ traversal f c a b = let
   in (rc{nodelookup=new_map}, new_id)
 
 -- A higher-order function for handling cache lookup and update
-withCache :: Context -> (Int, Int) -> (Context, Dd) -> (Context, Dd)
+withCache :: Context -> (NodeId, NodeId) -> (Context, Dd) -> (Context, Dd)
 withCache c@Context { cache = nc } (keyA, keyB) func_with_args =
   case HashMap.lookup (keyA, keyB) nc of
     Just result -> (c, result)
@@ -61,17 +61,13 @@ union c a@(Node positionA posA negA) b@(Leaf _) = withCache c (hash a, hash b) $
     (Context{nodelookup=neg_nm, cache=neg_cache},negR) = traversal union c (g negA) b
    in (c{nodelookup = HashMap.union pos_nm neg_nm, cache = HashMap.union pos_cache neg_cache}, Node positionA posR negR)
 
-union c@Context {nodelookup = nm, cache = nc} a@(Leaf _) b@(Node positionB posB negB)  = case HashMap.lookup (hash a, hash b) nc of
-  Just result -> (c, result)
-  Nothing -> let
-    g = getDd nm
+union c a@(Leaf _) b@(Node positionB posB negB)  = withCache c (hash a, hash b) $ let
+    g = getDd c
     (Context{nodelookup=pos_nm, cache=pos_cache},posR) = traversal union c a (g posB)
     (Context{nodelookup=neg_nm, cache=neg_cache},negR) = traversal union c a (g negB)
       in (c{nodelookup = HashMap.union pos_nm neg_nm, cache = HashMap.union pos_cache neg_cache}, Node positionB posR negR)
-union c@Context {nodelookup = nm, cache = nc} a@(Node _ posA negA) b@(Node positionB posB negB) = case HashMap.lookup (hash a, hash b) nc of
-  Just result -> (c, result)
-  Nothing -> let
-    g = getDd nm
+union c a@(Node _ posA negA) b@(Node positionB posB negB) = withCache c (hash a, hash b) $ let
+    g = getDd c
     (Context{nodelookup=pos_nm, cache=pos_cache},posR) = traversal union c (g posA) (g posB)
     (Context{nodelookup=neg_nm, cache=neg_cache},negR) = traversal union c (g negA) (g negB)
       in (c{nodelookup = HashMap.union pos_nm neg_nm, cache = HashMap.union pos_cache neg_cache}, Node positionB posR negR)
@@ -109,9 +105,8 @@ getFreeKey nm
   where
     n = HashMap.size nm
 
-remove :: NodeId -> NodeLookup -> NodeLookup
-remove = HashMap.delete
--- todo set counter to this number if it is not smaller
+remove :: NodeId -> Context -> Context
+remove id c@Context{nodelookup = nm} = c{nodelookup = HashMap.delete id nm}
 
 
 -- h(K) = floor (M (kA mod 1))

@@ -2,9 +2,12 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use camelCase" #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-# LANGUAGE InstanceSigs #-}
 module MDD where
 
 import Debug.Trace ( trace )
+import Data.Hashable
+import qualified Data.HashMap.Strict as HashMap
 
 -- proof of concept GenDDs where no merging of isomorphic nodes happen and no cashing / moization of results during traversal.
 -- GenDDs can model check second order logic formulas containing variables in multiple (disjointed and/or nested) infinite domains.
@@ -12,18 +15,89 @@ import Debug.Trace ( trace )
 
 -- |======================================== Data Types + Explanation ==============================================
 
+type NodeId = Int
 
-data Dd =  Node Int Dd Dd               -- left = pos, right = neg
-                | InfNodes Int Dd Dd Dd Dd Dd    -- sets the inference type when traversing through the tree depending which literal type is inf. We place them at the top (of each sub path of infinite domain). We can have multiple branches due to the multiple possible contexts.
-                | EndInfNode Dd
-                | Leaf Bool
-    deriving (Eq)
 
 data Inf = Dc | Neg1 | Neg0 | Pos1 | Pos0
     deriving (Eq, Show)
 
--- as we traverse through the graph, we can get nested inference contexts:
-type Context = [Inf]
+data Dd =  Node Int NodeId NodeId               -- left = pos, right = neg
+                | InfNodes Int NodeId NodeId NodeId NodeId NodeId    -- sets the inference type when traversing through the tree depending which literal type is inf. We place them at the top (of each sub path of infinite domain). We can have multiple branches due to the multiple possible contexts.
+                | EndInfNode NodeId
+                | Leaf Bool
+    deriving (Eq)
+
+
+instance Hashable Dd where
+  hash :: Dd -> Int
+  hash (Leaf b) = if b then 1 else 0
+  hash (Node idx l r) = idx `hashWithSalt` l `hashWithSalt` r
+  hashWithSalt :: Int -> Dd -> Int
+  hashWithSalt _ (Leaf b) = if b then 1 else 0
+  hashWithSalt s (Node idx l r) = s `hashWithSalt` idx `hashWithSalt` l `hashWithSalt` r
+
+
+data Context = Context {
+  nodelookup :: NodeLookup,
+  cache :: Cache,
+  func_context :: [(Inf, FType)]
+}
+
+data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | T_and_r
+    deriving (Eq, Show)
+
+
+type NodeLookup =  HashMap.HashMap NodeId (NodeId, Dd)
+type Cache =  HashMap.HashMap (NodeId, NodeId) Dd
+getDd :: Context -> NodeId -> Dd
+getDd Context{nodelookup = nm} node_id = case HashMap.lookup node_id nm of
+       Just result -> snd result
+       Nothing -> error "Node adress without Node in NodeLookup table/map"
+
+merge_rule :: (Context -> Dd -> Dd -> (Context, Dd)) -> Context -> Dd -> Dd -> (Context, NodeId)
+merge_rule f c a b = let
+  (rc, result) = f c a b
+  (new_id, c') = insert (hash result) result rc
+  in (c', new_id)
+
+merge_rule_ :: (Context -> Dd -> (Context, Dd)) -> Context -> Dd -> (Context, NodeId)
+merge_rule_ f c a = let
+  (rc, result) = f c a
+  (new_id, c') =  insert (hash result) result rc
+  in (c', new_id)
+
+auto_insert :: Context -> Dd -> (Context, NodeId)
+auto_insert c a = let
+  (new_id, c') =  insert (hash a) a c
+  in (c', new_id)
+-- A higher-order function for handling cache lookup and update
+withCache :: Context -> (NodeId, NodeId) -> (Context, Dd) -> (Context, Dd)
+withCache c@Context { cache = nc } (keyA, keyB) func_with_args =
+  case HashMap.lookup (keyA, keyB) nc of
+    Just result -> (c, result)
+    Nothing -> let
+      (updatedContext, result) = func_with_args
+      updatedCache = HashMap.insert (keyA, keyB) result nc
+      in (updatedContext { cache = updatedCache }, result)
+
+
+
+insert :: Int -> Dd -> Context -> (Int, Context)
+insert k v c@Context{nodelookup=nm} = case HashMap.lookup k nm of
+       Just result -> if v == snd result
+         then (k, c) -- future-todo keep track of how many nodes there are for garbage collection
+         else insert (getFreeKey nm) v c
+       Nothing -> (k, c{nodelookup = HashMap.insert k (getFreeKey nm, v) nm})
+
+getFreeKey :: HashMap.HashMap Int v -> Int
+getFreeKey nm
+  | HashMap.null nm = 1
+  | otherwise = head [x | x <- [1..n+1], not (HashMap.member x nm)]
+  where
+    n = HashMap.size nm
+
+remove :: NodeId -> Context -> Context
+remove i c@Context{nodelookup = nm} = c{nodelookup = HashMap.delete i nm}
 
 
 top :: Dd
@@ -45,96 +119,93 @@ bot = Leaf False
 
 data Level = L [(Int, Inf)] Int deriving (Eq, Show)
 
-path :: [(Int, Inf)] -> [Int] -> Dd
+
+makeNode :: Context -> Level -> (Context, NodeId)
+makeNode c (L [] _) = error "empty context"
+makeNode c (L [(i, inf)] nodePosition)
+    | inf == Dc = let (rc, rid) = auto_insert c (loopDc nodePosition False) in auto_insert rc (InfNodes i rid 0 1 0 1)
+    | inf == Neg1 = let (rc, rid) = auto_insert c (loopNeg nodePosition False) in auto_insert rc (InfNodes i 0 rid 1 0 1)
+    | inf == Neg0 = let (rc, rid) = auto_insert c (loopNeg nodePosition True) in auto_insert rc (InfNodes i 1 0 rid 0 1)
+    | inf == Pos1 = let (rc, rid) = auto_insert c (loopPos nodePosition False) in auto_insert rc (InfNodes i 0 0 1 rid 1)
+    | inf == Pos0 = let (rc, rid) = auto_insert c (loopPos nodePosition True) in auto_insert rc (InfNodes i 1 0 1 0 rid)
+    where
+        loopDc n end = if n <=0 then Node (abs n) 1 (hash $ Leaf $ not end) else Node n (hash $ Leaf $ not end) 0
+        loopNeg n end = if n <=0 then Node (abs n) (hash $ Leaf end) (hash $ Leaf $ not end) else Node n (hash $ Leaf $ not end) (hash $ Leaf end)
+        loopPos n end = if n <=0 then Node (abs n) (hash $ Leaf $ not end) (hash $ Leaf end) else Node n (hash $ Leaf end) (hash $ Leaf $ not end)
+        -- close = (!! l) . iterate EndInfNode
+makeNode c (L ((i, inf):cs) nodePosition)
+    | inf == Dc = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i rid 0 1 0 1)
+    | inf == Neg1 = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i 0 rid 1 0 1)
+    | inf == Neg0 = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i 1 0 rid 0 1)
+    | inf == Pos1 = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i 0 0 1 rid 1)
+    | inf == Pos0 = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i 1 0 1 0 rid)
+    -- where
+        -- close = (!! l) . iterate EndInfNode
+
+path :: Context -> [(Int, Inf)] -> [Int] -> (Context, NodeId)
 path = makeLocalPath
 
-makeNode :: Level -> Dd
-makeNode (L a b) = makeNode' a b 1
 
-makeNode' :: [(Int, Inf)] -> Int -> Int -> Dd
-makeNode' [] _ _ = error "empty context"
-makeNode' [(i, inf)] nodePosition l
-    | inf == Dc = InfNodes i (loopDc nodePosition False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg1 = InfNodes i ( Leaf False) (loopNeg nodePosition False ) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (loopNeg nodePosition True) (Leaf False) (Leaf True)
-    | inf == Pos1 = InfNodes i ( Leaf False) (Leaf False) (Leaf True) (loopPos nodePosition False) (Leaf True)
-    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodePosition True)
-    where
-        loopDc n end = if n <=0 then Node (abs n) (Leaf True) (Leaf $ not end) else Node n (Leaf $ not end) (Leaf False)
-        loopNeg n end = if n <=0 then Node (abs n) (Leaf end) (Leaf $ not end) else Node n (Leaf $ not end) (Leaf end)
-        loopPos n end = if n <=0 then Node (abs n) (Leaf $ not end) (Leaf end) else Node n (Leaf end) (Leaf $ not end)
-        close = (!! l) . iterate EndInfNode
+makeLocalPath :: Context -> [(Int, Inf)] -> [Int] -> (Context, NodeId)
+makeLocalPath c a b = makeLocalPath' a b 1
 
-makeNode' ((i, inf):cs) nodePosition l
-    | inf == Dc = InfNodes i (makeNode' cs nodePosition (l+1)) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg1 = InfNodes i ( Leaf False) (makeNode' cs nodePosition (l+1) ) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (makeNode' cs nodePosition (l+1)) (Leaf False) (Leaf True)
-    | inf == Pos1 = InfNodes i ( Leaf False) (Leaf False) (Leaf True) (makeNode' cs nodePosition (l+1)) (Leaf True)
-    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (makeNode' cs nodePosition (l+1))
-    where
-        close = (!! l) . iterate EndInfNode
-
-makeLocalPath :: [(Int, Inf)] -> [Int] -> Dd
-makeLocalPath a b = makeLocalPath' a b 1
-
-unpackEndInf :: Dd -> Dd
-unpackEndInf (EndInfNode d) = d
-unpackEndInf _ = error "not possible"
-
-
+-- unpackEndInf :: Dd -> Dd
+-- unpackEndInf (EndInfNode d) = d
+-- unpackEndInf _ = error "not possible"
 -- < 0:dc > 3' 4' <2: n1>
 
-makeLocalPath' :: [(Int, Inf)] -> [Int] -> Int -> Dd
-makeLocalPath' [] _ _ = error "empty context"
+makeLocalPath' :: Context -> [(Int, Inf)] -> [Int] -> (Context, NodeId)
+makeLocalPath' c [] _ = error "empty context"
 
-makeLocalPath' [(i, inf)] nodeList l
-    | inf == Dc = InfNodes i (loopDc nodeList False) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg1 = InfNodes i ( Leaf False) (loopNeg nodeList False ) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (loopNeg nodeList True) (Leaf False) (Leaf True)
-    | inf == Pos1 = InfNodes i ( Leaf False) (Leaf False) (Leaf True) (loopPos nodeList False) (Leaf True)
-    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (loopPos nodeList True)
+makeLocalPath' c [(i, inf)] nodeList
+    | inf == Dc = let (rc, rid) = auto_insert c (loopDc nodeList False ) in auto_insert rc (InfNodes i rid 0 1 0 1)
+    | inf == Neg1 = let (rc, rid) = auto_insert c (loopNeg nodeList False ) in auto_insert rc (InfNodes i 0 rid 1 0 1)
+    | inf == Neg0 = let (rc, rid) = auto_insert c (loopNeg nodeList True ) in auto_insert rc (InfNodes i 1 0 rid 0 1)
+    | inf == Pos1 = let (rc, rid) = auto_insert c (loopPos nodeList False ) in auto_insert rc (InfNodes i 0 0 1 rid 1)
+    | inf == Pos0 = let (rc, rid) = auto_insert c (loopPos nodeList True ) in auto_insert rc (InfNodes i 1 0 1 0 rid)
     where
-        loopDc (n:ns) end = if n <=0 then Node (abs n) ((Leaf True)) (loopNeg ns end) else Node n (loopNeg ns end) ((Leaf False))
-        loopNeg [] end = (Leaf $ not end)
-        loopNeg (n:ns) end = if n <=0 then Node (abs n) (Leaf end) (loopNeg ns end) else Node n (loopNeg ns end) (Leaf end)
-        loopPos [] end = (Leaf $ not end)
-        loopPos (n:ns) end = if n <=0 then Node (abs n) (loopNeg ns end) (Leaf end) else Node n (Leaf end) (loopPos ns end)
-        close = (!! l) . iterate EndInfNode
+        loopDc (n:ns) end = if n <=0 then Node (abs n) 1 (hash $ loopDc ns end) else Node n (hash $ loopDc ns end) 0
+        loopDc [] end = Leaf $ not end
+        loopNeg [] end = Leaf $ not end
+        loopNeg (n:ns) end = if n <=0 then Node (abs n) (hash $ Leaf end) (hash $ loopNeg ns end) else Node n (hash $ loopNeg ns end) (hash $ Leaf end)
+        loopPos [] end = Leaf $ not end
+        loopPos (n:ns) end = if n <=0 then Node (abs n) (hash $ loopPos ns end) (hash $ Leaf end) else Node n (hash $ Leaf end) (hash $ loopPos ns end)
+        -- close = (!! l) . iterate EndInfNode
 
-makeLocalPath' ((i, inf):cs) nodeList l
-    | inf == Dc = InfNodes i (makeLocalPath' cs nodeList (l+1)) (Leaf False) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg1 = InfNodes i ( Leaf False) (makeLocalPath' cs nodeList (l+1) ) (Leaf True) (Leaf False) (Leaf True)
-    | inf == Neg0 = InfNodes i ( Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1)) (Leaf False) (Leaf True)
-    | inf == Pos1 = InfNodes i ( Leaf False) (Leaf False) (Leaf True) (makeLocalPath' cs nodeList (l+1)) (Leaf True)
-    | inf == Pos0 = InfNodes i ( Leaf True) (Leaf False) (Leaf True) (Leaf False) (makeLocalPath' cs nodeList (l+1))
-    where
-        close = (!! l) . iterate EndInfNode
+makeLocalPath' c ((i, inf):ns) nodeList
+    | inf == Dc = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i rid 0 1 0 1)
+    | inf == Neg1 = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i 0 rid 1 0 1)
+    | inf == Neg0 = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i 1 0 rid 0 1)
+    | inf == Pos1 = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i 0 0 1 rid 1)
+    | inf == Pos0 = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i 1 0 1 0 rid)
+  --  where
+        -- close = (!! l) . iterate EndInfNode
 
 
 
 
 instance Show Dd where
-    show (Leaf True) = "1"
-    show (Leaf False) = "0"
+    show 1 = "1"
+    show 0 = "0"
     show (EndInfNode d) = " <> " ++ show d
     show (Node a l r) = " " ++ show a ++ " (" ++ show l ++ ") (" ++ show r ++ ")"
-    show (InfNodes a dc (Leaf False) (Leaf True) (Leaf False) (Leaf True)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " )"
+    show (InfNodes a dc 0 1 0 1) = " " ++ show a ++ " ( dc: " ++ show dc ++ " )"
 
-    show (InfNodes a dc (Leaf False) (Leaf True) (Leaf False) p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( p0: " ++ show p0 ++ " )"
-    show (InfNodes a dc (Leaf False) (Leaf True) p1 (Leaf True)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( p1: " ++ show p1 ++ " )"
-    show (InfNodes a dc (Leaf False) n0 (Leaf False) (Leaf True)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n0: " ++ show n0 ++ " )"
-    show (InfNodes a dc n1 (Leaf True) (Leaf False) (Leaf True)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " )"
+    show (InfNodes a dc 0 1 0 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( p0: " ++ show p0 ++ " )"
+    show (InfNodes a dc 0 1 p1 1) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( p1: " ++ show p1 ++ " )"
+    show (InfNodes a dc 0 n0 0 1) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n0: " ++ show n0 ++ " )"
+    show (InfNodes a dc n1 1 0 1) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " )"
 
-    show (InfNodes a dc (Leaf False) (Leaf True) p1 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( p1: " ++ show p1 ++ " ) ( p0: " ++ show p0 ++ " )"
-    show (InfNodes a dc (Leaf False) n0 (Leaf False) p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n0: " ++ show n0 ++ " ) ( p0: " ++ show p0 ++ " )"
-    show (InfNodes a dc (Leaf False) n0 p1 (Leaf True)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " )"
-    show (InfNodes a dc n1 (Leaf True) (Leaf False) p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( p0: " ++ show p0 ++ " )"
-    show (InfNodes a dc n1 (Leaf True) p1 (Leaf True)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( p1: " ++ show p1 ++ " )"
-    show (InfNodes a dc n1 n0 (Leaf False) (Leaf True)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " )"
+    show (InfNodes a dc 0 1 p1 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( p1: " ++ show p1 ++ " ) ( p0: " ++ show p0 ++ " )"
+    show (InfNodes a dc 0 n0 0 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n0: " ++ show n0 ++ " ) ( p0: " ++ show p0 ++ " )"
+    show (InfNodes a dc 0 n0 p1 1) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " )"
+    show (InfNodes a dc n1 1 0 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( p0: " ++ show p0 ++ " )"
+    show (InfNodes a dc n1 1 p1 1) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( p1: " ++ show p1 ++ " )"
+    show (InfNodes a dc n1 n0 0 1) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " )"
 
-    show (InfNodes a dc (Leaf False) n0 p1 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " ) ( p0: " ++ show p0 ++ " )"
-    show (InfNodes a dc n1 (Leaf True) p1 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( p1: " ++ show p1 ++ " ) ( p0: " ++ show p0 ++ " )"
-    show (InfNodes a dc n1 n0 (Leaf False) p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " ) ( p0: " ++ show p0 ++ " )"
-    show (InfNodes a dc n1 n0 p1 (Leaf False)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " )"
+    show (InfNodes a dc 0 n0 p1 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " ) ( p0: " ++ show p0 ++ " )"
+    show (InfNodes a dc n1 1 p1 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( p1: " ++ show p1 ++ " ) ( p0: " ++ show p0 ++ " )"
+    show (InfNodes a dc n1 n0 0 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " ) ( p0: " ++ show p0 ++ " )"
+    show (InfNodes a dc n1 n0 p1 0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " )"
 
     show (InfNodes a dc n1 n0 p1 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " ) ( p0: " ++ show p0 ++ " )"

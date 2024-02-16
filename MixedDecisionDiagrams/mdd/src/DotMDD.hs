@@ -5,8 +5,6 @@ import Data.Text.Lazy (pack, Text)
 import Data.Text.Lazy.IO (putStrLn)
 
 data Dd = Node Int Dd Dd
-        | InfNodes Int Dd Dd Dd Dd Dd
-        | EndInfNode Dd
         | Leaf Bool
         deriving (Eq, Show)
 
