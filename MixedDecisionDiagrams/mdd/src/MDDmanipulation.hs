@@ -115,37 +115,37 @@ applyElimRule_arg Neg0 d = applyElimRule @Neg0 d
 applyElimRule_arg Pos1 d = applyElimRule @Pos1 d
 applyElimRule_arg Pos0 d = applyElimRule @Pos0 d
 
--- intersectionLocal_arg :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
--- intersectionLocal_arg (i,t) [] (Leaf False) b
---     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then Leaf False `debug5` (show i ++ "Leaf False") else Leaf False
---     | i `elem` [Neg0,Pos0] = if debugFlag then b `debug5` (show i ++ "b") else b
--- intersectionLocal_arg (i,t) [] (Leaf True) b
---     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then b `debug5` (show i ++ "b") else b
---     | i `elem` [Neg0,Pos0] = if debugFlag then Leaf True `debug5` (show i ++ "Leaf True") else Leaf True
--- intersectionLocal_arg (i,t) [] a (Leaf False)
---     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then Leaf False `debug5` (show i ++ "Leaf False") else Leaf False
---     | i `elem` [Neg0,Pos0] = if debugFlag then a `debug5` (show i ++ "a") else a
--- intersectionLocal_arg (i,t) [] a (Leaf True)
---     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then a `debug5` (show i ++ "a") else a
---     | i `elem` [Neg0,Pos0] = if debugFlag then Leaf True `debug5` (show i ++ "Leaf True") else Leaf True
--- intersectionLocal_arg a b c d = continue_outer a b c d
--- unionLocal_arg :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
--- unionLocal_arg t c a b = unionLocal_arg' t c a b `debug2` ("unionLocal arg t = " ++ show t ++ ", c = " ++ show c ++ ", \n \t a = " ++ show a ++ ", \n \t b = " ++ show b)
--- unionLocal_arg' :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
--- --todo why am i doing this directly below?
--- unionLocal_arg' (i,t) [] a@(Leaf False) b
---     | i `elem` [Dc,Neg1,Pos1] = b `debug2` (show i ++ "b")
---     | i `elem` [Neg0,Pos0] = Leaf False `debug2` (show i ++ "Leaf False")
--- unionLocal_arg' (i,t) [] a@(Leaf True) b
---     | i `elem` [Dc,Neg1,Pos1] = Leaf True `debug2` (show i ++ "Leaf True")
---     | i `elem` [Neg0,Pos0] = b `debug2` (show i ++ "b")
--- unionLocal_arg' (i,t) [] a b@(Leaf False)
---     | i `elem` [Dc,Neg1,Pos1] = a `debug2` (show i ++ "a")
---     | i `elem` [Neg0,Pos0] = Leaf False `debug2` (show i ++ "Leaf False")
--- unionLocal_arg' (i,t) [] a b@(Leaf True)
---     | i `elem` [Dc,Neg1,Pos1] = Leaf True `debug2` (show i ++ "Leaf True")
---     | i `elem` [Neg0,Pos0] = continue_outer t [] a b
--- unionLocal_arg' t c a b = continue_outer t c a b
+--todo why am i doing this directly below?
+intersectionLocal_arg :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
+intersectionLocal_arg (i,t) [] (Leaf False) b
+    | i `elem` [Dc,Neg1,Pos1] = if debugFlag then Leaf False `debug5` (show i ++ "Leaf False") else Leaf False
+    | i `elem` [Neg0,Pos0] = if debugFlag then b `debug5` (show i ++ "b") else b
+intersectionLocal_arg (i,t) [] (Leaf True) b
+    | i `elem` [Dc,Neg1,Pos1] = if debugFlag then b `debug5` (show i ++ "b") else b
+    | i `elem` [Neg0,Pos0] = if debugFlag then Leaf True `debug5` (show i ++ "Leaf True") else Leaf True
+intersectionLocal_arg (i,t) [] a (Leaf False)
+    | i `elem` [Dc,Neg1,Pos1] = if debugFlag then Leaf False `debug5` (show i ++ "Leaf False") else Leaf False
+    | i `elem` [Neg0,Pos0] = if debugFlag then a `debug5` (show i ++ "a") else a
+intersectionLocal_arg (i,t) [] a (Leaf True)
+    | i `elem` [Dc,Neg1,Pos1] = if debugFlag then a `debug5` (show i ++ "a") else a
+    | i `elem` [Neg0,Pos0] = if debugFlag then Leaf True `debug5` (show i ++ "Leaf True") else Leaf True
+intersectionLocal_arg a b c d = continue_outer a b c d
+unionLocal_arg :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
+unionLocal_arg t c a b = unionLocal_arg' t c a b `debug2` ("unionLocal arg t = " ++ show t ++ ", c = " ++ show c ++ ", \n \t a = " ++ show a ++ ", \n \t b = " ++ show b)
+unionLocal_arg' :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
+unionLocal_arg' (i,t) [] a@(Leaf False) b
+    | i `elem` [Dc,Neg1,Pos1] = b `debug2` (show i ++ "b")
+    | i `elem` [Neg0,Pos0] = Leaf False `debug2` (show i ++ "Leaf False")
+unionLocal_arg' (i,t) [] a@(Leaf True) b
+    | i `elem` [Dc,Neg1,Pos1] = Leaf True `debug2` (show i ++ "Leaf True")
+    | i `elem` [Neg0,Pos0] = b `debug2` (show i ++ "b")
+unionLocal_arg' (i,t) [] a b@(Leaf False)
+    | i `elem` [Dc,Neg1,Pos1] = a `debug2` (show i ++ "a")
+    | i `elem` [Neg0,Pos0] = Leaf False `debug2` (show i ++ "Leaf False")
+unionLocal_arg' (i,t) [] a b@(Leaf True)
+    | i `elem` [Dc,Neg1,Pos1] = Leaf True `debug2` (show i ++ "Leaf True")
+    | i `elem` [Neg0,Pos0] = a `debug2` (show i ++ "a")
+unionLocal_arg' t c a b = continue_outer t c a b
 
 
 continue_outer :: (Inf, FType) -> FuncCtx -> Dd -> Dd -> Dd
@@ -720,14 +720,14 @@ instance (DdF4 a) => Dd1 a where
     remove_outercomplement_from' c a b = undefined `debug4` (show a ++ "  :  " ++ show b)
 
     intersectionLocal' c a@(Leaf True) b = b
-    intersectionLocal' (c:cs) a@(Leaf False) b@(EndInfNode childB ) = continue_outer c cs a childB
+    intersectionLocal' (c:cs) a@(Leaf False) b@(EndInfNode childB ) = intersectionLocal_arg c cs a childB
     intersectionLocal' c a@(Leaf False) b@(Leaf _) = Leaf False -- dc case for leafs
 
     intersectionLocal' c a@(Leaf False) b@(InfNodes {}) = applyInfElimRule @a $ intersectionInferA_ @a c a b -- leaf with node or end infnode
     intersectionLocal' c a@(Leaf False) b = inferNodeA @a (intersectionLocal @a) c a b -- leaf with node or end infnode
 
     intersectionLocal' c a b@(Leaf True) = a
-    intersectionLocal' (c:cs) a@(EndInfNode childA ) b@(Leaf False) = continue_outer c cs childA b
+    intersectionLocal' (c:cs) a@(EndInfNode childA ) b@(Leaf False) = intersectionLocal_arg c cs childA b
 
     intersectionLocal' c a@(Leaf _) b@(Leaf False) = Leaf False -- dc case for leafs
     intersectionLocal' c a@(InfNodes {}) b@(Leaf False) = applyInfElimRule @a $ intersectionInferB_ @a c a b -- leaf with node or end infnode
@@ -771,13 +771,13 @@ instance (DdF4 a) => Dd1 a where
     intersectionLocal' c a b = error ("how did we get here? " ++  show c ++ show a ++ "  -  " ++ show b)
 
     unionLocal' c a@(Leaf False) b = b
-    unionLocal' (c:cs) a@(Leaf True) b@(EndInfNode childB ) = continue_outer c cs a childB `debug2` ("endif a = true, c = " ++ show c ++ "," ++ show cs ++ " a: " ++ show a ++ " b: " ++ show childB)
+    unionLocal' (c:cs) a@(Leaf True) b@(EndInfNode childB ) = unionLocal_arg c cs a childB `debug2` ("endif a = true, c = " ++ show c ++ "," ++ show cs ++ " a: " ++ show a ++ " b: " ++ show childB)
     unionLocal' c a@(Leaf True) b@(Leaf _) = Leaf True
     unionLocal' c a@(Leaf True) b@(InfNodes {}) = applyInfElimRule @a $ unionInferA_ @a c a b
     unionLocal' c a@(Leaf True) b = inferNodeA @a (unionLocal @a) c a b -- leaf with node or end infnode
 
     unionLocal' c a b@(Leaf False) = a
-    unionLocal' (c:cs) a@(EndInfNode childA ) b@(Leaf True) = continue_outer c cs childA b `debug2` ("endif b = true, c = " ++ show c ++ "," ++ show cs ++ " a: " ++ show childA ++ " b: "  ++ show b)
+    unionLocal' (c:cs) a@(EndInfNode childA ) b@(Leaf True) = unionLocal_arg c cs childA b `debug2` ("endif b = true, c = " ++ show c ++ "," ++ show cs ++ " a: " ++ show childA ++ " b: "  ++ show b)
     unionLocal' c a@(Leaf _) b@(Leaf True) = Leaf True
     unionLocal' c a@(InfNodes {}) b@(Leaf True) = applyInfElimRule @a $ unionInferB_ @a c a b
     unionLocal' c a b@(Leaf True) = inferNodeB @a (unionLocal @a) c a b -- leaf with node or end infnode
@@ -922,7 +922,7 @@ instance (DdF4 a) => Dd1 a where
                 neg_result = mixedUnion @a c neg_childA b
             in applyElimRule @a (Node positionA pos_result neg_result)
     -- Both InfNodes have been reached - run the usual union.
-    mixedUnion' (c:cs) (EndInfNode a)  (EndInfNode b) =  continue_outer c cs a b
+    mixedUnion' (c:cs) (EndInfNode a)  (EndInfNode b) =  unionLocal_arg c cs a b
     mixedUnion' [] (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- applyInfElimRule @a $ intersection  [] a (negate_maybe @a b)
     mixedUnion' c a b = error ("mixedunion - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)
 
