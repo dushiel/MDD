@@ -32,10 +32,13 @@ instance Hashable Dd where
   hash :: Dd -> Int
   hash (Leaf b) = if b then 1 else 0
   hash (Node idx l r) = idx `hashWithSalt` l `hashWithSalt` r
+  hash (InfNodes idx dc n1 n0 p1 p0) = idx `hashWithSalt` dc `hashWithSalt` n1 `hashWithSalt` n0 `hashWithSalt` p1 `hashWithSalt` p0
+  hash (EndInfNode d) = d `hashWithSalt` (2::Int)
   hashWithSalt :: Int -> Dd -> Int
   hashWithSalt _ (Leaf b) = if b then 1 else 0
   hashWithSalt s (Node idx l r) = s `hashWithSalt` idx `hashWithSalt` l `hashWithSalt` r
-
+  hashWithSalt s (InfNodes idx dc n1 n0 p1 p0) = s `hashWithSalt` idx `hashWithSalt` dc `hashWithSalt` n1 `hashWithSalt` n0 `hashWithSalt` p1 `hashWithSalt` p0
+  hashWithSalt s (EndInfNode d) = s `hashWithSalt` d `hashWithSalt` (2::Int)
 
 data Context = Context {
   nodelookup :: NodeLookup,
@@ -96,8 +99,16 @@ insert :: Int -> Dd -> Context -> (Int, Context)
 insert k v c@Context{nodelookup=nm} = case HashMap.lookup k nm of
        Just result -> if v == snd result
          then (k, c) -- future-todo keep track of how many nodes there are for garbage collection
-         else insert (getFreeKey nm) v c
+         else
+          if fst result == 0
+            then let
+              k' = getFreeKey nm
+              c' = c{nodelookup = HashMap.insert k (k', snd result) nm}
+              in insert k' v c'
+          else
+             insert (fst result) v c
        Nothing -> (k, c{nodelookup = HashMap.insert k (getFreeKey nm, v) nm})
+
 
 getFreeKey :: HashMap.HashMap Int v -> Int
 getFreeKey nm
@@ -157,7 +168,7 @@ path = makeLocalPath
 
 
 makeLocalPath :: Context -> [(Int, Inf)] -> [Int] -> (Context, NodeId)
-makeLocalPath c a b = makeLocalPath' a b 1
+makeLocalPath = makeLocalPath'
 
 -- unpackEndInf :: Dd -> Dd
 -- unpackEndInf (EndInfNode d) = d
@@ -168,18 +179,27 @@ makeLocalPath' :: Context -> [(Int, Inf)] -> [Int] -> (Context, NodeId)
 makeLocalPath' c [] _ = error "empty context"
 
 makeLocalPath' c [(i, inf)] nodeList
-    | inf == Dc = let (rc, rid) = auto_insert c (loopDc nodeList False ) in auto_insert rc (InfNodes i rid 0 1 0 1)
-    | inf == Neg1 = let (rc, rid) = auto_insert c (loopNeg nodeList False ) in auto_insert rc (InfNodes i 0 rid 1 0 1)
-    | inf == Neg0 = let (rc, rid) = auto_insert c (loopNeg nodeList True ) in auto_insert rc (InfNodes i 1 0 rid 0 1)
-    | inf == Pos1 = let (rc, rid) = auto_insert c (loopPos nodeList False ) in auto_insert rc (InfNodes i 0 0 1 rid 1)
-    | inf == Pos0 = let (rc, rid) = auto_insert c (loopPos nodeList True ) in auto_insert rc (InfNodes i 1 0 1 0 rid)
+    | inf == Dc = let (rc, rid) = loopDc c nodeList False in auto_insert rc (InfNodes i rid 0 1 0 1)
+    | inf == Neg1 = let (rc, rid) = loopNeg c nodeList False in auto_insert rc (InfNodes i 0 rid 1 0 1)
+    | inf == Neg0 = let (rc, rid) = loopNeg c nodeList True in auto_insert rc (InfNodes i 1 0 rid 0 1)
+    | inf == Pos1 = let (rc, rid) = loopPos c nodeList False in auto_insert rc (InfNodes i 0 0 1 rid 1)
+    | inf == Pos0 = let (rc, rid) = loopPos c nodeList True in auto_insert rc (InfNodes i 1 0 1 0 rid)
     where
-        loopDc (n:ns) end = if n <=0 then Node (abs n) 1 (hash $ loopDc ns end) else Node n (hash $ loopDc ns end) 0
-        loopDc [] end = Leaf $ not end
-        loopNeg [] end = Leaf $ not end
-        loopNeg (n:ns) end = if n <=0 then Node (abs n) (hash $ Leaf end) (hash $ loopNeg ns end) else Node n (hash $ loopNeg ns end) (hash $ Leaf end)
-        loopPos [] end = Leaf $ not end
-        loopPos (n:ns) end = if n <=0 then Node (abs n) (hash $ loopPos ns end) (hash $ Leaf end) else Node n (hash $ Leaf end) (hash $ loopPos ns end)
+        loopDc c (n:ns) end = let
+          r = loopDc c ns end in
+          if n <=0 then auto_insert (fst r) (Node (abs n) 1 (hash $ snd r))
+          else auto_insert (fst r) (Node n (hash $ snd r) 0)
+        loopDc c [] end = (c, hash $ Leaf $ not end)
+        loopNeg c [] end = (c, hash $ Leaf $ not end)
+        loopNeg c (n:ns) end = let
+          r = loopNeg c ns end in
+            if n <=0 then auto_insert (fst r) (Node (abs n) (hash $ Leaf end) (hash $ snd r))
+            else auto_insert (fst r) (Node n (hash $ snd r) (hash $ Leaf end))
+        loopPos c [] end = (c, hash $ Leaf $ not end)
+        loopPos c (n:ns) end = let
+          r = loopPos c ns end in
+            if n <=0 then auto_insert (fst r) (Node (abs n) (hash $ snd r) (hash $ Leaf end))
+            else auto_insert (fst r) (Node n (hash $ Leaf end) (hash $ snd r))
         -- close = (!! l) . iterate EndInfNode
 
 makeLocalPath' c ((i, inf):ns) nodeList
@@ -195,8 +215,8 @@ makeLocalPath' c ((i, inf):ns) nodeList
 
 
 instance Show Dd where
-    show 1 = "1"
-    show 0 = "0"
+    show (Leaf True) = "1"
+    show (Leaf False) = "0"
     show (EndInfNode d) = " <> " ++ show d
     show (Node a l r) = " " ++ show a ++ " (" ++ show l ++ ") (" ++ show r ++ ")"
     show (InfNodes a dc 0 1 0 1) = " " ++ show a ++ " ( dc: " ++ show dc ++ " )"

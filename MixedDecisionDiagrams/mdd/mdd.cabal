@@ -42,6 +42,7 @@ library
       MDDi
       MDDmanipulation
       ReadMDD
+      Support
       Symbolic
   other-modules:
       Paths_mdd
@@ -96,6 +97,7 @@ executable my-other-main
       MDDi
       MDDmanipulation
       ReadMDD
+      Support
       Symbolic
       Paths_mdd
   hs-source-dirs:
