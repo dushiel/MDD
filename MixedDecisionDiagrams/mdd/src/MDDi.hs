@@ -7,7 +7,7 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 module MDDi where
 import MDD
-import MDDmanipulation
+-- import MDDmanipulation
 import DrawMDD
 import qualified Data.HashMap.Lazy as HashMap
 import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))

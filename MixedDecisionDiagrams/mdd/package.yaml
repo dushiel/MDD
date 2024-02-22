@@ -14,6 +14,8 @@ extra-source-files:
 - src/AliceLanguage/Language1.hs
 - src/AliceLanguage/Language2.hs
 - src/Lib.hs
+- src/MDDmanipulation.hs
+- src/DotMDD.hs
 
 
 # Metadata used when publishing your package
@@ -36,6 +38,8 @@ dependencies:
 - hashable
 - unordered-containers
 - fmt
+- mtl
+
 
 ghc-options:
 - -Wall
