@@ -11,7 +11,8 @@ import MDD
 import DrawMDD
 import qualified Data.HashMap.Lazy as HashMap
 import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
-
+import Control.Monad.State
+import MDDmanipulation (negation)
 
 -- todo sophisticated test suite,
 -- have arbitrary formulas, then
@@ -22,7 +23,7 @@ import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
 -- |======================================== Dd Manipulation operators ==============================================
 
 infixl 4 -.
-(-.) :: Context -> Dd -> (Context, Dd)
+(-.) :: Dd -> State Context Dd
 (-.) = negation
 -- i dont think negation needs to keep track of context, right?
 
@@ -57,8 +58,8 @@ c = Context{
     cache_ = HashMap.empty :: HashMap.HashMap NodeId Dd,
     func_context = []
     }
-x = makeNode c (L [(0, Dc)] 2)
-x' = path c [(0,Dc)] [2,3]
+x = makeNode (L [(0, Dc)] 2)
+x' = path [(0,Dc)] [2,3]
 
 -- dc2 = path [(0, Dc)] [2]
 -- dc3 = path [(0, Dc)] [3]

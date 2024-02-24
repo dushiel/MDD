@@ -30,6 +30,8 @@ import qualified Data.Map as Map
 import Data.GraphViz.Attributes.Colors.X11 (x11Colour)
 import System.Console.ANSI.Codes (csi)
 import Data.Hashable
+import Control.Monad.State
+import Prelude hiding (traverse)
 
 
 
@@ -72,50 +74,47 @@ type Dd1 :: Inf -> Constraint
 
 
 
-intersection :: Context -> Dd -> Dd -> Dd
-intersection c a b = intersection'  c a b
-    `debug` ("intersection: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
-intersection' :: Context -> Dd -> Dd -> Dd
-intersection' c a (Leaf False) = Leaf False
-intersection' c (Leaf False) b = Leaf False
-intersection' c a (Leaf True) = a
-intersection' c (Leaf True) b = b
-intersection' c a b = intersectionMain c a b
--- union :: Context -> Dd -> Dd -> Dd
+intersection :: Dd -> Dd -> State Context Dd
+intersection a b = intersection'  a b
+    `debug` ("intersection: " ++ show a ++ " ; "  ++ show b)
+intersection' :: Dd -> Dd -> State Context Dd
+intersection' a (Leaf False) = 0
+intersection' (Leaf False) b = 1
+intersection' a (Leaf True) = return a
+intersection' (Leaf True) b = return b
+intersection' a b = intersectionMain a b
+-- union :: Dd -> Dd -> State Context Dd
 -- union c a b = union'  c a b
 --     `debug` ("union: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
--- union' :: Context -> Dd -> Dd -> Dd
+-- union' :: Dd -> Dd -> State Context Dd
 -- union' c a (Leaf True) = Leaf True
 -- union' c (Leaf True) b = Leaf True
 -- union' c a (Leaf False) = a
 -- union' c (Leaf False) b = b
 -- union' c a b = unionMain c a b
 
-negation :: Context -> Dd -> (Context, Dd)
-negation c d@(Node position pos_child neg_child) = withCache_ c (hash d) $ let
-    (c', posR) = merge_rule_ negation c (getDd c pos_child)
-    (c'', negR) = merge_rule_ negation c' (getDd c' pos_child)
-    in (c'', Node position posR negR)
-negation c (Leaf b) = (c, Leaf $ not b)
-negation dd = withCache_ dd $ \d -> case d of
-  InfNodes position dc_n n1_n n0_n p1_n p0_n -> do
-    r_dc <- getDd dc_n >>= merge_rule_ negation
-    r_n0 <- getDd n0_n >>= merge_rule_ negation
-    r_n1 <- getDd n1_n >>= merge_rule_ negation
-    r_p0 <- getDd p0_n >>= merge_rule_ negation
-    r_p1 <- getDd p1_n >>= merge_rule_ negation
+
+
+negation :: Dd -> State Context Dd
+negation (Leaf b) = return $ Leaf $ not b
+negation dd@(Node position pos_child neg_child) = withCache_ dd $ \_ -> do
+    posR <- traverse negation pos_child
+    negR <- traverse negation neg_child
+    return $ Node position posR negR
+negation dd@(InfNodes position dc_n n1_n n0_n p1_n p0_n) = withCache_ dd $ \_ -> do
+    r_dc <- traverse negation dc_n
+    r_n0 <- traverse negation n0_n
+    r_n1 <- traverse negation n1_n
+    r_p0 <- traverse negation p0_n
+    r_p1 <- traverse negation p1_n
     return $ InfNodes position r_dc r_n1 r_n0 r_p1 r_p0
-  EndInfNode dd -> getDd dd >>= merge_rule_ negation
-  Node position pos_child neg_child -> do
-    posR <- getDd pos_child >>= merge_rule_ negation
-    negR <- getDd neg_child >>= merge_rule_ negation
-    return $ Node position poR negR
-
-negation c d@(EndInfNode a) = withCache_ c (hash d) $ let
-    (c', result) = merge_rule_ negation c (getDd c a)
-    in (c', EndInfNode result)
+negation dd@(EndInfNode a) = withCache_ dd $ \_ -> do
+    result <- traverse negation a
+    return $ EndInfNode result
 
 
+debugFlag = False
+debugFlag2 = False
 
 
 -- applyElimRule_arg :: Inf -> Dd -> Dd
@@ -315,10 +314,10 @@ intersectionInferA _ _ (Node _ _ _) = error "Node in A"
 -- intersectionInferB' _ _ _ = undefined
 
 
-intersectionMain :: Context -> Dd -> Dd -> Dd
-intersectionMain (c : cs) a b = intersectionMain' (c : cs) a b  `debug4` ("intersectionMain, from " ++ show c ++ "; " ++ show a ++ " ; "  ++ show b ++ "= \n " ++ show (intersectionMain' (c : cs) a b))
-intersectionMain [] _ _ = error "empty list not possible"
-intersectionMain' :: Context -> Dd -> Dd -> Dd
+intersectionMain :: Dd -> Dd -> State Context Dd
+intersectionMain a b = intersectionMain' a b  `debug4` ("intersectionMain, from " ++ show a ++ " ; "  ++ show b ++ "= \n " ++ show (intersectionMain' a b))
+intersectionMain _ _ = error "empty list not possible"
+intersectionMain' :: Dd -> Dd -> State Context Dd
 intersectionMain'  c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
     | positionA == positionB =  let
         dcR = intersectionLocal @Dc c dcA dcB --`debug` ("intersection A ("++ show positionA ++ ")==B (" ++ show positionB ++ "), with c = " ++ show c)

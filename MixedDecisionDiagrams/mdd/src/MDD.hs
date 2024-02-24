@@ -60,6 +60,13 @@ getDd nodeId = state $ \c@Context{nodelookup = nm} -> (case HashMap.lookup nodeI
        Just result -> snd result
        Nothing -> error "Node adress without Node in NodeLookup table/map", c)
 
+-- | gets the nodeid from child node to apply function on, then stores the result
+traverse :: (Dd -> State Context Dd) -> NodeId -> State Context NodeId
+traverse f nodeId = do
+  dd <- getDd nodeId
+  resultDd <- f dd
+  auto_insert resultDd
+
 
 merge_rule :: (Dd -> Dd -> State Context Dd) -> Dd -> Dd -> State Context NodeId
 merge_rule f a b = do
