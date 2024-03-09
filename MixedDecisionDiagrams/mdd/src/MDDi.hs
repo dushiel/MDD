@@ -5,6 +5,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant bracket" #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# HLINT ignore "Use camelCase" #-}
 module MDDi where
 import MDD
 -- import MDDmanipulation
@@ -12,7 +13,7 @@ import DrawMDD
 import qualified Data.HashMap.Lazy as HashMap
 import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
 import Control.Monad.State
-import MDDmanipulation (negation)
+import MDDmanipulation (negation, debug)
 
 -- todo sophisticated test suite,
 -- have arbitrary formulas, then
@@ -52,13 +53,37 @@ infixl 4 -.
 -- (.<->.) a b = (a .*. b) .+. ((-.) a .*. (-.) b)
 
 ------------------------------------ Test
-c = Context{
+starting_c = Context{
     nodelookup = HashMap.fromList [(0, (0, Leaf False)), (1, (0, Leaf True))] :: HashMap.HashMap NodeId (NodeId, Dd),
     cache = HashMap.empty :: HashMap.HashMap (NodeId, NodeId) Dd,
     cache_ = HashMap.empty :: HashMap.HashMap NodeId Dd,
     func_context = []
     }
-x = makeNode (L [(0, Dc)] 2)
+
+instance Show Context where
+    show c = "Context {nodelookup keys = " ++ show (HashMap.keys (nodelookup c)) ++
+             ", cache keys = " ++ show (HashMap.keys (cache c)) ++
+             ", cache_ keys = " ++ show (HashMap.keys (cache_ c)) ++ "}"
+
+
+some_dd :: State Context NodeId
+some_dd = do
+    ctx <- get
+    makeNode (L [(1, Dc)] 2) `MDD.debug` ("makeNode " ++ show ctx)
+
+toDd :: State Context NodeId -> State Context Dd
+toDd d = do
+    ctx <- get
+    getDd (evalState d ctx) `MDD.debug` ("toDd : " ++ show ctx)
+
+print_ :: Context -> State Context NodeId -> String
+print_ ctx d =
+    let (resulting_dd, c) = runState (toDd d) ctx
+    in (show (DL (nodelookup c) resulting_dd) `MDD.debug` (show c))
+
+x :: String
+x = print_ starting_c some_dd
+
 x' = path [(0,Dc)] [2,3]
 
 -- dc2 = path [(0, Dc)] [2]

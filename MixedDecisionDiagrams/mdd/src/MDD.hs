@@ -58,7 +58,8 @@ type SingleCache =  HashMap.HashMap NodeId Dd
 getDd :: NodeId -> State Context Dd
 getDd nodeId = state $ \c@Context{nodelookup = nm} -> (case HashMap.lookup nodeId nm of
        Just result -> snd result
-       Nothing -> error "Node adress without Node in NodeLookup table/map", c)
+       Nothing -> error $ "Node adress "++ show nodeId ++" without Node in NodeLookup table/map"
+          , c)
 
 -- | gets the nodeid from child node to apply function on, then stores the result
 traverse :: (Dd -> State Context Dd) -> NodeId -> State Context NodeId
@@ -71,12 +72,12 @@ traverse f nodeId = do
 merge_rule :: (Dd -> Dd -> State Context Dd) -> Dd -> Dd -> State Context NodeId
 merge_rule f a b = do
   result <- f a b
-  insert (hash result) result
+  auto_insert result
 
 merge_rule_ :: (Dd -> State Context Dd) -> Dd -> State Context NodeId
 merge_rule_ f dd = do
   result <- f dd
-  insert (hash result) result
+  auto_insert result
 
 
 elim_rules_ :: (Dd -> State Context Dd) -> Dd -> State Context NodeId
@@ -96,7 +97,7 @@ elim_rules_ f dd = do
 
 auto_insert :: Dd -> State Context NodeId
 auto_insert a = do
-  let key = hash a
+  let key = hash a `debug` ("auto_insert " ++ show (hash a))
   -- Use the previously refactored insert logic, now directly within the State monad
   insert key a
 
@@ -180,52 +181,51 @@ makeNode :: Level -> State Context NodeId
 makeNode (L [] _) = error "empty context"
 makeNode (L [(i, inf)] nodePosition) = case inf of
     Dc -> do
-        rid <- auto_insert $ loopDc nodePosition False
-        dd <- auto_insert $ InfNodes i rid 0 1 0 1
-        return dd
+        rid <- loopDc nodePosition
+        auto_insert $ InfNodes i rid 0 1 0 1 `debug` ("auto insert infnode " ++ show i)
     Neg1 -> do
-        rid <- auto_insert $ loopNeg nodePosition False
-        dd <- auto_insert $ InfNodes i 0 rid 1 0 1
-        return dd
+        rid <- loopNeg nodePosition False
+        auto_insert $ InfNodes i 0 rid 1 0 1 `debug` ("auto insert infnode " ++ show i)
     Neg0 -> do
-        rid <- auto_insert $ loopNeg nodePosition True
-        dd <- auto_insert $ InfNodes i 1 0 rid 0 1
-        return dd
+        rid <- loopNeg nodePosition True
+        auto_insert $ InfNodes i 1 0 rid 0 1 `debug` ("auto insert infnode " ++ show i)
     Pos1 -> do
-        rid <- auto_insert $ loopPos nodePosition False
-        dd <- auto_insert $ InfNodes i 0 0 1 rid 1
-        return dd
+        rid <- loopPos nodePosition False
+        auto_insert $ InfNodes i 0 0 1 rid 1 `debug` ("auto insert infnode " ++ show i)
     Pos0 -> do
-        rid <- auto_insert $ loopPos nodePosition True
-        dd <- auto_insert $ InfNodes i 1 0 1 0 rid
-        return dd
+        rid <- loopPos nodePosition True
+        auto_insert $ InfNodes i 1 0 1 0 rid `debug` ("auto insert infnode " ++ show i)
     where
-        loopDc n end = if n <= 0 then Leaf (not end) else Node n (hash $ Leaf $ not end) 0
-        loopNeg n end = if n <= 0 then Leaf end else Node n (hash $ Leaf $ not end) (hash $ Leaf end)
-        loopPos n end = if n <= 0 then Leaf end else Node n (hash $ Leaf end) (hash $ Leaf $ not end)
+        loopDc n = if n <= 0
+          then auto_insert $ Node (abs n) 1 0  `debug` ("auto insert node " ++ show n)
+          else auto_insert $ Node n 0 1  `debug` ("auto insert node " ++ show n)
+        loopNeg n end = if n <= 0
+          then auto_insert $ Leaf end
+          else auto_insert $ Node n (hash $ Leaf $ not end) (hash $ Leaf end)
+        loopPos n end = if n <= 0
+          then auto_insert $ Leaf end
+          else auto_insert $ Node n (hash $ Leaf end) (hash $ Leaf $ not end)
 
 makeNode (L ((i, inf):cs) nodePosition) = case inf of
     Dc -> do
         rid <- makeNode (L cs nodePosition)
-        dd <- auto_insert $ InfNodes i rid 0 1 0 1
-        return dd
+        auto_insert $ InfNodes i rid 0 1 0 1
     Neg1 -> do
         rid <- makeNode (L cs nodePosition)
-        dd <- auto_insert $ InfNodes i 0 rid 1 0 1
-        return dd
+        auto_insert $ InfNodes i 0 rid 1 0 1
     Neg0 -> do
         rid <- makeNode (L cs nodePosition)
-        dd <- auto_insert $ InfNodes i 1 0 rid 0 1
-        return dd
+        auto_insert $ InfNodes i 1 0 rid 0 1
     Pos1 -> do
         rid <- makeNode (L cs nodePosition)
-        dd <- auto_insert $ InfNodes i 0 0 1 rid 1
-        return dd
+        auto_insert $ InfNodes i 0 0 1 rid 1
     Pos0 -> do
         rid <- makeNode (L cs nodePosition)
-        dd <- auto_insert $ InfNodes i 1 0 1 0 rid
-        return dd
+        auto_insert $ InfNodes i 1 0 1 0 rid
 
+
+debug :: a -> String -> a
+debug f s = trace s f
 
 path :: [(Int, Inf)] -> [Int] -> State Context NodeId
 path = makeLocalPath
@@ -244,19 +244,19 @@ makeLocalPath' [] _ = error "empty context"
 makeLocalPath' [(i, inf)] nodeList = case inf of
     Dc -> do
         rid <- loopDc nodeList False
-        auto_insert $ InfNodes i rid 0 1 0 1
+        auto_insert $ InfNodes i rid 0 1 0 1 `debug` ("auto insert infnode " ++ show i)
     Neg1 -> do
         rid <- loopNeg nodeList False
-        auto_insert $ InfNodes i 0 rid 1 0 1
+        auto_insert $ InfNodes i 0 rid 1 0 1 `debug` ("auto insert infnode " ++ show i)
     Neg0 -> do
         rid <- loopNeg nodeList True
-        auto_insert $ InfNodes i 1 0 rid 0 1
+        auto_insert $ InfNodes i 1 0 rid 0 1 `debug` ("auto insert infnode " ++ show i)
     Pos1 -> do
         rid <- loopPos nodeList False
-        auto_insert $ InfNodes i 0 0 1 rid 1
+        auto_insert $ InfNodes i 0 0 1 rid 1 `debug` ("auto insert infnode " ++ show i)
     Pos0 -> do
         rid <- loopPos nodeList True
-        auto_insert $ InfNodes i 1 0 1 0 rid
+        auto_insert $ InfNodes i 1 0 1 0 rid `debug` ("auto insert infnode " ++ show i)
     where
         loopDc (n:ns) end = do
           r <- loopDc ns end
@@ -287,15 +287,18 @@ makeLocalPath' ((i, inf):ns) nodeList = do
 
   --  where
         -- close = (!! l) . iterate EndInfNode
-
-
-
+-- shw :: Dd -> String
+-- shw d = do
+--   ctx <- get
+--   -- dd <- get d
+--   -- make a string from the pure ctx and dd
+--   show $ DdWithLookup (nodelookup ctx) dd
 
 -- Define a wrapper type for Dd that includes the NodeLookup
-data DdWithLookup = DdWithLookup NodeLookup Dd
+data DdWithLookup = DL NodeLookup Dd
 
 instance Show DdWithLookup where
-    show (DdWithLookup nm dd) = showDDwithLookup nm dd
+    show (DL nm dd) = showDDwithLookup nm dd
 
 showDDwithLookup :: NodeLookup -> Dd -> String
 showDDwithLookup nm (Leaf True) = "1"
