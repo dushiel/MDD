@@ -209,11 +209,11 @@ intersectionLocal_arg a b c d = continue_outer a b c d
 addInfNode :: Context -> Int -> Inf -> Dd -> Dd
 addInfNode c n inf conseq  =
         case inf of -- only for Dc we need to check the b, since after a hole we interpret the following sub domains in substance (1-set)
-            Dc -> auto_insert c $ InfNodes n (EndInfNode conseq) 0 1 0 1
-            Neg1 -> auto_insert c $ InfNodes n 0 (EndInfNode conseq) 1 0 1
-            Neg0 -> auto_insert c $ InfNodes n 1 0 (EndInfNode conseq) 0 1
-            Pos1 -> auto_insert c $ InfNodes n 0 0 1 (EndInfNode conseq) 1
-            Pos0 -> auto_insert c $ InfNodes n 1 0 1 0 (EndInfNode conseq)
+            Dc -> insert c $ InfNodes n (EndInfNode conseq) 0 1 0 1
+            Neg1 -> insert c $ InfNodes n 0 (EndInfNode conseq) 1 0 1
+            Neg0 -> insert c $ InfNodes n 1 0 (EndInfNode conseq) 0 1
+            Pos1 -> insert c $ InfNodes n 0 0 1 (EndInfNode conseq) 1
+            Pos0 -> insert c $ InfNodes n 1 0 1 0 (EndInfNode conseq)
 
 intersectionInferA :: Context -> Dd -> Dd -> Dd
 intersectionInferA [] _ _ = error "empty context"
@@ -1107,7 +1107,7 @@ instance DdF4 Dc where
 --     applyElimRule (Leaf b) = Leaf b
 --     applyElimRule d = d-- (EndInfNode _) = error "cannot end on end infnodlet c = lastN' (len positionA) c ine"
     false = EndInfNode $ EndInfNode $ Leaf False
-    true = EndInfNode $ auto_insert c ( hash $ EndInfNode $ Leaf True)
+    true = EndInfNode $ insert c ( hash $ EndInfNode $ Leaf True)
 --     negate_maybe d = d
 --     intersectionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB ((Dc, Inter):c) a b
 --     intersectionInferB_ _ _ _ = undefined

@@ -22,6 +22,8 @@ extra-source-files:
     src/AliceLanguage/Language1.hs
     src/AliceLanguage/Language2.hs
     src/Lib.hs
+    src/MDDmanipulation.hs
+    src/DotMDD.hs
 
 source-repository head
   type: git
@@ -38,11 +40,9 @@ library
       Lib
       Main
       MDD
-      MDD_types
       MDDi
       MDDmanipulation
       ReadMDD
-      Support
       Symbolic
   other-modules:
       Paths_mdd
@@ -93,11 +93,9 @@ executable my-other-main
       Lib
       Main
       MDD
-      MDD_types
       MDDi
       MDDmanipulation
       ReadMDD
-      Support
       Symbolic
       Paths_mdd
   hs-source-dirs:

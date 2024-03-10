@@ -39,7 +39,7 @@ getDd Context{nodelookup = nm} node_id = case HashMap.lookup node_id nm of
 traversal :: (Context -> Dd -> Dd -> (Context, Dd)) -> Context -> Dd -> Dd -> (Context, Int)
 traversal f c a b = let
   (rc@Context{nodelookup=rnm}, result) = f c a b
-  (new_id, new_map) =  insert (hash result) result rnm
+  (new_id, new_map) =  insert_id (hash result) result rnm
   in (rc{nodelookup=new_map}, new_id)
 
 -- A higher-order function for handling cache lookup and update
@@ -78,24 +78,24 @@ union c a@(Node _ posA negA) b@(Node positionB posB negB) = withCache c (hash a,
 main :: IO ()
 main = do
   let nm_empty = HashMap.empty :: HashMap.HashMap Int (Int, Dd)
-  let a = insert (hash $ Leaf True) (Leaf True) nm_empty
+  let a = insert_id (hash $ Leaf True) (Leaf True) nm_empty
   print $ snd a
-  let b = insert (hash $ Leaf False) (Leaf False) nm_empty
+  let b = insert_id (hash $ Leaf False) (Leaf False) nm_empty
   print $ snd b
   let x = Node 1 (fst a) (fst b)
-  let r1 = insert (hash x) x (HashMap.union (snd a) (snd b))
+  let r1 = insert_id (hash x) x (HashMap.union (snd a) (snd b))
   let y = Node 1 (fst b) (fst a)
-  let r2 = insert (hash y) y (snd r1)
+  let r2 = insert_id (hash y) y (snd r1)
   let r3 = union (snd r2) (getDd (snd r2) $ fst r1) (getDd (snd r2) $ fst r2)
   print $ snd r1
   print $ snd r2
   print r3
 
-insert :: Int -> Dd -> NodeLookup -> (Int, NodeLookup)
-insert k v nm = case HashMap.lookup k nm of
+insert_id :: Int -> Dd -> NodeLookup -> (Int, NodeLookup)
+insert_id k v nm = case HashMap.lookup k nm of
        Just result -> if v == snd result
          then (k, nm) -- future-todo keep track of how many nodes there are for garbage collection
-         else insert (getFreeKey nm) v nm
+         else insert_id (getFreeKey nm) v nm
        Nothing -> (k, HashMap.insert k (getFreeKey nm, v) nm)
 
 getFreeKey :: HashMap.HashMap Int v -> Int
@@ -127,7 +127,7 @@ remove id c@Context{nodelookup = nm} = c{nodelookup = HashMap.delete id nm}
 --   r2 = t (getDd negA) b
 --   result = Node i (snd r1) (snd r2)
 --   new_id = show result
---   in (Map.insert new_id result (Map.union (fst r1) (fst r2)), new_id)
+--   in (Map.insert_id new_id result (Map.union (fst r1) (fst r2)), new_id)
 
 -- type Memo = HashMap Int Dd
 

@@ -27,24 +27,25 @@ data Dd =  Node Int NodeId NodeId               -- left = pos, right = neg
                 | Leaf Bool
     deriving (Eq)
 
+data Dd' = Dd_NodeMap Dd NodeLookup
+data NodeId' = Id_NodeMap NodeId NodeLookup
 
 instance Hashable Dd where
-  hash :: Dd -> Int
+  hash :: Dd -> NodeId
   hash (Leaf b) = if b then 1 else 0
   hash (Node idx l r) = idx `hashWithSalt` l `hashWithSalt` r
   hash (InfNodes idx dc n1 n0 p1 p0) = idx `hashWithSalt` dc `hashWithSalt` n1 `hashWithSalt` n0 `hashWithSalt` p1 `hashWithSalt` p0
-  hash (EndInfNode d) = d `hashWithSalt` (2::Int)
-  hashWithSalt :: Int -> Dd -> Int
+  hash (EndInfNode d) = d `hashWithSalt` (2::NodeId)
+  hashWithSalt :: NodeId -> Dd -> NodeId
   hashWithSalt _ (Leaf b) = if b then 1 else 0
   hashWithSalt s (Node idx l r) = s `hashWithSalt` idx `hashWithSalt` l `hashWithSalt` r
   hashWithSalt s (InfNodes idx dc n1 n0 p1 p0) = s `hashWithSalt` idx `hashWithSalt` dc `hashWithSalt` n1 `hashWithSalt` n0 `hashWithSalt` p1 `hashWithSalt` p0
-  hashWithSalt s (EndInfNode d) = s `hashWithSalt` d `hashWithSalt` (2::Int)
+  hashWithSalt s (EndInfNode d) = s `hashWithSalt` d `hashWithSalt` (2::NodeId)
 
 data Context = Context {
-  nodelookup :: NodeLookup,
   cache :: Cache,
   cache_ :: SingleCache,
-  func_context :: [(Inf, FType)]
+  func_stack :: [(Inf, FType)]
 }
 
 data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | T_and_r
@@ -52,29 +53,67 @@ data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | 
 
 
 type NodeLookup =  HashMap.HashMap NodeId (NodeId, Dd)
-type Cache =  HashMap.HashMap (NodeId, NodeId) Dd
-type SingleCache =  HashMap.HashMap NodeId Dd
-getDd :: Context -> NodeId -> Dd
-getDd Context{nodelookup = nm} node_id = case HashMap.lookup node_id nm of
+
+
+getDd :: NodeId' -> Dd'
+getDd (Id_NodeMap node_id nm) = case HashMap.lookup node_id nm of
+       Just result -> Dd_NodeMap (snd result) nm
+       Nothing -> error "Node adress without Node in NodeLookup table/map"
+
+getDd_ :: NodeId -> NodeLookup -> Dd
+getDd_ node_id nm = case HashMap.lookup node_id nm of
        Just result -> snd result
        Nothing -> error "Node adress without Node in NodeLookup table/map"
 
-merge_rule :: (Context -> Dd -> Dd -> (Context, Dd)) -> Context -> Dd -> Dd -> (Context, NodeId)
+merge_rule :: (Context -> Dd' -> Dd' -> (Context, Dd')) -> Context -> Dd' -> Dd' -> (Context, NodeId')
 merge_rule f c a b = let
   (rc, result) = f c a b
-  (new_id, c') = insert (hash result) result rc
-  in (c', new_id)
+  new_id = insert result
+  in (rc, new_id)
 
-merge_rule_ :: (Context -> Dd -> (Context, Dd)) -> Context -> Dd -> (Context, NodeId)
+merge_rule_ :: (Context -> Dd' -> (Context, Dd')) -> Context -> Dd' -> (Context, NodeId')
 merge_rule_ f c a = let
   (rc, result) = f c a
-  (new_id, c') =  insert (hash result) result rc
-  in (c', new_id)
+  new_id = insert result
+  in (rc, new_id)
 
-auto_insert :: Context -> Dd -> (Context, NodeId)
-auto_insert c a = let
-  (new_id, c') =  insert (hash a) a c
-  in (c', new_id)
+insert :: Dd' -> NodeId'
+insert (Dd_NodeMap a nm) = insert_id (hash a) a nm
+
+insert_id :: NodeId -> Dd -> NodeLookup -> NodeId'
+insert_id k v nm = case HashMap.lookup k nm of
+       Just result -> if v == snd result
+         then Id_NodeMap k nm -- future-todo keep track of how many nodes there are for garbage collection
+         else
+          if fst result == 0
+            then let
+              k' = getFreeKey nm
+              nm' = HashMap.insert k (k', snd result) nm
+              in insert_id k' v nm'
+          else
+             insert_id (fst result) v nm
+       Nothing -> Id_NodeMap k (HashMap.insert k (getFreeKey nm, v) nm)
+
+
+getFreeKey :: HashMap.HashMap NodeId v -> NodeId
+getFreeKey nm
+  | HashMap.null nm = 1
+  | otherwise = head [x | x <- [1..n+1], not (HashMap.member x nm)]
+  where
+    n = HashMap.size nm
+
+remove :: NodeId' -> NodeLookup
+remove (Id_NodeMap node_id nm) = undefined
+ -- todo @gpt add logic for checking whether dd is right
+ -- HashMap.delete (node_id, getDd node_id) nm
+
+
+
+-- * functions for Caching / Memoization of results during traversal
+
+type Cache =  HashMap.HashMap (NodeId, NodeId) Dd
+type SingleCache =  HashMap.HashMap NodeId Dd
+
 -- A higher-order function for handling cache lookup and update
 withCache :: Context -> (NodeId, NodeId) -> (Context, Dd) -> (Context, Dd)
 withCache c@Context { cache = nc } (keyA, keyB) func_with_args =
@@ -95,39 +134,9 @@ withCache_ c@Context { cache_ = nc } key func_with_args =
       in (updatedContext { cache_ = updatedCache }, result)
 
 
-insert :: Int -> Dd -> Context -> (Int, Context)
-insert k v c@Context{nodelookup=nm} = case HashMap.lookup k nm of
-       Just result -> if v == snd result
-         then (k, c) -- future-todo keep track of how many nodes there are for garbage collection
-         else
-          if fst result == 0
-            then let
-              k' = getFreeKey nm
-              c' = c{nodelookup = HashMap.insert k (k', snd result) nm}
-              in insert k' v c'
-          else
-             insert (fst result) v c
-       Nothing -> (k, c{nodelookup = HashMap.insert k (getFreeKey nm, v) nm})
 
 
-getFreeKey :: HashMap.HashMap Int v -> Int
-getFreeKey nm
-  | HashMap.null nm = 1
-  | otherwise = head [x | x <- [1..n+1], not (HashMap.member x nm)]
-  where
-    n = HashMap.size nm
-
-remove :: NodeId -> Context -> Context
-remove i c@Context{nodelookup = nm} = c{nodelookup = HashMap.delete i nm}
-
-
-top :: Dd
-top = Leaf True
-
-bot :: Dd
-bot = Leaf False
-
-
+-- * Basic construction of nodes
 
 -- At the variable class given represented by the ordinal, create a path containing the specified nodes from the list with the given inference rule.
 -- We assume fixed variable classes, it is the responsibility of the user to give the correct ordinal
@@ -140,34 +149,45 @@ bot = Leaf False
 
 data Level = L [(Int, Inf)] Int deriving (Eq, Show)
 
+top :: Dd
+top = Leaf True
 
-makeNode :: Context -> Level -> (Context, NodeId)
-makeNode c (L [] _) = error "empty context"
-makeNode c (L [(i, inf)] nodePosition)
-    | inf == Dc = let (rc, rid) = auto_insert c (loopDc nodePosition False) in auto_insert rc (InfNodes i rid 0 1 0 1)
-    | inf == Neg1 = let (rc, rid) = auto_insert c (loopNeg nodePosition False) in auto_insert rc (InfNodes i 0 rid 1 0 1)
-    | inf == Neg0 = let (rc, rid) = auto_insert c (loopNeg nodePosition True) in auto_insert rc (InfNodes i 1 0 rid 0 1)
-    | inf == Pos1 = let (rc, rid) = auto_insert c (loopPos nodePosition False) in auto_insert rc (InfNodes i 0 0 1 rid 1)
-    | inf == Pos0 = let (rc, rid) = auto_insert c (loopPos nodePosition True) in auto_insert rc (InfNodes i 1 0 1 0 rid)
+bot :: Dd
+bot = Leaf False
+
+
+makeNode :: Level -> NodeLookup -> NodeId'
+makeNode (L [] _) _ = error "empty context"
+makeNode (L [(i, inf)] nodePosition) nm
+    | inf == Dc = let (Id_NodeMap rid rm) = loopDc nodePosition False in ins' (InfNodes i rid 0 1 0 1) rm
+    | inf == Neg1 = let (Id_NodeMap rid rm) = loopNeg nodePosition False in ins' (InfNodes i 0 rid 1 0 1) rm
+    | inf == Neg0 = let (Id_NodeMap rid rm) = loopNeg nodePosition True in ins' (InfNodes i 1 0 rid 0 1) rm
+    | inf == Pos1 = let (Id_NodeMap rid rm) = loopPos nodePosition False in ins' (InfNodes i 0 0 1 rid 1) rm
+    | inf == Pos0 = let (Id_NodeMap rid rm) = loopPos nodePosition True in ins' (InfNodes i 1 0 1 0 rid) rm
     where
-        loopDc n end = if n <=0 then Node (abs n) 1 (hash $ Leaf $ not end) else Node n (hash $ Leaf $ not end) 0
-        loopNeg n end = if n <=0 then Node (abs n) (hash $ Leaf end) (hash $ Leaf $ not end) else Node n (hash $ Leaf $ not end) (hash $ Leaf end)
-        loopPos n end = if n <=0 then Node (abs n) (hash $ Leaf $ not end) (hash $ Leaf end) else Node n (hash $ Leaf end) (hash $ Leaf $ not end)
+        ins' d rm = insert $ Dd_NodeMap d rm
+        ins d = insert $ Dd_NodeMap d nm
+        loopDc n end = if n <=0 then ins (Node (abs n) 1 (hash $ Leaf $ not end)) else ins (Node n (hash $ Leaf $ not end) 0)
+        loopNeg n end = if n <=0 then ins (Node (abs n) (hash $ Leaf end) (hash $ Leaf $ not end)) else ins (Node n (hash $ Leaf $ not end) (hash $ Leaf end))
+        loopPos n end = if n <=0 then ins (Node (abs n) (hash $ Leaf $ not end) (hash $ Leaf end)) else ins (Node n (hash $ Leaf end) (hash $ Leaf $ not end))
         -- close = (!! l) . iterate EndInfNode
-makeNode c (L ((i, inf):cs) nodePosition)
-    | inf == Dc = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i rid 0 1 0 1)
-    | inf == Neg1 = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i 0 rid 1 0 1)
-    | inf == Neg0 = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i 1 0 rid 0 1)
-    | inf == Pos1 = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i 0 0 1 rid 1)
-    | inf == Pos0 = let (rc, rid) = makeNode c (L cs nodePosition) in auto_insert rc (InfNodes i 1 0 1 0 rid)
-    -- where
+makeNode (L ((i, inf):cs) nodePosition) nm
+    | inf == Dc = let (Id_NodeMap rid rm) = makeNode (L cs nodePosition) nm in ins' (InfNodes i rid 0 1 0 1) rm
+    | inf == Neg1 = let (Id_NodeMap rid rm) = makeNode (L cs nodePosition) nm in ins' (InfNodes i 0 rid 1 0 1) rm
+    | inf == Neg0 = let (Id_NodeMap rid rm) = makeNode (L cs nodePosition) nm in ins' (InfNodes i 1 0 rid 0 1) rm
+    | inf == Pos1 = let (Id_NodeMap rid rm) = makeNode (L cs nodePosition) nm in ins' (InfNodes i 0 0 1 rid 1) rm
+    | inf == Pos0 = let (Id_NodeMap rid rm) = makeNode (L cs nodePosition) nm in ins' (InfNodes i 1 0 1 0 rid) rm
+    where
+        ins' d rm = insert $ Dd_NodeMap d rm
         -- close = (!! l) . iterate EndInfNode
 
-path :: Context -> [(Int, Inf)] -> [Int] -> (Context, NodeId)
+
+
+
+path :: [(Int, Inf)] -> [Int] -> NodeLookup -> NodeId'
 path = makeLocalPath
 
-
-makeLocalPath :: Context -> [(Int, Inf)] -> [Int] -> (Context, NodeId)
+makeLocalPath :: [(Int, Inf)] -> [Int] -> NodeLookup -> NodeId'
 makeLocalPath = makeLocalPath'
 
 -- unpackEndInf :: Dd -> Dd
@@ -175,40 +195,47 @@ makeLocalPath = makeLocalPath'
 -- unpackEndInf _ = error "not possible"
 -- < 0:dc > 3' 4' <2: n1>
 
-makeLocalPath' :: Context -> [(Int, Inf)] -> [Int] -> (Context, NodeId)
-makeLocalPath' c [] _ = error "empty context"
+makeLocalPath' :: [(Int, Inf)] -> [Int] -> NodeLookup -> NodeId'
+makeLocalPath' [] _ _ = error "empty context"
 
-makeLocalPath' c [(i, inf)] nodeList
-    | inf == Dc = let (rc, rid) = loopDc c nodeList False in auto_insert rc (InfNodes i rid 0 1 0 1)
-    | inf == Neg1 = let (rc, rid) = loopNeg c nodeList False in auto_insert rc (InfNodes i 0 rid 1 0 1)
-    | inf == Neg0 = let (rc, rid) = loopNeg c nodeList True in auto_insert rc (InfNodes i 1 0 rid 0 1)
-    | inf == Pos1 = let (rc, rid) = loopPos c nodeList False in auto_insert rc (InfNodes i 0 0 1 rid 1)
-    | inf == Pos0 = let (rc, rid) = loopPos c nodeList True in auto_insert rc (InfNodes i 1 0 1 0 rid)
+makeLocalPath' [(i, inf)] nodeList nm
+    | inf == Dc = let (Id_NodeMap rid rm) = loopDc nm nodeList False in ins' (InfNodes i rid 0 1 0 1) rm
+    | inf == Neg1 = let (Id_NodeMap rid rm) = loopNeg nm nodeList False in ins' (InfNodes i 0 rid 1 0 1) rm
+    | inf == Neg0 = let (Id_NodeMap rid rm) = loopNeg nm nodeList True in ins' (InfNodes i 1 0 rid 0 1) rm
+    | inf == Pos1 = let (Id_NodeMap rid rm) = loopPos nm nodeList False in ins' (InfNodes i 0 0 1 rid 1) rm
+    | inf == Pos0 = let (Id_NodeMap rid rm) = loopPos nm nodeList True in ins' (InfNodes i 1 0 1 0 rid) rm
     where
-        loopDc c (n:ns) end = let
-          r = loopDc c ns end in
-          if n <=0 then auto_insert (fst r) (Node (abs n) 1 (hash $ snd r))
-          else auto_insert (fst r) (Node n (hash $ snd r) 0)
-        loopDc c [] end = (c, hash $ Leaf $ not end)
-        loopNeg c [] end = (c, hash $ Leaf $ not end)
-        loopNeg c (n:ns) end = let
-          r = loopNeg c ns end in
-            if n <=0 then auto_insert (fst r) (Node (abs n) (hash $ Leaf end) (hash $ snd r))
-            else auto_insert (fst r) (Node n (hash $ snd r) (hash $ Leaf end))
-        loopPos c [] end = (c, hash $ Leaf $ not end)
-        loopPos c (n:ns) end = let
-          r = loopPos c ns end in
-            if n <=0 then auto_insert (fst r) (Node (abs n) (hash $ snd r) (hash $ Leaf end))
-            else auto_insert (fst r) (Node n (hash $ Leaf end) (hash $ snd r))
+        ins' d rm = insert $ Dd_NodeMap d rm
+        ins d nm'' = insert $ Dd_NodeMap d nm''
+        loopDc nm_ (n:ns) end = let
+          (Id_NodeMap id' nm') = loopDc nm_ ns end in
+          if n <=0 then ins (Node (abs n) 1 id') nm'
+          else ins (Node n id' 0) nm'
+        loopDc nm_ [] end = Id_NodeMap (hash $ Leaf $ not end) nm_
+
+
+
+        loopNeg nm_ [] end = Id_NodeMap (hash $ Leaf $ not end) nm_
+        loopNeg nm_ (n:ns) end = let
+          (Id_NodeMap id' nm') = loopNeg nm_ ns end in
+            if n <=0 then ins (Node (abs n) (hash $ Leaf end) id') nm'
+            else ins (Node n id' (hash $ Leaf end)) nm'
+
+        loopPos nm_ [] end = Id_NodeMap (hash $ Leaf $ not end) nm_
+        loopPos nm_ (n:ns) end = let
+          (Id_NodeMap id' nm') = loopPos nm_ ns end in
+            if n <=0 then ins (Node (abs n) id' (hash $ Leaf end)) nm'
+            else ins (Node n (hash $ Leaf end) id') nm'
         -- close = (!! l) . iterate EndInfNode
 
-makeLocalPath' c ((i, inf):ns) nodeList
-    | inf == Dc = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i rid 0 1 0 1)
-    | inf == Neg1 = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i 0 rid 1 0 1)
-    | inf == Neg0 = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i 1 0 rid 0 1)
-    | inf == Pos1 = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i 0 0 1 rid 1)
-    | inf == Pos0 = let (rc, rid) = makeLocalPath' c ns nodeList in auto_insert rc (InfNodes i 1 0 1 0 rid)
-  --  where
+makeLocalPath' ((i, inf):ns) nodeList nm
+    | inf == Dc = let (Id_NodeMap rid rm) = makeLocalPath' ns nodeList nm in ins' (InfNodes i rid 0 1 0 1) rm
+    | inf == Neg1 = let (Id_NodeMap rid rm) = makeLocalPath' ns nodeList nm in ins' (InfNodes i 0 rid 1 0 1) rm
+    | inf == Neg0 = let (Id_NodeMap rid rm) = makeLocalPath' ns nodeList nm in ins' (InfNodes i 1 0 rid 0 1) rm
+    | inf == Pos1 = let (Id_NodeMap rid rm) = makeLocalPath' ns nodeList nm in ins' (InfNodes i 0 0 1 rid 1) rm
+    | inf == Pos0 = let (Id_NodeMap rid rm) = makeLocalPath' ns nodeList nm in ins' (InfNodes i 1 0 1 0 rid) rm
+    where
+      ins' d rm = insert $ Dd_NodeMap d rm
         -- close = (!! l) . iterate EndInfNode
 
 
