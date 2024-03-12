@@ -72,27 +72,27 @@ type Dd1 :: Inf -> Constraint
 
 
 
-intersection :: Context -> Dd -> Dd -> Dd
+intersection :: Context -> Dd' -> Dd' -> Dd'
 intersection c a b = intersection'  c a b
     `debug` ("intersection: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
-intersection' :: Context -> Dd -> Dd -> Dd
+intersection' :: Context -> Dd' -> Dd' -> Dd'
 intersection' c a (Leaf False) = Leaf False
 intersection' c (Leaf False) b = Leaf False
 intersection' c a (Leaf True) = a
 intersection' c (Leaf True) b = b
 intersection' c a b = intersectionMain c a b
--- union :: Context -> Dd -> Dd -> Dd
+-- union :: Context -> Dd' -> Dd' -> Dd'
 -- union c a b = union'  c a b
 --     `debug` ("union: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
--- union' :: Context -> Dd -> Dd -> Dd
+-- union' :: Context -> Dd' -> Dd' -> Dd
 -- union' c a (Leaf True) = Leaf True
 -- union' c (Leaf True) b = Leaf True
 -- union' c a (Leaf False) = a
 -- union' c (Leaf False) b = b
 -- union' c a b = unionMain c a b
 
-negation :: Context -> Dd -> (Context, Dd)
-negation c d@(Node position pos_child neg_child) = withCache_ c (hash d) $ let
+negation :: Context -> Dd' -> (Context, Dd')
+negation c (Dd_NodeMap d@(Node position pos_child neg_child) nm) = withCache_ c (hash d) $ let
     (c', posR) = merge_rule_ negation c (getDd c pos_child)
     (c'', negR) = merge_rule_ negation c' (getDd c' pos_child)
     in (c'', Node position posR negR)
@@ -110,7 +110,7 @@ negation c (Leaf b) = (c, Leaf $ not b)
 
 
 
--- applyElimRule_arg :: Inf -> Dd -> Dd
+-- applyElimRule_arg :: Inf -> Dd' -> Dd'
 -- applyElimRule_arg Dc d = applyElimRule @Dc d
 -- applyElimRule_arg Neg1 d = applyElimRule @Neg1 d
 -- applyElimRule_arg Neg0 d = applyElimRule @Neg0 d
@@ -118,7 +118,7 @@ negation c (Leaf b) = (c, Leaf $ not b)
 -- applyElimRule_arg Pos0 d = applyElimRule @Pos0 d
 
 -- --todo why am i doing this directly below?
-intersectionLocal_arg :: (Inf, FType) -> Context -> Dd -> Dd -> Dd
+intersectionLocal_arg :: (Inf, FType) -> Context -> Dd' -> Dd' -> Dd'
 intersectionLocal_arg (i,t) Context{func_context= []} 0 b
     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then Leaf False `debug5` (show i ++ "Leaf False") else Leaf False
     | i `elem` [Neg0,Pos0] = if debugFlag then b `debug5` (show i ++ "b") else b
@@ -132,9 +132,9 @@ intersectionLocal_arg (i,t) [] a 1
     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then a `debug5` (show i ++ "a") else a
     | i `elem` [Neg0,Pos0] = if debugFlag then Leaf True `debug5` (show i ++ "Leaf True") else Leaf True
 intersectionLocal_arg a b c d = continue_outer a b c d
--- unionLocal_arg :: (Inf, FType) -> Context -> Dd -> Dd -> Dd
+-- unionLocal_arg :: (Inf, FType) -> Context -> Dd' -> Dd' -> Dd'
 -- unionLocal_arg t c a b = unionLocal_arg' t c a b `debug2` ("unionLocal arg t = " ++ show t ++ ", c = " ++ show c ++ ", \n \t a = " ++ show a ++ ", \n \t b = " ++ show b)
--- unionLocal_arg' :: (Inf, FType) -> Context -> Dd -> Dd -> Dd
+-- unionLocal_arg' :: (Inf, FType) -> Context -> Dd' -> Dd' -> Dd'
 -- unionLocal_arg' (i,t) [] a@(Leaf False) b
 --     | i `elem` [Dc,Neg1,Pos1] = b `debug2` (show i ++ "b")
 --     | i `elem` [Neg0,Pos0] = Leaf False `debug2` (show i ++ "Leaf False")
@@ -150,7 +150,7 @@ intersectionLocal_arg a b c d = continue_outer a b c d
 -- unionLocal_arg' t c a b = continue_outer t c a b
 
 
--- continue_outer :: (Inf, FType) -> Context -> Dd -> Dd -> Dd
+-- continue_outer :: (Inf, FType) -> Context -> Dd' -> Dd' -> Dd'
 -- continue_outer t c a b = case t of
 --     (Dc, Inter) -> (intersectionLocal @Dc c a b) `debug5` "inter"
 --     (Neg1, Inter) -> intersectionLocal @Neg1 c a b
@@ -185,7 +185,7 @@ intersectionLocal_arg a b c d = continue_outer a b c d
 --     (_, _) -> error (show t ++ ", " ++ show c ++ ", " ++ show a ++ ", " ++ show b)
 
 
--- t_and_r_arg :: (Inf, FType) -> Bool -> Context -> Dd -> Dd -> Dd
+-- t_and_r_arg :: (Inf, FType) -> Bool -> Context -> Dd' -> Dd' -> Dd'
 -- t_and_r_arg t l c a b = case t of
 --     (Dc, Absorb) -> absorb @Dc c a b
 --     (Neg1, Absorb) -> absorb @Neg1 c a b
@@ -206,7 +206,7 @@ intersectionLocal_arg a b c d = continue_outer a b c d
 --     (_, _) -> error (show t ++ ", " ++ show c ++ ", " ++ show a ++ ", " ++ show b)
 
 
-addInfNode :: Context -> Int -> Inf -> Dd -> Dd
+addInfNode :: Context -> Int -> Inf -> Dd' -> Dd'
 addInfNode c n inf conseq  =
         case inf of -- only for Dc we need to check the b, since after a hole we interpret the following sub domains in substance (1-set)
             Dc -> insert c $ InfNodes n (EndInfNode conseq) 0 1 0 1
@@ -215,14 +215,14 @@ addInfNode c n inf conseq  =
             Pos1 -> insert c $ InfNodes n 0 0 1 (EndInfNode conseq) 1
             Pos0 -> insert c $ InfNodes n 1 0 1 0 (EndInfNode conseq)
 
-intersectionInferA :: Context -> Dd -> Dd -> Dd
+intersectionInferA :: Context -> Dd' -> Dd' -> Dd'
 intersectionInferA [] _ _ = error "empty context"
 intersectionInferA _ _ (Leaf _) = error "Leaf in A"
 intersectionInferA _ _ (EndInfNode _) = error "EndNode in A"
 intersectionInferA _ _ (Node _ _ _) = error "Node in A"
 
 -- intersectionInferA c a b = intersectionInferA' c a b  `debug3` ["intersectionInferA: " ++ show c ++ " ; ", show a ++ " ; " , show b ++ " = \n " , show ( intersectionInferA' c a b) ++ "\n"]
--- intersectionInferA' :: [(Inf, FType)] -> Dd -> Dd -> Dd
+-- intersectionInferA' :: [(Inf, FType)] -> Dd' -> Dd' -> Dd
 -- intersectionInferA' c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in
 --     case inf of
 --         Dc -> let -- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
@@ -259,14 +259,14 @@ intersectionInferA _ _ (Node _ _ _) = error "Node in A"
 --             in InfNodes positionB dcB 0 1 0 p0R
 -- intersectionInferA' _ _ _ = undefined
 
--- intersectionInferB :: Context -> Dd -> Dd -> Dd
+-- intersectionInferB :: Context -> Dd' -> Dd' -> Dd'
 -- intersectionInferB [] _ _ = error "empty context"
 -- intersectionInferB _ (Leaf _) _ = error "Leaf in A"
 -- intersectionInferB _ (EndInfNode _) _ = error "EndNode in A"
 -- intersectionInferB _ (Node _ _ _) _ = error "Node in A"
 
 -- intersectionInferB c a b =  intersectionInferB' c a b `debug4` ("intersectionInferB: " ++ show c ++ " ; " ++ show a ++ " ; " ++ show b ++ " = \n " ++ show (intersectionInferB' c a b) ++ "\n")
--- intersectionInferB' :: [(Inf, FType)] -> Dd -> Dd -> Dd
+-- intersectionInferB' :: [(Inf, FType)] -> Dd' -> Dd' -> Dd'
 -- intersectionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A)  b' = let b = EndInfNode b' in
 --     case inf of
 --         Dc -> let
@@ -306,10 +306,10 @@ intersectionInferA _ _ (Node _ _ _) = error "Node in A"
 -- intersectionInferB' _ _ _ = undefined
 
 
-intersectionMain :: Context -> Dd -> Dd -> Dd
+intersectionMain :: Context -> Dd' -> Dd' -> Dd'
 intersectionMain (c : cs) a b = intersectionMain' (c : cs) a b  `debug4` ("intersectionMain, from " ++ show c ++ "; " ++ show a ++ " ; "  ++ show b ++ "= \n " ++ show (intersectionMain' (c : cs) a b))
 intersectionMain [] _ _ = error "empty list not possible"
-intersectionMain' :: Context -> Dd -> Dd -> Dd
+intersectionMain' :: Context -> Dd' -> Dd' -> Dd'
 intersectionMain'  c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
     | positionA == positionB =  let
         dcR = intersectionLocal @Dc c dcA dcB --`debug` ("intersection A ("++ show positionA ++ ")==B (" ++ show positionB ++ "), with c = " ++ show c)
@@ -391,14 +391,14 @@ intersectionMain'  c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A)  
     | positionA < positionB = intersectionInferB c a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
 intersectionMain' c a b = error (show a ++ ", " ++ show b ++ ", "++ show c)
 
--- unionInferA :: Context -> Dd -> Dd -> Dd
+-- unionInferA :: Context -> Dd' -> Dd' -> Dd'
 -- unionInferA [] _ _ = error "empty context"
 -- unionInferA _ _ (Leaf _) = error "Leaf in A"
 -- unionInferA _ _ (EndInfNode _) = error "EndNode in A"
 -- unionInferA _ _ (Node _ _ _) = error "Node in A"
 
 -- unionInferA c a b =  unionInferA' c a b `debug4` ("unionInferA: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (unionInferA' c a b ))
--- unionInferA' :: [(Inf, FType)] -> Dd -> Dd -> Dd
+-- unionInferA' :: [(Inf, FType)] -> Dd' -> Dd' -> Dd'
 -- unionInferA' c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in
 --     case inf of
 --         Dc -> let
@@ -437,14 +437,14 @@ intersectionMain' c a b = error (show a ++ ", " ++ show b ++ ", "++ show c)
 -- unionInferA' _ _ _ = undefined
 
 
--- unionInferB :: Context -> Dd -> Dd -> Dd
+-- unionInferB :: Context -> Dd' -> Dd' -> Dd'
 -- unionInferB [] _ _ = error "empty context"
 -- unionInferB _ (Leaf _) _ = error "Leaf in A"
 -- unionInferB _ (EndInfNode _) _ = error "EndNode in A"
 -- unionInferB _ (Node _ _ _) _ = error "Node in A"
 
 -- unionInferB c a b =  unionInferB' c a b  `debug4` ("unionInferB: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (unionInferB' c a b ))
--- unionInferB' :: [(Inf, FType)] -> Dd -> Dd -> Dd
+-- unionInferB' :: [(Inf, FType)] -> Dd' -> Dd' -> Dd'
 -- unionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let b = EndInfNode b' in
 --     case inf of
 --         Dc -> let
@@ -494,11 +494,11 @@ intersectionMain' c a b = error (show a ++ ", " ++ show b ++ ", "++ show c)
 --             in InfNodes positionA dcA 0 1 0 p0R
 -- unionInferB' _ _ _ = undefined
 
--- unionMain :: Context -> Dd -> Dd -> Dd
+-- unionMain :: Context -> Dd' -> Dd' -> Dd'
 -- -- exclusive points (0's / holes) under union are filled unless they are present in both A and B (so only an intersection between them needs to be done)
 -- -- inclusive point (1's ) under union are intersected with the opposite infinite subset (dc) before they are added together
 -- unionMain c a b = unionMain' c a b  `debug4` ("unionMain: " ++ show c ++ " ; " ++ show a ++ " ; " ++ show b ++ " = " ++ show (unionMain' c a b))
--- unionMain' :: Context -> Dd -> Dd -> Dd
+-- unionMain' :: Context -> Dd' -> Dd' -> Dd'
 -- unionMain'  c a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
 --     | positionA == positionB =  let
 
@@ -606,13 +606,13 @@ intersectionMain' c a b = error (show a ++ ", " ++ show b ++ ", "++ show c)
 
 -- -- captures the general patterns for the functions
 class Dd1 a where
-    intersectionLocal' :: Context -> Dd -> Dd -> Dd
---     mixedIntersection' :: Context -> Dd -> Dd -> Dd
---     mixedUnion' :: Context -> Dd -> Dd -> Dd
---     unionLocal' :: Context -> Dd -> Dd -> Dd
---     remove_outercomplement_from' :: Context -> Dd -> Dd -> Dd
---     absorb' :: Context -> Dd -> Dd -> Dd
---     traverse_and_return' :: Bool -> Context -> Dd -> Dd -> Dd
+    intersectionLocal' :: Context -> Dd' -> Dd' -> Dd'
+--     mixedIntersection' :: Context -> Dd' -> Dd' -> Dd'
+--     mixedUnion' :: Context -> Dd' -> Dd' -> Dd'
+--     unionLocal' :: Context -> Dd' -> Dd' -> Dd'
+--     remove_outercomplement_from' :: Context -> Dd' -> Dd' -> Dd'
+--     absorb' :: Context -> Dd' -> Dd' -> Dd
+--     traverse_and_return' :: Bool -> Context -> Dd' -> Dd' -> Dd'
 
 
 
@@ -1065,28 +1065,28 @@ absorb_or_remove c@(Context{func_context = []}) = error "no absorb or remove in 
 -- -- holds the debug and class specific functions
 class DdF4 a where
 --     to_constr :: Inf
-    applyElimRule :: Dd -> Dd
-    intersectionLocal :: Context -> Dd -> Dd -> Dd
---     unionLocal :: Context -> Dd -> Dd -> Dd
---     mixedIntersection :: Context -> Dd -> Dd -> Dd
---     mixedUnion :: Context -> Dd -> Dd -> Dd
---     absorb :: Context -> Dd -> Dd -> Dd
---     traverse_and_return :: Bool -> Context -> Dd -> Dd -> Dd
---     remove_outercomplement_from :: Context -> Dd -> Dd -> Dd
+    applyElimRule :: Dd' -> Dd
+    intersectionLocal :: Context -> Dd' -> Dd' -> Dd'
+--     unionLocal :: Context -> Dd' -> Dd' -> Dd'
+--     mixedIntersection :: Context -> Dd' -> Dd' -> Dd'
+--     mixedUnion :: Context -> Dd' -> Dd' -> Dd'
+--     absorb :: Context -> Dd' -> Dd' -> Dd'
+--     traverse_and_return :: Bool -> Context -> Dd' -> Dd' -> Dd'
+--     remove_outercomplement_from :: Context -> Dd' -> Dd' -> Dd'
 
     false :: Dd
     true :: Dd
---     negate_maybe :: Dd -> Dd
---     applyInfElimRule :: Dd -> Dd
---     intersectionInferA_ :: Context -> Dd -> Dd -> Dd
---     intersectionInferB_ :: Context -> Dd -> Dd -> Dd
---     unionInferA_ :: Context -> Dd -> Dd -> Dd
---     unionInferB_ :: Context -> Dd -> Dd -> Dd
---     t_and_rInferA_ :: Bool -> Context -> Dd -> Dd -> Dd
---     t_and_rInferB_ :: Bool -> Context -> Dd -> Dd -> Dd
---     inferNodeA :: (Context -> Dd -> Dd -> Dd) -> Context -> Dd -> Dd -> Dd
---     inferNodeA_opposite :: (Context -> Dd -> Dd -> Dd) -> Context -> Dd -> Dd -> Dd
---     inferNodeB :: (Context -> Dd -> Dd -> Dd) -> Context -> Dd -> Dd -> Dd
+--     negate_maybe :: Dd' -> Dd
+--     applyInfElimRule :: Dd' -> Dd
+--     intersectionInferA_ :: Context -> Dd' -> Dd' -> Dd'
+--     intersectionInferB_ :: Context -> Dd' -> Dd' -> Dd'
+--     unionInferA_ :: Context -> Dd' -> Dd' -> Dd'
+--     unionInferB_ :: Context -> Dd' -> Dd' -> Dd'
+--     t_and_rInferA_ :: Bool -> Context -> Dd' -> Dd' -> Dd'
+--     t_and_rInferB_ :: Bool -> Context -> Dd' -> Dd' -> Dd'
+--     inferNodeA :: (Context -> Dd' -> Dd' -> Dd') -> Context -> Dd' -> Dd' -> Dd'
+--     inferNodeA_opposite :: (Context -> Dd' -> Dd' -> Dd') -> Context -> Dd' -> Dd' -> Dd'
+--     inferNodeB :: (Context -> Dd' -> Dd' -> Dd') -> Context -> Dd' -> Dd' -> Dd'
 
 
 instance DdF4 Dc where
@@ -1415,13 +1415,13 @@ instance DdF4 Pos0 where
 
 
 -- -- tandr simple functions
--- t_and_rInferA :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
+-- t_and_rInferA :: Bool -> [(Inf, FType)] -> Dd' -> Dd' -> Dd
 -- t_and_rInferA _ [] _ _ = error "empty context"
 -- t_and_rInferA _ _ _ (Leaf _) = error "Leaf in A"
 -- t_and_rInferA _ _ _ (EndInfNode _) = error "EndNode in A"
 -- t_and_rInferA _ _ _ (Node _ _ _) = error "Node in A"
 -- t_and_rInferA l c a b =  t_and_rInferA' l c a b `debug5` ("t_and_rInferA" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferA' l c a b ))
--- t_and_rInferB' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
+-- t_and_rInferB' :: Bool -> [(Inf, FType)] -> Dd' -> Dd' -> Dd
 -- t_and_rInferB' l c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let b = EndInfNode b' in
 --     (if l then
 --         (case inf of
@@ -1476,13 +1476,13 @@ instance DdF4 Pos0 where
 
 -- t_and_rInferB' l c a b = error (" : " ++ show a ++ show b ++ show c ++ show l)
 
--- t_and_rInferB :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
+-- t_and_rInferB :: Bool -> [(Inf, FType)] -> Dd' -> Dd' -> Dd
 -- t_and_rInferB _ [] _ _ = error "empty context"
 -- t_and_rInferB _ _ _ (Leaf _) = error "Leaf in A"
 -- t_and_rInferB _ _ _ (EndInfNode _) = error "EndNode in A"
 -- t_and_rInferB _ _ _ (Node _ _ _) = error "Node in A"
 -- t_and_rInferB l c a b =  t_and_rInferB' l c a b `debug4` ("t_and_rInferB" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferB' l c a b ))
--- t_and_rInferA' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
+-- t_and_rInferA' :: Bool -> [(Inf, FType)] -> Dd' -> Dd' -> Dd
 -- t_and_rInferA' l c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in let
 --             dcR = traverse_and_return @Dc l c dcB a
 --             n1R = traverse_and_return @Neg1 l c n1B a
@@ -1492,13 +1492,13 @@ instance DdF4 Pos0 where
 --             in InfNodes positionB dcR n1R n0R p1R p0R
 -- t_and_rInferA' _ _ _ _ = undefined
 
--- t_and_rMain :: Bool -> Context -> Dd -> Dd -> Dd
+-- t_and_rMain :: Bool -> Context -> Dd' -> Dd' -> Dd
 -- t_and_rMain _ [] _ _ = error "empty context"
 -- t_and_rMain _ _ _ (Leaf _) = error "Leaf in A"
 -- t_and_rMain _ _ _ (EndInfNode _) = error "EndNode in A"
 -- t_and_rMain _ _ _ (Node _ _ _) = error "Node in A"
 -- t_and_rMain l c a b =  t_and_rMain' l c a b `debug4` ("t_and_rMain" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rMain' l c a b ))
--- t_and_rMain' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
+-- t_and_rMain' :: Bool -> [(Inf, FType)] -> Dd' -> Dd' -> Dd
 -- t_and_rMain' l c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(InfNodes positionB dcB n1B n0B p1B p0B) = let
 --             dcR = traverse_and_return @Dc l c dcA dcB
 --             n1R = traverse_and_return @Neg1 l c n1A n1B
@@ -1549,5 +1549,5 @@ colorize c s
 
 
 
--- memoize :: (Context -> Dd -> Dd -> Dd) -> Context -> Dd -> Dd -> String -> Int -> Dd
+-- memoize :: (Context -> Dd' -> Dd' -> Dd) -> Context -> Dd' -> Dd' -> String -> Int -> Dd
 -- memoize

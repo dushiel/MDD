@@ -8,6 +8,7 @@ module MDD where
 import Debug.Trace ( trace )
 import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
+import Data.Foldable
 
 -- proof of concept GenDDs where no merging of isomorphic nodes happen and no cashing / moization of results during traversal.
 -- GenDDs can model check second order logic formulas containing variables in multiple (disjointed and/or nested) infinite domains.
@@ -65,6 +66,11 @@ getDd_ node_id nm = case HashMap.lookup node_id nm of
        Just result -> snd result
        Nothing -> error "Node adress without Node in NodeLookup table/map"
 
+getDd__ :: NodeId' -> Dd
+getDd__ (Id_NodeMap node_id nm) = case HashMap.lookup node_id nm of
+       Just result -> snd result
+       Nothing -> error "Node adress without Node in NodeLookup table/map"
+
 merge_rule :: (Context -> Dd' -> Dd' -> (Context, Dd')) -> Context -> Dd' -> Dd' -> (Context, NodeId')
 merge_rule f c a b = let
   (rc, result) = f c a b
@@ -80,21 +86,22 @@ merge_rule_ f c a = let
 insert :: Dd' -> NodeId'
 insert (Dd_NodeMap a nm) = insert_id (hash a) a nm
 
+
 insert_id :: NodeId -> Dd -> NodeLookup -> NodeId'
 insert_id k v nm = case HashMap.lookup k nm of
-       Just result -> if v == snd result
-         then Id_NodeMap k nm -- future-todo keep track of how many nodes there are for garbage collection
-         else
-          if fst result == 0
-            then let
+       Just result -> if v == snd result -- there is something inserted at this key
+         then Id_NodeMap k nm  -- it is the same Dd object, thus simply return the NodeId with its map
+         else -- it is not the same Dd object
+          if fst result == 0 -- does not reffer to another adress
+            then let -- place current object at another adress, update the fst field from 0 to new_address, and insert
               k' = getFreeKey nm
               nm' = HashMap.insert k (k', snd result) nm
               in insert_id k' v nm'
           else
-             insert_id (fst result) v nm
-       Nothing -> Id_NodeMap k (HashMap.insert k (getFreeKey nm, v) nm)
+             insert_id (fst result) v nm -- does refer to another adress, do a recursive call with that adress
+       Nothing -> Id_NodeMap k (HashMap.insert k (0, v) nm) -- key not found, insert current key + value
 
-
+-- | gets a new key candidate
 getFreeKey :: HashMap.HashMap NodeId v -> NodeId
 getFreeKey nm
   | HashMap.null nm = 1
@@ -102,10 +109,41 @@ getFreeKey nm
   where
     n = HashMap.size nm
 
+-- | gets a new key candidate also not appearing in the second argument
+getFreeKey_ :: NodeLookup -> NodeLookup -> NodeId
+getFreeKey_ nm exception_map =
+  let keys = HashMap.keys nm ++ HashMap.keys exception_map
+      maxKey = if null keys then 0 else maximum keys
+  in head [x | x <- [maxKey+1 ..], not (HashMap.member x nm || HashMap.member x exception_map)]
+
+-- | merges 2 maps, handeling collisions
+unionMap :: NodeLookup -> NodeLookup -> NodeLookup
+unionMap mA mB = HashMap.union mA (foldl' updateMap mB conflicts)
+  where
+    conflicts = [(k, vB) | (k, vB) <- HashMap.toList mB, let vA = HashMap.lookup k mA, maybe False (/= vB) vA]
+    -- Updates map with new keys for conflicts and updates references
+    updateMap accMap (oldKey, newVal) =
+      let newKey = getFreeKey_ accMap mA -- Generate a new, unique key
+          -- for each future conflict, give a new key
+          updatedMap = HashMap.insert newKey newVal $ HashMap.delete oldKey $ foldl' updatedMap' accMap (HashMap.toList accMap)
+          -- and change all its references
+          updatedMap' accMap' (key, (pointer, val)) = if pointer == oldKey then HashMap.insert key (newKey, val) accMap' else accMap'
+      in updatedMap
+
+
+
+
 remove :: NodeId' -> NodeLookup
-remove (Id_NodeMap node_id nm) = undefined
- -- todo @gpt add logic for checking whether dd is right
- -- HashMap.delete (node_id, getDd node_id) nm
+remove (Id_NodeMap node_id nm) = HashMap.foldrWithKey' update (HashMap.delete node_id nm) nm
+  where
+    -- Update function to set 'fst value' / 'pointer' to 0 if it matches node_id
+    update key (pointer, dd) acc
+      | node_id == pointer = HashMap.insert key (0, dd) acc
+      | otherwise = acc
+
+
+initNodeLookup :: NodeId' -> NodeLookup
+initNodeLookup dd = undefined
 
 
 
@@ -115,23 +153,29 @@ type Cache =  HashMap.HashMap (NodeId, NodeId) Dd
 type SingleCache =  HashMap.HashMap NodeId Dd
 
 -- A higher-order function for handling cache lookup and update
-withCache :: Context -> (NodeId, NodeId) -> (Context, Dd) -> (Context, Dd)
-withCache c@Context { cache = nc } (keyA, keyB) func_with_args =
+withCache :: Context -> (NodeId', NodeId') -> (Context, Dd') -> (Context, Dd')
+withCache c@Context { cache = nc} (Id_NodeMap keyA _, Id_NodeMap keyB _) func_with_args =
   case HashMap.lookup (keyA, keyB) nc of
-    Just result -> (c, result)
+    Just result -> (c, Dd_NodeMap result)
     Nothing -> let
-      (updatedContext, result) = func_with_args
+      (updatedContext, Dd_NodeMap result nm') = func_with_args
       updatedCache = HashMap.insert (keyA, keyB) result nc
-      in (updatedContext { cache = updatedCache }, result)
+      in (updatedContext { cache = updatedCache }, Dd_NodeMap result nm')
 
-withCache_ :: Context -> NodeId -> (Context, Dd) -> (Context, Dd)
-withCache_ c@Context { cache_ = nc } key func_with_args =
+
+
+
+
+
+
+withCache_ :: Context -> NodeId' -> (Context, Dd') -> (Context, Dd')
+withCache_ c@Context { cache_ = nc } (Id_NodeMap key nm) func_with_args =
   case HashMap.lookup key nc of
-    Just result -> (c, result)
+    Just result -> (c, Dd_NodeMap result nm)
     Nothing -> let
-      (updatedContext, result) = func_with_args
+      (updatedContext, Dd_NodeMap result nm') = func_with_args
       updatedCache = HashMap.insert key result nc
-      in (updatedContext { cache_ = updatedCache }, result)
+      in (updatedContext { cache_ = updatedCache }, Dd_NodeMap result nm')
 
 
 
