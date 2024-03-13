@@ -41,7 +41,7 @@ instance Hashable Dd where
   -- endIfnode : 2
   hash :: Dd -> HashedId
   hash (Leaf b) = if b then 1 else 0
-  hash (Node idx l r) = idx `hashWithSalt` fst l `hashWithSalt` fst r
+  hash (Node idx l r) = (idx `hashWithSalt` fst l `hashWithSalt` fst r) `debug` (" hashing " ++ show (Node idx l r) ++ " -> " ++ show (idx `hashWithSalt` fst l `hashWithSalt` fst r))
   hash (InfNodes idx dc n1 n0 p1 p0) = idx `hashWithSalt` fst dc `hashWithSalt` fst n1 `hashWithSalt` fst n0 `hashWithSalt` fst p1 `hashWithSalt` fst p0
   hash (EndInfNode d) = fst d `hashWithSalt` (2::Int)
   hashWithSalt :: Int -> Dd -> HashedId
@@ -79,6 +79,11 @@ data Context = Context {
   current_level :: Level -- todo implement this still, so that hashing uses a level instead of position only
 }
 
+instance Show Context where
+    show c = "Context {nodelookup keys = " ++ show (HashMap.keys (nodelookup c)) ++
+             "\n\t, cache keys = " ++ show (HashMap.keys (cache c)) ++
+             "\n\t, cache_ keys = " ++ show (HashMap.keys (cache_ c)) ++ "}"
+
 data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | T_and_r
     deriving (Eq, Show)
 
@@ -94,8 +99,8 @@ getDd :: Context -> NodeId -> Dd
 getDd c@Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm of
        Just result -> case Map.lookup (snd node_id) result of
           Just result2 -> dd result2
-          Nothing -> error "Node adress without Alternative in NodeLookup"
-       Nothing -> error "Node adress without Node in NodeLookup table/map"
+          Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with context:" ++ show c
+       Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with context:" ++ show c
 
 getEntry :: Context -> NodeId -> TableEntry
 getEntry c@Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm of
@@ -356,23 +361,28 @@ instance Show Dd where
 
     show (InfNodes a dc n1 n0 p1 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " ) ( p0: " ++ show p0 ++ " )"
 
+debug :: c -> String -> c
+debug f s = trace s f
 
 negation' :: (Context, NodeId) -> (Context, NodeId)
-negation' (c, node_id) = negation c (getDd c node_id) node_id
+negation' (c, node_id) = negation'' c (getDd c node_id) node_id
+
+negation'' :: Context -> Dd -> NodeId ->  (Context, NodeId)
+negation'' c dd node_id  = negation c dd node_id `debug` ("negation : " ++ show node_id ++ " , " ++ show dd) -- "\n -> \n" )
 
 negation :: Context -> Dd -> NodeId -> (Context, NodeId)
 negation c d@(Node position pos_child neg_child) node_id = withCache_ c node_id $ let
-    (c', posR) = negation c (getDd c pos_child) pos_child
-    (c'', negR) = negation c' (getDd c' neg_child) neg_child
-    in insert c'' $ Node position posR negR
+    (c', posR) = negation'' c (getDd c pos_child) pos_child --`debug` ("negation pos child: " ++ show pos_child ++ " , " ++ " -> " ++ show (getDd c pos_child) )
+    (c'', negR) = negation'' c' (getDd c' neg_child) neg_child --`debug` ("negation neg child: " ++ show neg_child ++ " , " ++ "-> " ++ show (getDd c' neg_child))
+    in insert c'' $ Node position posR negR -- `debug` (" inserted: " ++ show (insert c'' $ Node position posR negR))
 negation c d@(InfNodes position dc n1 n0 p1 p0) node_id = withCache_ c  node_id $ let
-    (c', r_dc) = negation c (getDd c dc) dc
-    (c'', r_n0) = negation c (getDd c' n0) n0
-    (c''', r_n1) = negation c (getDd c'' n1) n1
-    (c'''', r_p0) = negation c (getDd c''' p0) p0
-    (c''''', r_p1) = negation c (getDd c'''' p1) p1
+    (c', r_dc) = negation'' c (getDd c dc) dc
+    (c'', r_n0) = negation'' c' (getDd c' n0) n0
+    (c''', r_n1) = negation'' c'' (getDd c'' n1) n1
+    (c'''', r_p0) = negation'' c''' (getDd c''' p0) p0
+    (c''''', r_p1) = negation'' c'''' (getDd c'''' p1) p1
         in insert c''''' $ InfNodes position r_dc r_n1 r_n0 r_p1 r_p0
 negation c d@(EndInfNode a) node_id = withCache_ c  node_id $ let
-    (c', result) = negation c (getDd c a) a
+    (c', result) = negation'' c (getDd c a) a `debug` ("negation endinf child: " ++ show a ++ " , " ++ "\n -> \n" ++ show (getDd c a) )
     in insert c' $ EndInfNode result
-negation c (Leaf b) _ = (c, leaf $ not b)
+negation c (Leaf b) _ = (c, leaf $ not b) --`debug` ("returning : " ++ show (c, leaf $ not b))
