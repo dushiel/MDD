@@ -9,6 +9,8 @@ import Debug.Trace ( trace )
 import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
 import Data.Foldable
+import Data.Map
+import qualified Data.Map as Map
 
 -- proof of concept GenDDs where no merging of isomorphic nodes happen and no cashing / moization of results during traversal.
 -- GenDDs can model check second order logic formulas containing variables in multiple (disjointed and/or nested) infinite domains.
@@ -16,8 +18,8 @@ import Data.Foldable
 
 -- |======================================== Data Types + Explanation ==============================================
 
-type NodeId = Int
-
+type NodeId = HashedId Int
+type HashedId = Int
 
 data Inf = Dc | Neg1 | Neg0 | Pos1 | Pos0
     deriving (Eq, Show)
@@ -28,24 +30,22 @@ data Dd =  Node Int NodeId NodeId               -- left = pos, right = neg
                 | Leaf Bool
     deriving (Eq)
 
-data Dd' = Dd_NodeMap Dd NodeLookup
-data NodeId' = Id_NodeMap NodeId NodeLookup
-
 instance Hashable Dd where
-  hash :: Dd -> NodeId
+  hash :: Dd -> HashedId
   hash (Leaf b) = if b then 1 else 0
-  hash (Node idx l r) = idx `hashWithSalt` l `hashWithSalt` r
-  hash (InfNodes idx dc n1 n0 p1 p0) = idx `hashWithSalt` dc `hashWithSalt` n1 `hashWithSalt` n0 `hashWithSalt` p1 `hashWithSalt` p0
-  hash (EndInfNode d) = d `hashWithSalt` (2::NodeId)
-  hashWithSalt :: NodeId -> Dd -> NodeId
+  hash (Node idx l r) = idx `hashWithSalt` fst l `hashWithSalt` fst r
+  hash (InfNodes idx dc n1 n0 p1 p0) = idx `hashWithSalt` fst dc `hashWithSalt` fst n1 `hashWithSalt` fst n0 `hashWithSalt` fst p1 `hashWithSalt` fst p0
+  hash (EndInfNode d) = fst d `hashWithSalt` (2::NodeId)
+  hashWithSalt :: Int -> Dd -> HashedId
   hashWithSalt _ (Leaf b) = if b then 1 else 0
-  hashWithSalt s (Node idx l r) = s `hashWithSalt` idx `hashWithSalt` l `hashWithSalt` r
-  hashWithSalt s (InfNodes idx dc n1 n0 p1 p0) = s `hashWithSalt` idx `hashWithSalt` dc `hashWithSalt` n1 `hashWithSalt` n0 `hashWithSalt` p1 `hashWithSalt` p0
-  hashWithSalt s (EndInfNode d) = s `hashWithSalt` d `hashWithSalt` (2::NodeId)
+  hashWithSalt s (Node idx l r) = s `hashWithSalt` idx `hashWithSalt` fst l `hashWithSalt` fst r
+  hashWithSalt s (InfNodes idx dc n1 n0 p1 p0) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n1 `hashWithSalt` fst n0 `hashWithSalt` fst p1 `hashWithSalt` fst p0
+  hashWithSalt s (EndInfNode d) = s `hashWithSalt` fst d `hashWithSalt` (2::NodeId)
 
 data Context = Context {
   cache :: Cache,
   cache_ :: SingleCache,
+  nodelookup:: NodeLookup,
   func_stack :: [(Inf, FType)]
 }
 
@@ -53,61 +53,88 @@ data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | 
     deriving (Eq, Show)
 
 
-type NodeLookup =  HashMap.HashMap NodeId (NodeId, Dd)
+type NodeLookup =  HashMap.HashMap HashedId LookupEntry
+type LookupEntry = Map.Map Int TableEntry
+data TableEntry = Entry {
+  dd :: Dd,
+  reference_count :: Int
+}
 
-
-getDd :: NodeId' -> Dd'
-getDd (Id_NodeMap node_id nm) = case HashMap.lookup node_id nm of
-       Just result -> Dd_NodeMap (snd result) nm
+getDd :: NodeId -> Dd
+getDd node_id nm = case HashMap.lookup (fst node_id) nm of
+       Just result -> case Map.lookup (snd node_id) result of
+          Just result2 -> snd result2
+          Nothing -> error "Node adress without Alternative in NodeLookup"
        Nothing -> error "Node adress without Node in NodeLookup table/map"
 
-getDd_ :: NodeId -> NodeLookup -> Dd
-getDd_ node_id nm = case HashMap.lookup node_id nm of
+getEntry :: NodeId -> TableEntry
+getEntry node_id nm = case HashMap.lookup (fst node_id) nm of
+       Just result -> case Map.lookup (snd node_id) result of
+          Just result2 -> result2
+          Nothing -> error "Node adress without Alternative in NodeLookup"
+       Nothing -> error "Node adress without Node in NodeLookup table/map"
+
+getEntry' :: HashedId -> NodeLookup -> LookupEntry
+getEntry' node_id nm = case HashMap.lookup node_id nm of
        Just result -> snd result
        Nothing -> error "Node adress without Node in NodeLookup table/map"
 
-getDd__ :: NodeId' -> Dd
-getDd__ (Id_NodeMap node_id nm) = case HashMap.lookup node_id nm of
-       Just result -> snd result
-       Nothing -> error "Node adress without Node in NodeLookup table/map"
 
-merge_rule :: (Context -> Dd' -> Dd' -> (Context, Dd')) -> Context -> Dd' -> Dd' -> (Context, NodeId')
+-- | finds the alternative in the lookupentry which matches the given dd
+-- nice-to-have: could add small speed up by checking if the length is 1 before matching
+match_alternative :: Dd -> LookupEntry -> Maybe (Int, TableEntry)
+match_alternative targetDD = Map.foldrWithKey' check Nothing
+  where
+    check k entry acc = if dd entry == targetDD
+                        then Just (k, entry)
+                        else acc
+
+-- | gets a new key candidate
+getFreeKey :: Map Int v -> Int
+getFreeKey nm
+  | Map.null nm = 1
+  | otherwise = head [x | x <- [1..n+1], not (Map.member x nm)]
+  where
+    n = Map.size nm
+
+insert_id :: HashedId -> Dd -> NodeLookup -> (NodeId, NodeLookup)
+insert_id k v nm = case HashMap.lookup k nm of
+       Just result -> case match_alternative v result of -- there is something inserted at this key
+         Just (nr, t_entry) -> -- increment the reference count
+              (NodeId k nr, HashMap.insert k (Map.insert k' (Entry{dd = v, reference_count=reference_count t_entry + 1}) result) nm)  -- it is the same Dd object, thus increment its reference count and return the NodeId with its map
+         Nothing ->  -- it is not the same Dd object, get unused key in map
+              let k' = getFreeKey result in
+              (NodeId k k', HashMap.insert k (Map.insert k' (Entry{dd = v, reference_count=1}) result) nm)
+       Nothing -> -- key not found, insert current key with new alternatives map, and set its key 0 to value
+        (NodeId k 0, HashMap.insert k (Map.insert 0 Entry{dd = v, reference_count=1} Map.empty) nm)
+
+insert :: Context -> Dd -> NodeId
+insert c@Context{nodelookup = nm} = insert_id (hash a) a nm
+
+
+-- if key exists, (match_alternative; increment its reference_count),
+-- otherwise make new entry
+
+
+
+
+
+
+
+merge_rule :: (Context -> Dd -> Dd -> (Context, Dd)) -> Context -> Dd -> Dd -> (Context, NodeId)
 merge_rule f c a b = let
   (rc, result) = f c a b
   new_id = insert result
   in (rc, new_id)
 
-merge_rule_ :: (Context -> Dd' -> (Context, Dd')) -> Context -> Dd' -> (Context, NodeId')
+merge_rule_ :: (Context -> Dd -> (Context, Dd)) -> Context -> Dd -> (Context, NodeId)
 merge_rule_ f c a = let
   (rc, result) = f c a
   new_id = insert result
   in (rc, new_id)
 
-insert :: Dd' -> NodeId'
-insert (Dd_NodeMap a nm) = insert_id (hash a) a nm
 
 
-insert_id :: NodeId -> Dd -> NodeLookup -> NodeId'
-insert_id k v nm = case HashMap.lookup k nm of
-       Just result -> if v == snd result -- there is something inserted at this key
-         then Id_NodeMap k nm  -- it is the same Dd object, thus simply return the NodeId with its map
-         else -- it is not the same Dd object
-          if fst result == 0 -- does not reffer to another adress
-            then let -- place current object at another adress, update the fst field from 0 to new_address, and insert
-              k' = getFreeKey nm
-              nm' = HashMap.insert k (k', snd result) nm
-              in insert_id k' v nm'
-          else
-             insert_id (fst result) v nm -- does refer to another adress, do a recursive call with that adress
-       Nothing -> Id_NodeMap k (HashMap.insert k (0, v) nm) -- key not found, insert current key + value
-
--- | gets a new key candidate
-getFreeKey :: HashMap.HashMap NodeId v -> NodeId
-getFreeKey nm
-  | HashMap.null nm = 1
-  | otherwise = head [x | x <- [1..n+1], not (HashMap.member x nm)]
-  where
-    n = HashMap.size nm
 
 -- | gets a new key candidate also not appearing in the second argument
 getFreeKey_ :: NodeLookup -> NodeLookup -> NodeId
@@ -133,8 +160,8 @@ unionMap mA mB = HashMap.union mA (foldl' updateMap mB conflicts)
 
 
 
-remove :: NodeId' -> NodeLookup
-remove (Id_NodeMap node_id nm) = HashMap.foldrWithKey' update (HashMap.delete node_id nm) nm
+dereference :: NodeId -> NodeLookup -> NodeLookup
+dereference node_id nm = HashMap.foldrWithKey' update (HashMap.delete node_id nm) nm
   where
     -- Update function to set 'fst value' / 'pointer' to 0 if it matches node_id
     update key (pointer, dd) acc
@@ -142,7 +169,7 @@ remove (Id_NodeMap node_id nm) = HashMap.foldrWithKey' update (HashMap.delete no
       | otherwise = acc
 
 
-initNodeLookup :: NodeId' -> NodeLookup
+initNodeLookup :: NodeId -> NodeLookup
 initNodeLookup dd = undefined
 
 
@@ -152,8 +179,11 @@ initNodeLookup dd = undefined
 type Cache =  HashMap.HashMap (NodeId, NodeId) Dd
 type SingleCache =  HashMap.HashMap NodeId Dd
 
+
+
+
 -- A higher-order function for handling cache lookup and update
-withCache :: Context -> (NodeId', NodeId') -> (Context, Dd') -> (Context, Dd')
+withCache :: Context -> (NodeId, NodeId) -> (Context, Dd) -> (Context, Dd)
 withCache c@Context { cache = nc} (Id_NodeMap keyA _, Id_NodeMap keyB _) func_with_args =
   case HashMap.lookup (keyA, keyB) nc of
     Just result -> (c, Dd_NodeMap result)
@@ -168,7 +198,7 @@ withCache c@Context { cache = nc} (Id_NodeMap keyA _, Id_NodeMap keyB _) func_wi
 
 
 
-withCache_ :: Context -> NodeId' -> (Context, Dd') -> (Context, Dd')
+withCache_ :: Context -> NodeId -> (Context, Dd) -> (Context, Dd)
 withCache_ c@Context { cache_ = nc } (Id_NodeMap key nm) func_with_args =
   case HashMap.lookup key nc of
     Just result -> (c, Dd_NodeMap result nm)
@@ -200,7 +230,7 @@ bot :: Dd
 bot = Leaf False
 
 
-makeNode :: Level -> NodeLookup -> NodeId'
+makeNode :: Level -> NodeLookup -> NodeId
 makeNode (L [] _) _ = error "empty context"
 makeNode (L [(i, inf)] nodePosition) nm
     | inf == Dc = let (Id_NodeMap rid rm) = loopDc nodePosition False in ins' (InfNodes i rid 0 1 0 1) rm
@@ -228,10 +258,10 @@ makeNode (L ((i, inf):cs) nodePosition) nm
 
 
 
-path :: [(Int, Inf)] -> [Int] -> NodeLookup -> NodeId'
+path :: [(Int, Inf)] -> [Int] -> NodeLookup -> NodeId
 path = makeLocalPath
 
-makeLocalPath :: [(Int, Inf)] -> [Int] -> NodeLookup -> NodeId'
+makeLocalPath :: [(Int, Inf)] -> [Int] -> NodeLookup -> NodeId
 makeLocalPath = makeLocalPath'
 
 -- unpackEndInf :: Dd -> Dd
@@ -239,7 +269,7 @@ makeLocalPath = makeLocalPath'
 -- unpackEndInf _ = error "not possible"
 -- < 0:dc > 3' 4' <2: n1>
 
-makeLocalPath' :: [(Int, Inf)] -> [Int] -> NodeLookup -> NodeId'
+makeLocalPath' :: [(Int, Inf)] -> [Int] -> NodeLookup -> NodeId
 makeLocalPath' [] _ _ = error "empty context"
 
 makeLocalPath' [(i, inf)] nodeList nm
