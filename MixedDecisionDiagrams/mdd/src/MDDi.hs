@@ -7,7 +7,7 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 module MDDi where
 import MDD
-import MDDmanipulation
+-- import MDDmanipulation
 import DrawMDD
 import qualified Data.HashMap.Lazy as HashMap
 import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
@@ -22,8 +22,8 @@ import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
 -- |======================================== Dd Manipulation operators ==============================================
 
 infixl 4 -.
-(-.) :: Context -> Dd -> (Context, Dd)
-(-.) = negation
+(-.) :: Context -> NodeId -> (Context, NodeId)
+(-.) c node_id = negation c (getDd c node_id) node_id
 -- i dont think negation needs to keep track of context, right?
 
 -- infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
@@ -52,13 +52,15 @@ infixl 4 -.
 
 ------------------------------------ Test
 c = Context{
-    nodelookup = HashMap.fromList [(0, (0, Leaf False)), (1, (0, Leaf True))] :: HashMap.HashMap NodeId (NodeId, Dd),
-    cache = HashMap.empty :: HashMap.HashMap (NodeId, NodeId) Dd,
-    cache_ = HashMap.empty :: HashMap.HashMap NodeId Dd,
-    func_context = []
+    nodelookup = defaultNodeMap,
+    cache = HashMap.empty :: HashMap.HashMap (NodeId, NodeId) NodeId,
+    cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
+    func_stack = [],
+    current_level = L [] 0
     }
 x = makeNode c (L [(0, Dc)] 2)
-x' = path c [(0,Dc)] [2,3]
+x' = negation' x
+-- x' = path c [(0,Dc)] [2,3]
 
 -- dc2 = path [(0, Dc)] [2]
 -- dc3 = path [(0, Dc)] [3]

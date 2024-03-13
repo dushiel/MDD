@@ -164,12 +164,12 @@ dereference c@Context{nodelookup=nm} node_id@(key, alt_key)  =
     e = getEntry c node_id
 
 
-recursive :: Context -> Dd -> NodeId -> (Context, Dd)
+recursive :: Context -> Dd -> NodeId -> (Context, NodeId)
 recursive c d@(Node _ pos_child neg_child) node_id = withCache_ c node_id $ let
     (c', _) = recursive c (getDd c pos_child) pos_child
     (c'', _) = recursive c' (getDd c' neg_child) neg_child
     c''' = dereference c'' node_id
-    in (c''', d)
+    in (c''', node_id)
 recursive c d@(InfNodes _ dc n1 n0 p1 p0) node_id = withCache_ c node_id $ let
     (c', _) = recursive c (getDd c dc) dc
     (c'', _) = recursive c (getDd c' n0) n0
@@ -177,11 +177,11 @@ recursive c d@(InfNodes _ dc n1 n0 p1 p0) node_id = withCache_ c node_id $ let
     (c'''', _) = recursive c (getDd c''' p0) p0
     (c''''', _) = recursive c (getDd c'''' p1) p1
     c'''''' = dereference c''''' node_id
-    in (c'''''', d)
+    in (c'''''', node_id)
 recursive c d@(EndInfNode a) node_id = withCache_ c node_id $ let
     (c', _) = recursive c (getDd c a) a
     c'' = dereference c' node_id
-    in (c'', d)
+    in (c'', node_id)
 
 -- | as opposed to insert, this will do a recursive/deep call adding a refence for each node
 reference :: NodeId -> NodeLookup
@@ -194,11 +194,11 @@ deep_equality = undefined
 
 -- * functions for Caching / Memoization of results during traversal
 
-type Cache =  HashMap.HashMap (NodeId, NodeId) Dd
-type SingleCache =  HashMap.HashMap NodeId Dd
+type Cache =  HashMap.HashMap (NodeId, NodeId) NodeId
+type SingleCache =  HashMap.HashMap NodeId NodeId
 
 
-withCache_ :: Context -> NodeId -> (Context, Dd) -> (Context, Dd)
+withCache_ :: Context -> NodeId -> (Context, NodeId) -> (Context, NodeId)
 withCache_ c@Context { cache_ = nc } key func_with_args =
   case HashMap.lookup key nc of
     Just result -> (c, result)
@@ -209,7 +209,7 @@ withCache_ c@Context { cache_ = nc } key func_with_args =
 
 
 -- A higher-order function for handling cache lookup and update
-withCache :: Context -> (NodeId, NodeId) -> (Context, Dd) -> (Context, Dd)
+withCache :: Context -> (NodeId, NodeId) -> (Context, NodeId) -> (Context, NodeId)
 withCache c@Context { cache = nc} (keyA, keyB) func_with_args =
   case HashMap.lookup (keyA, keyB) nc of
     Just result -> (c, result)
@@ -233,6 +233,10 @@ withCache c@Context { cache = nc} (keyA, keyB) func_with_args =
 -- place a minus sign before a node nr to set it to negative.
 
 
+defaultNodeMap :: NodeLookup
+defaultNodeMap = HashMap.fromList [
+    (0, Map.fromList [(0, Entry{dd = Leaf False, reference_count=1})] :: LookupEntry),
+    (1, Map.fromList [(0, Entry{dd = Leaf True, reference_count=1})] :: LookupEntry)]
 
 top :: Dd
 top = Leaf True
@@ -351,3 +355,24 @@ instance Show Dd where
     show (InfNodes a dc n1 n0 p1 (0,0)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " )"
 
     show (InfNodes a dc n1 n0 p1 p0) = " " ++ show a ++ " ( dc: " ++ show dc ++ " ) ( n1: " ++ show n1 ++ " ) ( n0: " ++ show n0 ++ " ) ( p1: " ++ show p1 ++ " ) ( p0: " ++ show p0 ++ " )"
+
+
+negation' :: (Context, NodeId) -> (Context, NodeId)
+negation' (c, node_id) = negation c (getDd c node_id) node_id
+
+negation :: Context -> Dd -> NodeId -> (Context, NodeId)
+negation c d@(Node position pos_child neg_child) node_id = withCache_ c node_id $ let
+    (c', posR) = negation c (getDd c pos_child) pos_child
+    (c'', negR) = negation c' (getDd c' neg_child) neg_child
+    in insert c'' $ Node position posR negR
+negation c d@(InfNodes position dc n1 n0 p1 p0) node_id = withCache_ c  node_id $ let
+    (c', r_dc) = negation c (getDd c dc) dc
+    (c'', r_n0) = negation c (getDd c' n0) n0
+    (c''', r_n1) = negation c (getDd c'' n1) n1
+    (c'''', r_p0) = negation c (getDd c''' p0) p0
+    (c''''', r_p1) = negation c (getDd c'''' p1) p1
+        in insert c''''' $ InfNodes position r_dc r_n1 r_n0 r_p1 r_p0
+negation c d@(EndInfNode a) node_id = withCache_ c  node_id $ let
+    (c', result) = negation c (getDd c a) a
+    in insert c' $ EndInfNode result
+negation c (Leaf b) _ = (c, leaf $ not b)
