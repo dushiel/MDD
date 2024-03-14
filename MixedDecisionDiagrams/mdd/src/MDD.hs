@@ -3,6 +3,7 @@
 {-# HLINT ignore "Use camelCase" #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
 module MDD where
 
 import Debug.Trace ( trace )
@@ -224,7 +225,7 @@ withCache' :: Context -> HashedId -> [String] -> (Context, [String])
 withCache' c@Context { cache' = nc } key func_with_args =
   case HashMap.lookup key nc of
     Just result -> if showMerged
-      then (c, ["[" ++ colorize "blue" ("#" ++ show key) ++ "]"])
+      then (c, ["{" ++ col Dull Magenta ("#" ++ show key) ++ "}"])
       else (c, result)
     Nothing -> let
         result = func_with_args
@@ -236,7 +237,7 @@ withCache' c@Context { cache' = nc } key func_with_args =
 withCache :: Context -> (NodeId, NodeId) -> (Context, NodeId) -> (Context, NodeId)
 withCache c@Context { cache = nc} (keyA, keyB) func_with_args =
   case HashMap.lookup (keyA, keyB) nc of
-    Just result -> (c, result)
+    Just result -> (c, result) `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
     Nothing -> let
       (updatedContext, result) = func_with_args
       updatedCache = HashMap.insert (keyA, keyB) result nc
@@ -384,6 +385,9 @@ instance Show Dd where
 debug :: c -> String -> c
 debug f s = trace s f
 
+
+col :: ColorIntensity -> Color -> String -> String
+col i c s = setSGRCode [SetColor Foreground i c] ++ s ++ setSGRCode [Reset]
 
 colorize :: String -> String -> String
 colorize c s
