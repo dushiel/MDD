@@ -24,33 +24,33 @@ import Data.Foldable (foldl')
 -- |======================================== Dd Manipulation operators ==============================================
 
 infixl 4 -.
-(-.) :: Context -> NodeId -> (Context, NodeId)
-(-.) c node_id = negation c node_id (getDd c node_id)
+(-.) :: (Context, NodeId) -> (Context, NodeId)
+(-.) (c, node_id) = negation c node_id (getDd c node_id)
 -- i dont think negation needs to keep track of context, right?
 
--- infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
--- (.*.) :: Dd -> Dd -> Dd
--- (.*.) a b = applyElimRule @'Dc $ intersection [(Dc, Inter)] a b
+infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
+(.*.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
+(.*.) c = intersection c{func_stack = [(Dc, Inter)]}
 
--- infixl 3 .+.
--- (.+.) :: Dd -> Dd -> Dd
--- (.+.) a b = applyElimRule @'Dc $ union [(Dc, Union)] a b
+infixl 3 .+.
+(.+.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
+(.+.) c = union c{func_stack = [(Dc, Union)]}
 
--- ite :: Dd -> Dd -> Dd -> Dd
--- ite x y z = (x .+. y) .*. ((-.) x .+. z)
+-- ite :: Context -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
+-- ite c x y z = (x .+. y) .*. ((-.) x .+. z)
 
 
 -- infixl 1 .->.
--- (.->.) :: Dd -> Dd -> Dd
--- (.->.) a b = (-.) a .+. b
+-- (.->.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
+-- (.->.) c a b = (-.) a .+. b
 
 -- infixl 1 .<-.
--- (.<-.) :: Dd -> Dd -> Dd
--- (.<-.) a b = (-.) a .+. b
+-- (.<-.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
+-- (.<-.) c a b = a .+. (-.) b
 
 -- infixl 1 .<->.
--- (.<->.) :: Dd -> Dd -> Dd
--- (.<->.) a b = (a .*. b) .+. ((-.) a .*. (-.) b)
+-- (.<->.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
+-- (.<->.) c a b = (a .*. b) .+. ((-.) a .*. (-.) b)
 
 ------------------------------------ Test
 c = Context{

@@ -121,13 +121,12 @@ negation c node_id d@(EndInfNode a) = withCache_ c  node_id $ let
 negation c _ (Leaf b) = (c, leaf $ not b) --`debug` ("returning : " ++ show (c, leaf $ not b))
 
 
-
--- applyElimRule_arg :: Inf -> Dd -> Dd
--- applyElimRule_arg Dc d = applyElimRule @Dc d
--- applyElimRule_arg Neg1 d = applyElimRule @Neg1 d
--- applyElimRule_arg Neg0 d = applyElimRule @Neg0 d
--- applyElimRule_arg Pos1 d = applyElimRule @Pos1 d
--- applyElimRule_arg Pos0 d = applyElimRule @Pos0 d
+applyElimRule_arg :: Context -> Inf -> Dd -> (Context, NodeId)
+applyElimRule_arg c Dc d = applyElimRule @Dc c d
+applyElimRule_arg c Neg1 d = applyElimRule @Neg1 c d
+applyElimRule_arg c Neg0 d = applyElimRule @Neg0 c d
+applyElimRule_arg c Pos1 d = applyElimRule @Pos1 c d
+applyElimRule_arg c Pos0 d = applyElimRule @Pos0 c d
 
 -- --todo why am i doing this directly below?
 -- intersectionLocal_arg :: (Inf, FType) -> Context -> Dd -> Dd -> Dd
@@ -217,15 +216,16 @@ negation c _ (Leaf b) = (c, leaf $ not b) --`debug` ("returning : " ++ show (c, 
 
 --     (_, _) -> error (show t ++ ", " ++ show c ++ ", " ++ show a ++ ", " ++ show b)
 
-
--- addInfNode :: Context -> Int -> Inf -> Dd -> (Context, Dd)
--- addInfNode c n inf conseq  =
---         case inf of -- only for Dc we need to check the b, since after a hole we interpret the following sub domains in substance (1-set)
---             Dc -> insert c $ InfNodes n (EndInfNode conseq) l0 l1 l0 l1
---             Neg1 -> insert c $ InfNodes n l0 (EndInfNode conseq) l1 l0 l1
---             Neg0 -> insert c $ InfNodes n l1 l0 (EndInfNode conseq) l0 l1
---             Pos1 -> insert c $ InfNodes n l0 l0 l1 (EndInfNode conseq) l1
---             Pos0 -> insert c $ InfNodes n l1 l0 l1 l0 (EndInfNode conseq)
+addInfNode :: Context -> Int -> Inf -> NodeId -> (Context, NodeId)
+addInfNode c n inf conseq  =
+        case inf of -- only for Dc we need to check the b, since after a hole we interpret the following sub domains in substance (1-set)
+            Dc -> insert c' $ InfNodes n dd l0 l1 l0 l1
+            Neg1 -> insert c' $ InfNodes n l0 dd l1 l0 l1
+            Neg0 -> insert c' $ InfNodes n l1 l0 dd l0 l1
+            Pos1 -> insert c' $ InfNodes n l0 l0 l1 dd l1
+            Pos0 -> insert c' $ InfNodes n l1 l0 l1 l0 dd
+        where
+            (c', dd) = insert c $ EndInfNode conseq
 
 -- intersectionInferA :: Context -> Dd -> Dd -> Dd
 -- intersectionInferA [] _ _ = error "empty context"
@@ -1113,14 +1113,14 @@ instance DdF4 Dc where
 --         x@(InfNodes {}) -> EndInfNode x
 --         x -> x
     applyElimRule c d@(Node _ posC negC) = if posC == negC then (c, posC) else insert c d
-    -- applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
-    --     if (n1R, n0R, p1R, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
-    --                     (case dcR of
-    --                         (EndInfNode x) -> x
-    --                         0 -> Leaf False
-    --                         1 -> Leaf True
-    --                         _ -> InfNodes pos dcR n1R n0R p1R p0R)
-    --                     else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (n1R, n0R, p1R, p0R) == ((0,0), (1,0), (0,0), (1,0)) then
+                        (case getDd c dcR of
+                            (EndInfNode x) -> (c, x)
+                            (Leaf False) -> (c, (0,0))
+                            (Leaf True) -> (c, (1,0))
+                            _ -> insert c $ InfNodes pos dcR n1R n0R p1R p0R)
+                        else insert c $ InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule c d = insert c d-- (EndInfNode _) = error "cannot end on end infnodlet c = lastN' (len positionA) c ine"
     -- false = EndInfNode $ EndInfNode $ Leaf False
     -- true = EndInfNode $ insert c ( hash $ EndInfNode $ Leaf True)
@@ -1176,14 +1176,14 @@ instance DdF4 Neg1 where
 --     applyInfElimRule d = EndInfNode $ applyElimRule @Neg1 d
 
     applyElimRule c d@(Node _ posC negC) = ( if posC == (0,0) then (c, negC) else insert c d )
-    -- applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
-    --     if (dcR, n0R, p1R, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
-    --                     (case n1R of
-    --                         (EndInfNode x) -> x
-    --                         0 -> Leaf False
-    --                         1 -> Leaf True
-    --                         _ -> InfNodes pos dcR n1R n0R p1R p0R)
-    --                     else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (dcR, n0R, p1R, p0R) == ((0,0), (1,0), (0,0), (1,0)) then
+                        (case getDd c n1R of
+                            (EndInfNode x) -> (c, x)
+                            (Leaf False) -> (c, (0,0))
+                            (Leaf True) -> (c, (1,0))
+                            _ -> insert c $ InfNodes pos dcR n1R n0R p1R p0R)
+                        else insert c $ InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule c d = insert c d
 
     false = Leaf False
@@ -1241,14 +1241,14 @@ instance DdF4 Neg0 where
 
     applyElimRule :: Context -> Dd -> (Context, NodeId)
     applyElimRule c d@(Node _ posC negC) = if posC == (1,0) then (c, negC) else insert c d
-    -- applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
-    --     if (n1R, dcR, p1R, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
-    --         (case n0R of
-    --             (EndInfNode x) -> x
-    --             0 -> Leaf False
-    --             1 -> Leaf True
-    --             _ -> InfNodes pos dcR n1R n0R p1R p0R)
-    --         else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (n1R, dcR, p1R, p0R) == ((0,0), (1,0), (0,0), (1,0)) then
+            (case getDd c n0R of
+                (EndInfNode x) -> (c, x)
+                (Leaf False) -> (c, (0,0))
+                (Leaf True) -> (c, (1,0))
+                _ -> insert c $ InfNodes pos dcR n1R n0R p1R p0R)
+        else insert c $ InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule c d = insert c d
 
     false = Leaf True
@@ -1306,14 +1306,14 @@ instance DdF4 Pos1 where
 --     applyInfElimRule d = EndInfNode $ applyElimRule @Pos1 d
 
     applyElimRule c d@(Node _ posC negC) = if negC == (0,0) then (c, posC) else insert c d
-    -- applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
-    --     if (n1R, n0R, dcR, p0R) == (Leaf False, Leaf True, Leaf False, Leaf True) then
-    --         (case p1R of
-    --             (EndInfNode x) -> x
-    --             0 -> Leaf False
-    --             1 -> Leaf True
-    --             _ -> InfNodes pos dcR n1R n0R p1R p0R)
-    --         else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (n1R, n0R, dcR, p0R) == ((0,0), (1,0), (0,0), (1,0)) then
+            (case getDd c p1R of
+                (EndInfNode x) -> (c, x)
+                (Leaf False) -> (c, (0,0))
+                (Leaf True) -> (c, (1,0))
+                _ -> insert c $ InfNodes pos dcR n1R n0R p1R p0R)
+        else insert c $ InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule c d = insert c d
 
     false = Leaf False
@@ -1371,14 +1371,14 @@ instance DdF4 Pos0 where
 --     applyInfElimRule d = EndInfNode $ applyElimRule @Pos0 d
 
     applyElimRule c d@(Node _ posC negC) = if negC == (1,0) then (c, posC) else insert c d
---     applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
---         if (n1R, n0R, p1R, dcR) == (Leaf False, Leaf True, Leaf False, Leaf True) then
---             (case p0R of
---                 (EndInfNode x) -> x
---                 0 -> Leaf False
---                 1 -> Leaf True
---                 _ -> InfNodes pos dcR n1R n0R p1R p0R)
---             else InfNodes pos dcR n1R n0R p1R p0R
+    applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
+        if (n1R, n0R, p1R, dcR) == ((0,0), (1,0), (0,0), (1,0)) then
+            (case getDd c p0R of
+                (EndInfNode x) -> (c, x)
+                (Leaf False) -> (c, (0,0))
+                (Leaf True) -> (c, (1,0))
+                _ -> insert c $ InfNodes pos dcR n1R n0R p1R p0R)
+        else insert c $ InfNodes pos dcR n1R n0R p1R p0R
     applyElimRule c d = insert c d
 
     false = Leaf True
