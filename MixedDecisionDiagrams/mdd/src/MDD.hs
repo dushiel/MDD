@@ -10,6 +10,7 @@ import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
 import Data.Foldable
 import qualified Data.Map as Map
+import System.Console.ANSI
 
 -- proof of concept GenDDs where no merging of isomorphic nodes happen and no cashing / moization of results during traversal.
 -- GenDDs can model check second order logic formulas containing variables in multiple (disjointed and/or nested) infinite domains.
@@ -82,7 +83,7 @@ data Context = Context {
 instance Show Context where
     show c = "Context {nodelookup keys = " ++ show (HashMap.keys (nodelookup c)) ++
              "\n\t, cache keys = " ++ show (HashMap.keys (cache c)) ++
-             "\n\t, cache_ keys = " ++ show (HashMap.keys (cache_ c)) ++ "}"
+             "\n\t, cache_ keys = " ++ show (HashMap.keys (cache_ c)) ++ "}\n"
 
 data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | T_and_r
     deriving (Eq, Show)
@@ -136,12 +137,15 @@ insert_id :: HashedId -> Dd -> NodeLookup -> (NodeId, NodeLookup)
 insert_id k v nm = case HashMap.lookup k nm of
        Just result -> case match_alternative v result of -- there is something inserted at this key
          Just (nr, t_entry) -> -- increment the reference count
-              ((k, nr) :: NodeId, HashMap.insert k (Map.insert nr (Entry{dd = v, reference_count=reference_count t_entry + 1}) result) nm)  -- it is the same Dd object, thus increment its reference count and return the NodeId with its map
+              ((k, nr) :: NodeId, HashMap.insert k (Map.insert nr (Entry{dd = v, reference_count=reference_count t_entry + 1}) result) nm)
+              `debug` (colorize "green" "insert: " ++ show k ++ " increment reference count : " ++ show (reference_count t_entry + 1))  -- it is the same Dd object, thus increment its reference count and return the NodeId with its map
          Nothing ->  -- it is not the same Dd object, get unused key in map
               let k' = getFreeKey result in
               ((k, k') :: NodeId, HashMap.insert k (Map.insert k' (Entry{dd = v, reference_count=1}) result) nm)
+              `debug` (colorize "green" "insert: " ++ show k ++ " as alt with freekey: " ++ show k')
        Nothing -> -- key not found, insert current key with new alternatives map, and set its key 0 to value
         ((k, 0) :: NodeId, HashMap.insert k (Map.insert 0 Entry{dd = v, reference_count=1} Map.empty) nm)
+        `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
 
 insert :: Context -> Dd -> (Context, NodeId)
 insert c@Context{nodelookup = nm} d = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, new_id)
@@ -266,7 +270,7 @@ makeNode c (L [(i, inf)] nodePosition)
     where
         ins' c d = insert c d
         ins d = insert c d
-        loopDc n end = if n <=0 then ins (Node (abs n) l1 (leaf $ not end)) else ins (Node n (leaf $ not end) l0)
+        loopDc n end = if n <=0 then ins (Node (abs n) (leaf end) (leaf $ not end)) else ins (Node n (leaf $ not end) (leaf end))
         loopNeg n end = if n <=0 then ins (Node (abs n) (leaf end) (leaf $ not end)) else ins (Node n (leaf $ not end) (leaf end))
         loopPos n end = if n <=0 then ins (Node (abs n) (leaf $ not end) (leaf end)) else ins (Node n (leaf end) (leaf $ not end))
         -- close = (!! l) . iterate EndInfNode
@@ -364,25 +368,8 @@ instance Show Dd where
 debug :: c -> String -> c
 debug f s = trace s f
 
-negation' :: (Context, NodeId) -> (Context, NodeId)
-negation' (c, node_id) = negation'' c (getDd c node_id) node_id
-
-negation'' :: Context -> Dd -> NodeId ->  (Context, NodeId)
-negation'' c dd node_id  = negation c dd node_id `debug` ("negation : " ++ show node_id ++ " , " ++ show dd) -- "\n -> \n" )
-
-negation :: Context -> Dd -> NodeId -> (Context, NodeId)
-negation c d@(Node position pos_child neg_child) node_id = withCache_ c node_id $ let
-    (c', posR) = negation'' c (getDd c pos_child) pos_child --`debug` ("negation pos child: " ++ show pos_child ++ " , " ++ " -> " ++ show (getDd c pos_child) )
-    (c'', negR) = negation'' c' (getDd c' neg_child) neg_child --`debug` ("negation neg child: " ++ show neg_child ++ " , " ++ "-> " ++ show (getDd c' neg_child))
-    in insert c'' $ Node position posR negR -- `debug` (" inserted: " ++ show (insert c'' $ Node position posR negR))
-negation c d@(InfNodes position dc n1 n0 p1 p0) node_id = withCache_ c  node_id $ let
-    (c', r_dc) = negation'' c (getDd c dc) dc
-    (c'', r_n0) = negation'' c' (getDd c' n0) n0
-    (c''', r_n1) = negation'' c'' (getDd c'' n1) n1
-    (c'''', r_p0) = negation'' c''' (getDd c''' p0) p0
-    (c''''', r_p1) = negation'' c'''' (getDd c'''' p1) p1
-        in insert c''''' $ InfNodes position r_dc r_n1 r_n0 r_p1 r_p0
-negation c d@(EndInfNode a) node_id = withCache_ c  node_id $ let
-    (c', result) = negation'' c (getDd c a) a `debug` ("negation endinf child: " ++ show a ++ " , " ++ "\n -> \n" ++ show (getDd c a) )
-    in insert c' $ EndInfNode result
-negation c (Leaf b) _ = (c, leaf $ not b) --`debug` ("returning : " ++ show (c, leaf $ not b))
+colorize :: String -> String -> String
+colorize c s
+    | c == "red" = setSGRCode [SetColor Foreground Vivid Red] ++ s ++ setSGRCode [Reset]
+    | c == "green" = setSGRCode [SetColor Foreground Vivid Green] ++ s ++ setSGRCode [Reset]
+    | otherwise = setSGRCode [SetColor Foreground Vivid Blue] ++ s ++ setSGRCode [Reset]

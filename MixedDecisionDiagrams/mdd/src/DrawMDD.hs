@@ -49,8 +49,8 @@ showTree'' :: Context -> (Int -> String) -> Dd -> [String]
 --showTree' (Node n ns) = n : concat (indentChildren (map showTree' ns))
 showTree'' c =  showTree'
     where
-        showTree' _ (Leaf False) = ["[1]"]
-        showTree' _ (Leaf True) = ["[0]"]
+        showTree' _ (Leaf True) = ["[1]"]
+        showTree' _ (Leaf False) = ["[0]"]
         showTree' f (Node a l r) = ("("++ f a ++")") : concat (indentChildren (map (showTree' f) [getDd c l, getDd c r]))
         showTree' f (InfNodes a dc (0, 0) (1,0) (0, 0) (1,0)) = ("<"++ f a ++ "> dc") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc)])
         showTree' f (InfNodes a dc (0, 0) (1,0) (0, 0) p0) =("<"++ f a ++ "> dc, p0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree0' c f (getDd c p0)])

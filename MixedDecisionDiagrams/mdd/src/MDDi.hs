@@ -7,7 +7,7 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 module MDDi where
 import MDD
--- import MDDmanipulation
+import MDDmanipulation
 import DrawMDD
 import qualified Data.HashMap.Lazy as HashMap
 import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
@@ -23,7 +23,7 @@ import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
 
 infixl 4 -.
 (-.) :: Context -> NodeId -> (Context, NodeId)
-(-.) c node_id = negation c (getDd c node_id) node_id
+(-.) c node_id = negation c node_id (getDd c node_id)
 -- i dont think negation needs to keep track of context, right?
 
 -- infix 2 .*. -- F1 Conjunction / product | F0 Disjunction / sum
@@ -59,7 +59,14 @@ c = Context{
     current_level = L [] 0
     }
 x = makeNode c (L [(0, Dc)] 2)
-x' = negation' x
+(c', x') = negation' x
+(c'', h) = makeNode c' (L [(0, Dc)] 3)
+(c''', j) = makeNode c'' (L [(0, Dc)] (-1))
+(c'''', m) = (intersection c''' h x')
+(c''''', n) = (intersection c'''' j x')
+
+(c'''''', k) = (intersection c''''' m n)
+
 -- x' = path c [(0,Dc)] [2,3]
 
 -- dc2 = path [(0, Dc)] [2]
