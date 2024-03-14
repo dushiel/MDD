@@ -42,7 +42,7 @@ instance Hashable Dd where
   -- endIfnode : 2
   hash :: Dd -> HashedId
   hash (Leaf b) = if b then 1 else 0
-  hash (Node idx l r) = (idx `hashWithSalt` fst l `hashWithSalt` fst r) `debug` (" hashing " ++ show (Node idx l r) ++ " -> " ++ show (idx `hashWithSalt` fst l `hashWithSalt` fst r))
+  hash (Node idx l r) = (idx `hashWithSalt` fst l `hashWithSalt` fst r) --`debug` (" hashing " ++ show (Node idx l r) ++ " -> " ++ show (idx `hashWithSalt` fst l `hashWithSalt` fst r))
   hash (InfNodes idx dc n1 n0 p1 p0) = idx `hashWithSalt` fst dc `hashWithSalt` fst n1 `hashWithSalt` fst n0 `hashWithSalt` fst p1 `hashWithSalt` fst p0
   hash (EndInfNode d) = fst d `hashWithSalt` (2::Int)
   hashWithSalt :: Int -> Dd -> HashedId
@@ -75,6 +75,7 @@ instance Hashable Level where
 data Context = Context {
   cache :: Cache,
   cache_ :: SingleCache,
+  cache' :: ShowCache,
   nodelookup:: NodeLookup,
   func_stack :: [(Inf, FType)],
   current_level :: Level -- todo implement this still, so that hashing uses a level instead of position only
@@ -205,6 +206,7 @@ deep_equality = undefined
 
 type Cache =  HashMap.HashMap (NodeId, NodeId) NodeId
 type SingleCache =  HashMap.HashMap NodeId NodeId
+type ShowCache =  HashMap.HashMap HashedId [String]
 
 
 withCache_ :: Context -> NodeId -> (Context, NodeId) -> (Context, NodeId)
@@ -215,6 +217,19 @@ withCache_ c@Context { cache_ = nc } key func_with_args =
       (updatedContext, result) = func_with_args
       updatedCache = HashMap.insert key result nc
       in (updatedContext { cache_ = updatedCache }, result)
+
+showMerged = True
+
+withCache' :: Context -> HashedId -> [String] -> (Context, [String])
+withCache' c@Context { cache' = nc } key func_with_args =
+  case HashMap.lookup key nc of
+    Just result -> if showMerged
+      then (c, ["[" ++ colorize "blue" ("#" ++ show key) ++ "]"])
+      else (c, result)
+    Nothing -> let
+        result = func_with_args
+        updatedCache = HashMap.insert key result nc
+      in (c{ cache' = updatedCache }, result)
 
 
 -- A higher-order function for handling cache lookup and update
@@ -259,10 +274,11 @@ leaf b = (hash $ Leaf b, 0)
 l1 = leaf True
 l0 = leaf False
 
+
 makeNode :: Context -> Level -> (Context, NodeId)
 makeNode _ (L [] _) = error "empty context"
 makeNode c (L [(i, inf)] nodePosition)
-    | inf == Dc = let (c', rid) = loopDc nodePosition False in ins' c' (InfNodes i rid l0 l1 l0 l1)
+    | inf == Dc = let (c', rid) = loopDc nodePosition False in ins' c' (InfNodes i rid l0 l1 l0 l1) `debug` ("nodePosition:  " ++ show nodePosition)
     | inf == Neg1 = let (c', rid) = loopNeg nodePosition False in ins' c' (InfNodes i l0 rid l1 l0 l1)
     | inf == Neg0 = let (c', rid) = loopNeg nodePosition True in ins' c' (InfNodes i l1 l0 rid l0 l1)
     | inf == Pos1 = let (c', rid) = loopPos nodePosition False in ins' c' (InfNodes i l0 l0 l1 rid l1)
@@ -368,8 +384,10 @@ instance Show Dd where
 debug :: c -> String -> c
 debug f s = trace s f
 
+
 colorize :: String -> String -> String
 colorize c s
     | c == "red" = setSGRCode [SetColor Foreground Vivid Red] ++ s ++ setSGRCode [Reset]
     | c == "green" = setSGRCode [SetColor Foreground Vivid Green] ++ s ++ setSGRCode [Reset]
+    | c == "blue" = setSGRCode [SetColor Foreground Dull Blue] ++ s ++ setSGRCode [Reset]
     | otherwise = setSGRCode [SetColor Foreground Vivid Blue] ++ s ++ setSGRCode [Reset]

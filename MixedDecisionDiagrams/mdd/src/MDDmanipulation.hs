@@ -24,7 +24,7 @@ import Data.Kind
 import System.Console.ANSI
     ( setSGRCode,
       Color(Blue, Red, Green),
-      ColorIntensity(Vivid),
+      ColorIntensity(Vivid, Dull),
       ConsoleLayer(Foreground),
       SGR(Reset, SetColor) )
 import Data.Map (Map)
@@ -84,15 +84,15 @@ intersection' c a_id b_id (Leaf False) b = (c, a_id)
 intersection' c a_id b_id a (Leaf True) = insert c a
 intersection' c a_id b_id (Leaf True) b = insert c b
 intersection' c a_id b_id a b = intersectionMain c a_id b_id
--- union :: Context -> Dd -> Dd -> Dd
--- union c a_id b_id a b = union'  c a b
---     `debug` ("union: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
--- union' :: Context -> Dd -> Dd -> Dd
--- union' c a_id b_id a (Leaf True) = Leaf True
--- union' c a_id b_id (Leaf True) b = Leaf True
--- union' c a_id b_id a (Leaf False) = a
--- union' c a_id b_id (Leaf False) b = b
--- union' c a_id b_id a b = unionMain c a b
+union :: Context -> NodeId -> NodeId -> (Context, NodeId)
+union c a b = union' c a b (getDd c a) (getDd c b)
+    `debug` ("union: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+union' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+union' c a_id b_id a (Leaf True) = (c, b_id)
+union' c a_id b_id (Leaf True) b = (c, a_id)
+union' c a_id b_id a (Leaf False) = insert c a
+union' c a_id b_id (Leaf False) b = insert c b
+union' c a_id b_id a b = unionMain c a_id b_id
 
 negation' :: (Context, NodeId) -> (Context, NodeId)
 negation' (c, node_id) = negation'' c node_id (getDd c node_id)
@@ -509,12 +509,13 @@ intersectionMain' c a_id b_id a b = error (show a ++ ", " ++ show b ++ ", "++ sh
 --             in InfNodes positionA dcA 0 1 0 p0R
 -- unionInferB' _ _ _ = undefined
 
-unionMain :: Context -> Dd -> Dd -> Dd
+unionMain :: Context -> NodeId -> NodeId -> (Context, NodeId)
 -- -- exclusive points (0's / holes) under union are filled unless they are present in both A and B (so only an intersection between them needs to be done)
 -- -- inclusive point (1's ) under union are intersected with the opposite infinite subset (dc) before they are added together
-unionMain c a_id b_id a b = unionMain' c a b  `debug4` ("unionMain: " ++ show c ++ " ; " ++ show a ++ " ; " ++ show b ++ " = " ++ show (unionMain' c a b))
-unionMain' :: Context -> Dd -> Dd -> Dd
+unionMain c a_id b_id = unionMain' c a_id b_id (getDd c a_id) (getDd c b_id)  `debug` (colorize "green" "unionMain: " ++ show c ++ "; " ++ show (getDd c a_id) ++ " ; "  ++ show (getDd c b_id) )
+unionMain' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
+    = let (c', dcR) = flub (unionLocal @Dc) c dcA dcB in insert c' $ InfNodes positionA dcR n1A n0A p1A p0A
 --     | positionA == positionB =  let
 
 --         dcR = unionLocal @Dc c  dcA dcB
@@ -616,7 +617,7 @@ unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes p
 
 --     -- c cannot be empty..
 --     | positionA < positionB = unionInferB c a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
--- unionMain' c a b = error "no 2 StartInfNode's in union main"
+unionMain' c a b _ _ = error "no 2 StartInfNode's in union main"
 
 
 -- -- captures the general patterns for the functions
@@ -624,7 +625,7 @@ class Dd1 a where
     intersectionLocal' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 --     mixedIntersection' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 --     mixedUnion' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
-    unionLocal' :: Context -> Dd -> Dd -> Dd
+    unionLocal' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 --     remove_outercomplement_from' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 --     absorb' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 --     traverse_and_return' :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
@@ -787,54 +788,54 @@ instance (DdF4 a) => Dd1 a where
 
     intersectionLocal' c _ _ a b = error ("how did we get here? " ++  show c ++ show a ++ "  -  " ++ show b)
 
---     unionLocal' c a@(Leaf False) b = b
---     unionLocal' c@(Context{func_context = (f:fs)}) a@(Leaf True) b@(EndInfNode childB ) = unionLocal_arg f c{func_context = fs} a childB `debug2` ("endif a = true, c = " ++ show c ++ "," ++ show cs ++ " a: " ++ show a ++ " b: " ++ show childB)
---     unionLocal' c a@(Leaf True) b@(Leaf _) = Leaf True
---     unionLocal' c a@(Leaf True) b@(InfNodes {}) = applyInfElimRule @a $ unionInferA_ @a c a b
---     unionLocal' c a@(Leaf True) b = inferNodeA @a (unionLocal @a) c a b -- leaf with node or end infnode
+    unionLocal' c a_id b_id a@(Leaf False) b = (,) c b_id
+--     unionLocal' c@(Context{func_context = (f:fs)}) a_id b_id a@(Leaf True) b@(EndInfNode childB ) = unionLocal_arg f c{func_context = fs} a childB `debug2` ("endif a = true, c = " ++ show c ++ "," ++ show cs ++ " a: " ++ show a ++ " b: " ++ show childB)
+    unionLocal' c a_id b_id a@(Leaf True) b@(Leaf _) = (,) c (1,0)
+--     unionLocal' c a_id b_id a@(Leaf True) b@(InfNodes {}) = applyInfElimRule @a $ unionInferA_ @a c a b
+    unionLocal' c a_id b_id a@(Leaf True) b = inferNodeA @a (unionLocal @a) c a_id b_id a b -- leaf with node or end infnode
 
---     unionLocal' c a b@(Leaf False) = a
---     unionLocal' c@(Context{func_context = (f:fs)}) a@(EndInfNode childA ) b@(Leaf True) = unionLocal_arg f c{func_context = fs} childA b `debug2` ("endif b = true, c = " ++ show c ++ "," ++ show cs ++ " a: " ++ show childA ++ " b: "  ++ show b)
---     unionLocal' c a@(Leaf _) b@(Leaf True) = Leaf True
---     unionLocal' c a@(InfNodes {}) b@(Leaf True) = applyInfElimRule @a $ unionInferB_ @a c a b
---     unionLocal' c a b@(Leaf True) = inferNodeB @a (unionLocal @a) c a b -- leaf with node or end infnode
+    unionLocal' c a_id b_id a b@(Leaf False) = (,) c a_id
+--     unionLocal' c@(Context{func_context = (f:fs)}) a_id b_id a@(EndInfNode childA ) b@(Leaf True) = unionLocal_arg f c{func_context = fs} childA b `debug2` ("endif b = true, c = " ++ show c ++ "," ++ show cs ++ " a: " ++ show childA ++ " b: "  ++ show b)
+    unionLocal' c a_id b_id a@(Leaf _) b@(Leaf True) = (,) c (1,0)
+--     unionLocal' c a_id b_id a@(InfNodes {}) b@(Leaf True) = applyInfElimRule @a $ unionInferB_ @a c a b
+    unionLocal' c a_id b_id a b@(Leaf True) = inferNodeB @a (unionLocal @a) c a_id b_id a b -- leaf with node or end infnode
 
 
---     unionLocal' c a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
---         -- no mismatch, only the appropriate elim rule is applied
---         | positionA == positionB =
---             let pos_result = unionLocal @a c pos_childA pos_childB
---                 neg_result = unionLocal @a c neg_childA neg_childB
---             in applyElimRule @a (Node positionA pos_result neg_result)
---         | positionA < positionB = inferNodeB @a (unionLocal @a) c a b
---         | positionA > positionB = inferNodeA @a (unionLocal @a) c a b
+    unionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
+        -- no mismatch, only the appropriate elim rule is applied
+        | positionA == positionB =
+            let (c', pos_result) = flub (unionLocal @a) c pos_childA pos_childB
+                (c'', neg_result) = flub (unionLocal @a) c' neg_childA neg_childB
+            in applyElimRule @a c'' (Node positionA pos_result neg_result)
+        | positionA < positionB = inferNodeB @a (unionLocal @a) c a_id b_id a b
+        | positionA > positionB = inferNodeA @a (unionLocal @a) c a_id b_id a b
 
---     unionLocal' c a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB)
+--     unionLocal' c a_id b_id a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB)
 --         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
 --         | positionA > positionB = inferNodeA @a (unionLocal @a) c a b
 --         | positionA < positionB = applyInfElimRule @a $ unionInferA_ @a c a b -- infer infnode for A
 
---     unionLocal' c a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _)
+--     unionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _)
 --         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes" -- a possible option: (InfNodes (dcA .*. pos_childB) (n1A .*. pos_childB) (n0A .*. pos_childB) (p1A .*. pos_childB) (p0A .*. pos_childB))
 --         | positionA < positionB = inferNodeB @a (unionLocal @a) c a b
 --         | positionA > positionB = applyInfElimRule @a $ unionInferB_ @a c a b -- infer infnode for B
 
---     unionLocal' c a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _)
+--     unionLocal' c a_id b_id a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _)
 --         | positionA == positionB = applyInfElimRule @a $ union  ((to_constr @a, Union):c) a b
 --         | positionA < positionB = applyInfElimRule @a $ unionInferB_ @a c a b -- infer infnode A
 --         | positionA > positionB = applyInfElimRule @a $ unionInferA_ @a c a b -- infer infnode B
 
---     unionLocal' c a@(InfNodes {}) b@(EndInfNode _) = applyInfElimRule @a $ unionInferB_ @a c a b
---     unionLocal' c a@(EndInfNode _) b@(InfNodes {}) = applyInfElimRule @a $ unionInferA_ @a c a b
+--     unionLocal' c a_id b_id a@(InfNodes {}) b@(EndInfNode _) = applyInfElimRule @a $ unionInferB_ @a c a b
+--     unionLocal' c a_id b_id a@(EndInfNode _) b@(InfNodes {}) = applyInfElimRule @a $ unionInferA_ @a c a b
 
---     -- continue local traversal
---     unionLocal' c a@(Node positionA pos_childA neg_childA) b@(EndInfNode childB) = inferNodeB @a (unionLocal @a) c a b
---     unionLocal' c a@(EndInfNode childA) b@(Node positionB pos_childB neg_childB) = inferNodeA @a (unionLocal @a) c a b
+    -- continue local traversal
+    unionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(EndInfNode childB) = inferNodeB @a (unionLocal @a) c a_id b_id a b
+    unionLocal' c a_id b_id a@(EndInfNode childA) b@(Node positionB pos_childB neg_childB) = inferNodeA @a (unionLocal @a) c a_id b_id a b
 
 --     -- continue previous super domain traversal
---     unionLocal' c@(Context{func_context = (f:fs)}) a@(EndInfNode childA)  b@(EndInfNode childB) = continue_outer f c{func_context = fs} childA childB `debug2` ("endinf endinf union local, childA = " ++ show childA  ++ " \n \t childB = " ++ show childB )
---     unionLocal' [] a@(EndInfNode childA)  b@(EndInfNode childB) = error "should not have empty context stack"  -- applyInfElimRule @a $ union  [] childA childB
---     unionLocal' c a b = error (show c ++ show a ++ show b)
+--     unionLocal' c@(Context{func_context = (f:fs)}) a_id b_id a@(EndInfNode childA)  b@(EndInfNode childB) = continue_outer f c{func_context = fs} childA childB `debug2` ("endinf endinf union local, childA = " ++ show childA  ++ " \n \t childB = " ++ show childB )
+--     unionLocal' [] a_id b_id a@(EndInfNode childA)  b@(EndInfNode childB) = error "should not have empty context stack"  -- applyInfElimRule @a $ union  [] childA childB
+    unionLocal' c a_id b_id a b = error (show c ++ show a ++ show b)
 
 --     mixedIntersection' c l@(Leaf _) (Leaf _) = if l == false @a then false @a else Leaf False-- if n then 1 if n' then 0
 --     -- exception cases where zdd and its polar are not false @a, and dc is not a leaf.
@@ -1082,7 +1083,7 @@ class DdF4 a where
 --     to_constr :: Inf
     applyElimRule :: Context -> Dd -> (Context, NodeId)
     intersectionLocal :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
---     unionLocal :: Context -> Dd -> Dd -> Dd
+    unionLocal :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 --     mixedIntersection :: Context -> Dd -> Dd -> Dd
 --     mixedUnion :: Context -> Dd -> Dd -> Dd
 --     absorb :: Context -> Dd -> Dd -> Dd
@@ -1138,9 +1139,10 @@ instance DdF4 Dc where
 --     t_and_rInferB_ l _ _ _ = undefined
     intersectionLocal c a_id b_id a b = let (c', r) = intersectionLocal' @Dc c a_id b_id a b in (c', r)
         `debug2` ("intersectionLocal Dc: " ++ " ; " ++ show a ++ " ; "  ++ show b ++ " ;  " ++ show a_id ++ " ; "  ++ show b_id ++ "\n" ++ showTree c a ++ "\n" ++ showTree c b ++ "\n==\n") --"\n result: \n" ++ showTree c' (getDd c' r))
---     -- comparing nodes, allowed mis-matches based on each inference rule
---     unionLocal c a b =  unionLocal' @Dc c a b
---         `debug2` ("unionLocal Dc: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    -- comparing nodes, allowed mis-matches based on each inference rule
+    unionLocal c a_id b_id a b =  let (c', r) = unionLocal' @Dc c a_id b_id a b in (c', r)
+        `debug2` (colorize "green" "unionLocal Dc: " ++ " ; " ++ show a ++ " ; "  ++ show b ++ " ;  " ++ show a_id ++ " ; "  ++ show b_id ++ "\n" ++ showTree c a ++ "\n" ++ showTree c b ++ "\n==\n") --"\n result: \n" ++ showTree c' (getDd c' r))
+
 
 --     traverse_and_return c a b =  traverse_and_return' @Dc c a b
 --         `debug2` ("traverse_and_return dc: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
@@ -1204,9 +1206,8 @@ instance DdF4 Neg1 where
     intersectionLocal c a_id b_id a b = intersectionLocal' @Neg1 c a_id b_id a b
         `debug` ("intersectionLocal neg1: " ++ " ; " ++ show a ++ " ; "  ++ show b)
 
---     unionLocal c a b = unionLocal' @Neg1 c a b
---         `debug` ("unionLocal neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ (show $ unionLocal' @Neg1 c a b))
-
+    unionLocal c a_id b_id a b = unionLocal' @Neg1 c a_id b_id a b
+        `debug` ("unionLocal neg1: " ++ " ; " ++ show a ++ " ; "  ++ show b)
 --     traverse_and_return c a b =  traverse_and_return' @Neg1 c a b
 --         `debug` ("traverse_and_return neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
@@ -1268,9 +1269,8 @@ instance DdF4 Neg0 where
 --     t_and_rInferB_ l _ _ _ = undefined
 
 --         -- Leaf and node
---     unionLocal c a b = unionLocal' @Neg0 c a b
---         `debug2` ("unionLocal neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (unionLocal' @Neg0 c a b))
-
+    unionLocal c a b = unionLocal' @Neg0 c a b
+        `debug2` ("unionLocal neg0: " ++ " ; " ++ show a ++ " ; "  ++ show b )
 
     intersectionLocal c a b = intersectionLocal' @Neg0 c a b
         `debug2` ("intersectionLocal neg0: " ++ " ; " ++ show a ++ " ; "  ++ show b )
@@ -1337,8 +1337,8 @@ instance DdF4 Pos1 where
     intersectionLocal c a b = intersectionLocal' @Pos1 c a b
         `debug` ("intersectionLocal pos1: " ++ " ; " ++ show a ++ " ; "  ++ show b)
 
---     unionLocal c a b = unionLocal' @Pos1 c a b
---         `debug2` ("unionLocal pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    unionLocal c a b = unionLocal' @Pos1 c a b
+        `debug2` ("unionLocal pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 --     traverse_and_return c a b =  traverse_and_return' @Pos1 c a b
 --         `debug` ("traverse_and_return pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
@@ -1399,7 +1399,7 @@ instance DdF4 Pos0 where
 --     t_and_rInferB_ l _ _ _ = undefined
 
 --     -- Leaf and node
---     unionLocal c a b = unionLocal' @Pos0 c a b  `debug2` ("unionLocal pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    unionLocal c a b = unionLocal' @Pos0 c a b  `debug2` ("unionLocal pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 --     --unionLocal c a@(InfNodes positionA dcA n1A n0A p1A p0A) 1 = union @False c a (inferInfNode c True a)
 --     --unionLocal c 1 b@(InfNodes positionB dcB n1B n0B p1B p0B) = union @False c (inferInfNode c True b) b
@@ -1561,6 +1561,7 @@ colorize :: String -> String -> String
 colorize c s
     | c == "red" = setSGRCode [SetColor Foreground Vivid Red] ++ s ++ setSGRCode [Reset]
     | c == "green" = setSGRCode [SetColor Foreground Vivid Green] ++ s ++ setSGRCode [Reset]
+    | c == "blue" = setSGRCode [SetColor Foreground Dull Blue] ++ s ++ setSGRCode [Reset]
     | otherwise = setSGRCode [SetColor Foreground Vivid Blue] ++ s ++ setSGRCode [Reset]
 
 

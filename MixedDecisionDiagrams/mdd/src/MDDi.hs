@@ -5,12 +5,14 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant bracket" #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# HLINT ignore "Use camelCase" #-}
 module MDDi where
 import MDD
 import MDDmanipulation
 import DrawMDD
 import qualified Data.HashMap.Lazy as HashMap
 import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
+import Data.Foldable (foldl')
 
 
 -- todo sophisticated test suite,
@@ -56,17 +58,37 @@ c = Context{
     cache = HashMap.empty :: HashMap.HashMap (NodeId, NodeId) NodeId,
     cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
     func_stack = [],
-    current_level = L [] 0
+    current_level = L [] 0,
+    cache' = HashMap.empty
     }
+
+
+
+
+take_c :: (Context, NodeId) -> (Context -> NodeId -> NodeId -> (Context, NodeId)) -> (Context, NodeId) -> (Context, NodeId) -> (Context, NodeId)
+take_c (c, _) f (_,a) (_,b) = f c a b
+take_c_ :: (Context, NodeId) -> (Context -> NodeId -> (Context, NodeId)) -> (Context, NodeId) -> (Context, NodeId)
+take_c_ (c, _) f (_,a) = f c a
+take_c__ :: (Context, NodeId) -> (Context -> Level -> (Context, NodeId)) -> Level -> (Context, NodeId)
+take_c__ (c, _) f = f c
+
 x = makeNode c (L [(0, Dc)] 2)
-(c', x') = negation' x
-(c'', h) = makeNode c' (L [(0, Dc)] 3)
-(c''', j) = makeNode c'' (L [(0, Dc)] (-1))
-(c'''', m) = (intersection c''' h x')
-(c''''', n) = (intersection c'''' j x')
+xx = take_c__ x makeNode (L [(0, Dc)] (-2))
+x' = take_c_ xx negation_ x
+h = take_c__ x' makeNode (L [(0, Dc)] 3)
+j = take_c__ h makeNode (L [(0, Dc)] (-1))
+jj = take_c__ j makeNode (L [(0, Dc)] (1))
 
-(c'''''', k) = (intersection c''''' m n)
+-- 1    , neg1
+-- neg2 , 2
+-- 3
+m = take_c jj intersection h x
+mm = take_c m intersection h xx
 
+n = take_c mm intersection j m
+nn = take_c n intersection jj mm
+
+ok = take_c nn union n nn
 -- x' = path c [(0,Dc)] [2,3]
 
 -- dc2 = path [(0, Dc)] [2]

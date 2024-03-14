@@ -1,9 +1,12 @@
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use camelCase" #-}
 module DrawMDD where
 import MDD
 import System.IO
 -- import Test.Hspec
 import qualified Data.Map as Map
+import Data.Hashable
 
 indentInit :: [String] -> [String]
 indentInit [] = []
@@ -33,42 +36,173 @@ indentInfChildren ns = map indentInfInit (init ns) ++ [indentInfLast (last ns)]
 appLast :: [String] -> String -> [String]
 appLast ss s = init ss ++ [last ss ++ s]
 
-showTree0' :: Context -> (Int -> String) -> Dd -> [String]
-showTree0' _ _ (Leaf True) = ["   "]
-showTree0' _ _ (Leaf False) = ["[0]"]
-showTree0' c f (Node a l r) = ("("++ f a ++")") : concat (indentChildren (map (showTree0' c f) [getDd c l, getDd c r]))
-showTree0' c f x = showTree'' c f x
-
-showTree1' :: Context -> (Int -> String) -> Dd -> [String]
-showTree1' _ _ (Leaf True) = ["[1]"]
-showTree1' _ _ (Leaf False) = ["   "]
-showTree1' c f (Node a l r) = ("("++ f a ++")") : concat (indentChildren (map (showTree1' c f) [getDd c l, getDd c r]))
-showTree1' c f x = showTree'' c f x
-
-showTree'' :: Context -> (Int -> String) -> Dd -> [String]
---showTree' (Node n ns) = n : concat (indentChildren (map showTree' ns))
-showTree'' c =  showTree'
+showTree0' :: Context -> (Int -> String) -> Dd -> (Context, [String])
+showTree0' c _ (Leaf True) = (c, ["   "])
+showTree0' c _ (Leaf False) = (c, ["[0]"])
+showTree0' c f d@(Node a l r) = withCache' c'' (hash d) $ ("("++ f a ++")") : concat (indentChildren [s1, s2])
     where
-        showTree' _ (Leaf True) = ["[1]"]
-        showTree' _ (Leaf False) = ["[0]"]
-        showTree' f (Node a l r) = ("("++ f a ++")") : concat (indentChildren (map (showTree' f) [getDd c l, getDd c r]))
-        showTree' f (InfNodes a dc (0, 0) (1,0) (0, 0) (1,0)) = ("<"++ f a ++ "> dc") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc)])
-        showTree' f (InfNodes a dc (0, 0) (1,0) (0, 0) p0) =("<"++ f a ++ "> dc, p0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree0' c f (getDd c p0)])
-        showTree' f (InfNodes a dc (0, 0) (1,0) p1 (1,0)) =("<"++ f a ++ "> dc, p1") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c p1)])
-        showTree' f (InfNodes a dc (0, 0) n0 (0, 0) (1,0)) =("<"++ f a ++ "> dc, n0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree0' c f (getDd c n0)])
-        showTree' f (InfNodes a dc n1 (1,0) (0, 0) (1,0)) =("<"++ f a ++ "> dc, n1") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c n1)])
-        showTree' f (InfNodes a dc (0, 0) (1,0) p1 p0) = ("<"++ f a ++ "> dc, p1, p0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c p1), showTree0' c f (getDd c p0)])
-        showTree' f (InfNodes a dc (0, 0) n0 (0, 0) p0) = ("<"++ f a ++ "> dc, n0, p0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree0' c f (getDd c n0), showTree0' c f (getDd c p0)])
-        showTree' f (InfNodes a dc (0, 0) n0 p1 (1,0)) = ("<"++ f a ++ "> dc, n0, p1") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree0' c f (getDd c n0), showTree1' c f (getDd c p1)])
-        showTree' f (InfNodes a dc n1 (1,0) (0, 0) p0) = ("<"++ f a ++ "> dc, n1, p0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c n1), showTree0' c f (getDd c p0)])
-        showTree' f (InfNodes a dc n1 (1,0) p1 (1,0)) = ("<"++ f a ++ "> dc, n1, p1") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c n1), showTree1' c f (getDd c p1)])
-        showTree' f (InfNodes a dc n1 n0 (0, 0) (1,0)) = ("<"++ f a ++ "> dc, n1, n0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c n1), showTree0' c f (getDd c n0)])
-        showTree' f (InfNodes a dc (0, 0) n0 p1 p0) = ("<"++ f a ++ "> dc, n0, p1, p0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree0' c f (getDd c n0), showTree1' c f (getDd c p1), showTree0' c f (getDd c p0)])
-        showTree' f (InfNodes a dc n1 (1,0) p1 p0) = ("<"++ f a ++ "> dc, n1, p1, p0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c n1), showTree1' c f (getDd c p1), showTree0' c f (getDd c p0)])
-        showTree' f (InfNodes a dc n1 n0 (0, 0) p0) = ("<"++ f a ++ "> dc, n1, n0, p0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c n1), showTree0' c f (getDd c n0), showTree0' c f (getDd c p0)])
-        showTree' f (InfNodes a dc n1 n0 p1 (0, 0)) = ("<"++ f a ++ "> dc, n1, n0, p1") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c n1), showTree0' c f (getDd c n0), showTree1' c f (getDd c p1)]) `debug` (" draw: " ++  show n0 ++ show n1 ++ show p1)
-        showTree' f (InfNodes a dc n1 n0 p1 p0) =("<"++ f a ++ "> dc, n1, n0, p1, p0") : "  ║  " : concat (indentInfChildren [showTree' f (getDd c dc), showTree1' c f (getDd c n1), showTree0' c f (getDd c n0), showTree1' c f (getDd c p1), showTree0' c f (getDd c p0)])
-        showTree' f (EndInfNode cons) = "<>" : "  ║  " : concat (indentInfChildren [showTree' f (getDd c cons)])
+    (c', s1) = showTree0' c f (getDd c l)
+    (c'',s2) = showTree0' c' f (getDd c r)
+showTree0' c f x = showTree' c f x
+
+showTree1' :: Context -> (Int -> String) -> Dd -> (Context, [String])
+showTree1' c _ (Leaf True) = (c, ["[1]"])
+showTree1' c _ (Leaf False) = (c, ["   "])
+showTree1' c f d@(Node a l r) = withCache' c'' (hash d) $ ("("++ f a ++")") : concat (indentChildren [s1, s2])
+    where
+    (c', s1) = showTree1' c f (getDd c l)
+    (c'',s2) = showTree1' c' f (getDd c r)
+showTree1' c f x = showTree' c f x
+
+
+-- take_c_show :: (Context, [String]) -> (Context -> NodeId -> (Context, [String])) -> (Context, NodeId) -> (Context, [String])
+-- take_c_show (c, _) f (_,a) = f c a
+showTree'' :: Context -> (Int -> String) -> Dd -> [String]
+showTree'' a b c = snd $ showTree' a b c
+
+showTree' :: Context -> (Int -> String) -> Dd -> (Context, [String])
+--showTree' (Node n ns) = n : concat (indentChildren (map showTree' ns))
+
+showTree' c _ (Leaf True) = (c, ["[1]"])
+showTree' c _ (Leaf False) = (c, ["[0]"])
+showTree' c f d@(Node a l r) = withCache' c'' (hash d) $
+    ("("++ f a ++") " ++ colorize "green" ("#" ++ show (hash d))) :
+    concat (indentChildren [s1, s2])
+    where
+        (c', s1) = showTree' c f (getDd c l)
+        (c'', s2) = showTree' c' f (getDd c r)
+
+showTree' c f d@(InfNodes a dc (0, 0) (1,0) (0, 0) (1,0)) = withCache' c' (hash d) $
+    ("<"++ f a ++ "> dc " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1])
+    where
+        (c', s1) = showTree' c f (getDd c dc)
+showTree' c f d@(InfNodes a dc (0, 0) (1,0) (0, 0) p0) = withCache' c'' (hash d) $
+    ("<"++ f a ++ "> dc, p0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, s2])
+    where
+        (c', s1) = showTree' c f (getDd c dc)
+        (c'', s2) = showTree0' c' f (getDd c p0)
+
+showTree' c f d@(InfNodes a dc (0, 0) (1,0) p1 (1,0)) = withCache' c'' (hash d) $
+    ("<"++ f a ++ "> dc, p1 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_p1])
+    where
+        (c', s1) = showTree' c f (getDd c dc)
+        (c'', r_p1) = showTree1' c' f (getDd c p1)
+
+showTree' c f d@(InfNodes a dc (0, 0) n0 (0, 0) (1,0)) = withCache' c'' (hash d) $
+    ("<"++ f a ++ "> dc, n0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n0])
+    where
+        (c', s1) = showTree' c f (getDd c dc)
+        (c'', r_n0) = showTree0' c' f (getDd c n0)
+
+showTree' c f d@(InfNodes a dc n1 (1,0) (0, 0) (1,0)) = withCache' c'' (hash d) $
+    ("<"++ f a ++ "> dc, n1 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n1])
+    where
+        (c', r_n1) = showTree1' c f (getDd c n1)
+        (c'', s1) = showTree' c' f (getDd c dc)
+
+showTree' c f d@(InfNodes a dc (0, 0) (1,0) p1 p0) = withCache' c''' (hash d) $
+    ("<"++ f a ++ "> dc, p1, p0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_p1, r_p0])
+    where
+        (c', r_p0) = showTree0' c f (getDd c p0)
+        (c'', s1) = showTree' c' f (getDd c dc)
+        (c''', r_p1) = showTree1' c'' f (getDd c p1)
+
+showTree' c f d@(InfNodes a dc (0, 0) n0 (0, 0) p0) = withCache' c''' (hash d) $
+    ("<"++ f a ++ "> dc, n0, p0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n0, r_p0])
+    where
+        (c', r_p0) = showTree0' c f (getDd c p0)
+        (c'', r_n0) = showTree0' c' f (getDd c n0)
+        (c''', s1) = showTree' c'' f (getDd c dc)
+
+showTree' c f d@(InfNodes a dc (0, 0) n0 p1 (1,0)) = withCache' c''' (hash d) $
+    ("<"++ f a ++ "> dc, n0, p1 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n0, r_p1])
+    where
+        (c', r_n0) = showTree0' c f (getDd c n0)
+        (c'', s1) = showTree' c' f (getDd c dc)
+        (c''', r_p1) = showTree1' c'' f (getDd c p1)
+
+showTree' c f d@(InfNodes a dc n1 (1,0) (0, 0) p0) = withCache' c''' (hash d) $
+    ("<"++ f a ++ "> dc, n1, p0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n1, r_p0])
+    where
+        (c', r_p0) = showTree0' c f (getDd c p0)
+        (c'', r_n1) = showTree1' c' f (getDd c n1)
+        (c''', s1) = showTree' c'' f (getDd c dc)
+
+showTree' c f d@(InfNodes a dc n1 (1,0) p1 (1,0)) = withCache' c''' (hash d) $
+    ("<"++ f a ++ "> dc, n1, p1 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n1, r_p1])
+    where
+        (c', r_n1) = showTree1' c f (getDd c n1)
+        (c'', s1) = showTree' c' f (getDd c dc)
+        (c''', r_p1) = showTree1' c'' f (getDd c p1)
+
+showTree' c f d@(InfNodes a dc n1 n0 (0, 0) (1,0)) = withCache' c''' (hash d) $
+    ("<"++ f a ++ "> dc, n1, n0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n1, r_n0])
+    where
+        (c', r_n1) = showTree1' c f (getDd c n1)
+        (c'', r_n0) = showTree0' c' f (getDd c n0)
+        (c''', s1) = showTree' c'' f (getDd c dc)
+
+showTree' c f d@(InfNodes a dc (0, 0) n0 p1 p0) = withCache' c'''' (hash d) $
+    ("<"++ f a ++ "> dc, n0, p1, p0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n0, r_p1, r_p0])
+    where
+        (c', r_p0) = showTree0' c f (getDd c p0)
+        (c'', r_n0) = showTree0' c' f (getDd c n0)
+        (c''', s1) = showTree' c'' f (getDd c dc)
+        (c'''', r_p1) = showTree1' c''' f (getDd c p1)
+
+showTree' c f d@(InfNodes a dc n1 (1,0) p1 p0) = withCache' c'''' (hash d) $
+    ("<"++ f a ++ "> dc, n1, p1, p0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n1, r_p1, r_p0])
+    where
+        (c', r_p0) = showTree0' c f (getDd c p0)
+        (c'', r_n1) = showTree1' c' f (getDd c n1)
+        (c''', s1) = showTree' c'' f (getDd c dc)
+        (c'''', r_p1) = showTree1' c''' f (getDd c p1)
+showTree' c f d@(InfNodes a dc n1 n0 (0, 0) p0) = withCache' c'''' (hash d) $
+    ("<"++ f a ++ "> dc, n1, n0, p0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n1, r_n0, r_p0])
+    where
+        (c', r_p0) = showTree0' c f (getDd c p0)
+        (c'', r_n1) = showTree1' c' f (getDd c n1)
+        (c''', r_n0) = showTree0' c'' f (getDd c n0)
+        (c'''', s1) = showTree' c''' f (getDd c dc)
+showTree' c f d@(InfNodes a dc n1 n0 p1 (0, 0)) = withCache' c'''' (hash d) $
+    ("<"++ f a ++ "> dc, n1, n0, p1 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n1, r_n0, r_p1]) `debug` (" draw: " ++  show n0 ++ show n1 ++ show p1)
+    where
+        (c', r_n1) = showTree1' c f (getDd c n1)
+        (c'', r_n0) = showTree0' c' f (getDd c n0)
+        (c''', s1) = showTree' c'' f (getDd c dc)
+        (c'''', r_p1) = showTree1' c''' f (getDd c p1)
+
+
+showTree' c f d@(InfNodes a dc n1 n0 p1 p0) = withCache' c''''' (hash d) $
+    ("<"++ f a ++ "> dc, n1, n0, p1, p0 " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_n1, r_n0, r_p1, r_p0])
+    where
+        (c', r_p0) = showTree0' c f (getDd c p0)
+        (c'', r_n1) = showTree1' c' f (getDd c n1)
+        (c''', r_n0) = showTree0' c'' f (getDd c n0)
+        (c'''', s1) = showTree' c''' f (getDd c dc)
+        (c''''', r_p1) = showTree1' c'''' f (getDd c p1)
+
+showTree' c f d@(EndInfNode cons) = withCache' c' (hash d) $
+    ("<> " ++ colorize "green" ("#" ++ show (hash d))) : "  ║  " :
+    concat (indentInfChildren [s1])
+    where
+        (c', s1) = showTree' c f (getDd c cons)
 
 showTree :: Context -> Dd -> String
 showTree c = unlines . showTree'' c show
@@ -81,6 +215,10 @@ drawTree c x = putStrLn . showTree c $ getDd c x
 
 drawTree2 :: Context -> Dd -> IO ()
 drawTree2 c = putStrLn . showTree2 c
+
+drawTree3 :: (Context, NodeId) -> IO ()
+drawTree3 (c, x) = putStrLn . showTree c $ getDd c x
+
 
 -- disp :: Map.Map Ordinal (Either (Map.Map Int String) String) -> Dd -> IO ()
 -- disp m = putStrLn . unlines . showTree' (show . (\case
