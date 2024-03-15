@@ -76,8 +76,8 @@ type Dd1 :: Inf -> Constraint
 flub :: DdManipulation -> Context -> NodeId -> NodeId -> (Context, NodeId)
 flub f c a b = f c a b (getDd c a) (getDd c b)
 
-intersection :: Context -> NodeId -> NodeId -> (Context, NodeId)
-intersection c a b = intersection'  c a b (getDd c a) (getDd c b)
+intersection :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+intersection c a b = intersection'  c a b
     `debug` ("intersection: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 intersection' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 intersection' c a_id b_id a (Leaf False) = (c, b_id)
@@ -85,8 +85,8 @@ intersection' c a_id b_id (Leaf False) b = (c, a_id)
 intersection' c a_id b_id a (Leaf True) = insert c a
 intersection' c a_id b_id (Leaf True) b = insert c b
 intersection' c a_id b_id a b = intersectionMain c a_id b_id
-union :: Context -> NodeId -> NodeId -> (Context, NodeId)
-union c a b = union' c a b (getDd c a) (getDd c b)
+union :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+union c a b = union' c a b
     `debug` ("union: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 union' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 union' c a_id b_id a (Leaf True) = (c, b_id)
@@ -131,34 +131,34 @@ applyElimRule_arg c Pos0 d = applyElimRule @Pos0 c d
 
 -- --todo why am i doing this directly below?
 intersectionLocal_arg :: (Inf, FType) -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
--- intersectionLocal_arg (i,t) Context{func_stack= []} 0 b
+-- intersectionLocal_arg (i,t) Context{func_stack= []} (0,0) b_id a b
 --     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then Leaf False `debug5` (show i ++ "Leaf False") else Leaf False
---     | i `elem` [Neg0,Pos0] = if debugFlag then b `debug5` (show i ++ "b") else b
--- intersectionLocal_arg (i,t) [] 1 b
---     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then b `debug5` (show i ++ "b") else b
+--     | i `elem` [Neg0,Pos0] = if debugFlag then b `debug5` (show i ++ "b") else (c, b_id)
+-- intersectionLocal_arg (i,t) Context{func_stack = []} (1,0) b_id a b
+--     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then b `debug5` (show i ++ "b") else (c, b_id)
 --     | i `elem` [Neg0,Pos0] = if debugFlag then Leaf True `debug5` (show i ++ "Leaf True") else Leaf True
--- intersectionLocal_arg (i,t) [] a 0
+-- intersectionLocal_arg (i,t) Context{func_stack = []} a_id (0,0) a b
 --     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then Leaf False `debug5` (show i ++ "Leaf False") else Leaf False
---     | i `elem` [Neg0,Pos0] = if debugFlag then a `debug5` (show i ++ "a") else a
--- intersectionLocal_arg (i,t) [] a 1
---     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then a `debug5` (show i ++ "a") else a
+--     | i `elem` [Neg0,Pos0] = if debugFlag then a `debug5` (show i ++ "a") else (c, a_id)
+-- intersectionLocal_arg (i,t) Context{func_stack = []} a_id (1, 0) a b
+--     | i `elem` [Dc,Neg1,Pos1] = if debugFlag then a `debug5` (show i ++ "a") else (c, a_id)
 --     | i `elem` [Neg0,Pos0] = if debugFlag then Leaf True `debug5` (show i ++ "Leaf True") else Leaf True
 intersectionLocal_arg a b c d = continue_outer a b c d
 unionLocal_arg :: (Inf, FType) -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 unionLocal_arg t c a b = unionLocal_arg' t c a b `debug2` ("unionLocal arg t = " ++ show t ++ ", c = " ++ show c ++ ", \n \t a = " ++ show a ++ ", \n \t b = " ++ show b)
 -- unionLocal_arg' :: (Inf, FType) -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
--- unionLocal_arg' (i,t) [] a@(Leaf False) b
+-- unionLocal_arg' (i,t) Context{func_stack = []} a@(Leaf False) (c, b_id)
 --     | i `elem` [Dc,Neg1,Pos1] = b `debug2` (show i ++ "b")
 --     | i `elem` [Neg0,Pos0] = Leaf False `debug2` (show i ++ "Leaf False")
--- unionLocal_arg' (i,t) [] a@(Leaf True) b
+-- unionLocal_arg' (i,t) Context{func_stack = []} a@(Leaf True) (c, b_id)
 --     | i `elem` [Dc,Neg1,Pos1] = Leaf True `debug2` (show i ++ "Leaf True")
 --     | i `elem` [Neg0,Pos0] = b `debug2` (show i ++ "b")
--- unionLocal_arg' (i,t) [] a b@(Leaf False)
---     | i `elem` [Dc,Neg1,Pos1] = a `debug2` (show i ++ "a")
+-- unionLocal_arg' (i,t) Context{func_stack = []} a b@(Leaf False)
+--     | i `elem` [Dc,Neg1,Pos1] = (c, a_id) `debug2` (show i ++ "a")
 --     | i `elem` [Neg0,Pos0] = Leaf False `debug2` (show i ++ "Leaf False")
--- unionLocal_arg' (i,t) [] a b@(Leaf True)
+-- unionLocal_arg' (i,t) Context{func_stack = []} a b@(Leaf True)
 --     | i `elem` [Dc,Neg1,Pos1] = Leaf True `debug2` (show i ++ "Leaf True")
---     | i `elem` [Neg0,Pos0] = a `debug2` (show i ++ "a")
+--     | i `elem` [Neg0,Pos0] = (c, a_id) `debug2` (show i ++ "a")
 unionLocal_arg' t c a b = continue_outer t c a b
 
 
@@ -176,44 +176,44 @@ continue_outer t c = case t of
     (Pos1, Union) -> unionLocal @Pos1 c
     (Pos0, Union) -> unionLocal @Pos0 c
 
---     (Dc, MixedIntersection) -> mixedIntersection @Dc c
---     (Neg1, MixedIntersection) -> mixedIntersection @Neg1 c
---     (Neg0, MixedIntersection) -> mixedIntersection @Neg0 c
---     (Pos1, MixedIntersection) -> mixedIntersection @Pos1 c
---     (Pos0, MixedIntersection) -> mixedIntersection @Pos0 c
+    (Dc, MixedIntersection) -> mixedIntersection @Dc c
+    (Neg1, MixedIntersection) -> mixedIntersection @Neg1 c
+    (Neg0, MixedIntersection) -> mixedIntersection @Neg0 c
+    (Pos1, MixedIntersection) -> mixedIntersection @Pos1 c
+    (Pos0, MixedIntersection) -> mixedIntersection @Pos0 c
 
---     (Dc, MixedUnion) -> mixedUnion @Dc c
---     (Neg1, MixedUnion) -> mixedUnion @Neg1 c
---     (Neg0, MixedUnion) -> mixedUnion @Neg0 c
---     (Pos1, MixedUnion) -> mixedUnion @Pos1 c
---     (Pos0, MixedUnion) -> mixedUnion @Pos0 c
+    (Dc, MixedUnion) -> mixedUnion @Dc c
+    (Neg1, MixedUnion) -> mixedUnion @Neg1 c
+    (Neg0, MixedUnion) -> mixedUnion @Neg0 c
+    (Pos1, MixedUnion) -> mixedUnion @Pos1 c
+    (Pos0, MixedUnion) -> mixedUnion @Pos0 c
 
---     (Dc, Absorb) -> absorb @Dc c
---     (Neg1, Absorb) -> absorb @Neg1 c
---     (Neg0, Absorb) -> absorb @Neg0 c
---     (Pos1, Absorb) -> absorb @Pos1 c
---     (Pos0, Absorb) -> absorb @Pos0 c
+    (Dc, Absorb) -> absorb @Dc c
+    (Neg1, Absorb) -> absorb @Neg1 c
+    (Neg0, Absorb) -> absorb @Neg0 c
+    (Pos1, Absorb) -> absorb @Pos1 c
+    (Pos0, Absorb) -> absorb @Pos0 c
 
     (_, _) -> error (show t ++ ", " ++ show c ++ ", ")
 
 
 -- t_and_r_arg :: (Inf, FType) -> Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
--- t_and_r_arg t l c a b = case t of
---     (Dc, Absorb) -> absorb @Dc c a b
---     (Neg1, Absorb) -> absorb @Neg1 c a b
---     (Neg0, Absorb) -> absorb @Neg0 c a b
---     (Pos1, Absorb) -> absorb @Pos1 c a b
---     (Pos0, Absorb) -> absorb @Pos0 c a b
---     (Dc, T_and_r) -> traverse_and_return @Dc l c a b
---     (Neg1, T_and_r) -> traverse_and_return @Neg1 l c a b
---     (Neg0, T_and_r) -> traverse_and_return @Neg0 l c a b
---     (Pos1, T_and_r) -> traverse_and_return @Pos1 l c a b
---     (Pos0, T_and_r) -> traverse_and_return @Pos0 l c a b
---     (Dc, Remove) -> remove_outercomplement_from @Dc c a b
---     (Neg1, Remove) -> remove_outercomplement_from @Neg1 c a b
---     (Neg0, Remove) -> remove_outercomplement_from @Neg0 c a b
---     (Pos1, Remove) -> remove_outercomplement_from @Pos1 c a b
---     (Pos0, Remove) -> remove_outercomplement_from @Pos0 c a b
+-- t_and_r_arg t l c a_id b_id a b = case t of
+--     (Dc, Absorb) -> absorb @Dc c a_id b_id a b
+--     (Neg1, Absorb) -> absorb @Neg1 c a_id b_id a b
+--     (Neg0, Absorb) -> absorb @Neg0 c a_id b_id a b
+--     (Pos1, Absorb) -> absorb @Pos1 c a_id b_id a b
+--     (Pos0, Absorb) -> absorb @Pos0 c a_id b_id a b
+--     (Dc, T_and_r) -> traverse_and_return @Dc l c a_id b_id a b
+--     (Neg1, T_and_r) -> traverse_and_return @Neg1 l c a_id b_id a b
+--     (Neg0, T_and_r) -> traverse_and_return @Neg0 l c a_id b_id a b
+--     (Pos1, T_and_r) -> traverse_and_return @Pos1 l c a_id b_id a b
+--     (Pos0, T_and_r) -> traverse_and_return @Pos0 l c a_id b_id a b
+--     (Dc, Remove) -> remove_outercomplement_from @Dc c a_id b_id a b
+--     (Neg1, Remove) -> remove_outercomplement_from @Neg1 c a_id b_id a b
+--     (Neg0, Remove) -> remove_outercomplement_from @Neg0 c a_id b_id a b
+--     (Pos1, Remove) -> remove_outercomplement_from @Pos1 c a_id b_id a b
+--     (Pos0, Remove) -> remove_outercomplement_from @Pos0 c a_id b_id a b
 
 --     (_, _) -> error (show t ++ ", " ++ show c ++ ", " ++ show a ++ ", " ++ show b)
 
@@ -228,70 +228,70 @@ addInfNode c n inf conseq  =
         where
             (c', dd) = insert c $ EndInfNode conseq
 
--- intersectionInferA :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
--- intersectionInferA [] _ _ = error "empty context"
--- intersectionInferA _ _ (Leaf _) = error "Leaf in A"
--- intersectionInferA _ _ (EndInfNode _) = error "EndNode in A"
--- intersectionInferA _ _ (Node _ _ _) = error "Node in A"
+intersectionInferA :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+intersectionInferA Context{func_stack = []} _ _ _ _ = error "empty context"
+intersectionInferA  _ _ _ _ (Leaf _) = error "Leaf in A"
+intersectionInferA  _ _ _ _ (EndInfNode _) = error "EndNode in A"
+intersectionInferA  _ _ _ _ (Node _ _ _) = error "Node in A"
 
--- intersectionInferA c a b = intersectionInferA' c a b  `debug3` ["intersectionInferA: " ++ show c ++ " ; ", show a ++ " ; " , show b ++ " = \n " , show ( intersectionInferA' c a b) ++ "\n"]
+-- intersectionInferA c a_id b_id a b = intersectionInferA' c a_id b_id a b  `debug3` ["intersectionInferA: " ++ show c ++ " ; ", show a ++ " ; " , show b ++ " = \n " , show ( intersectionInferA' c a_id b_id a b) ++ "\n"]
 -- intersectionInferA' :: [(Inf, FType)] -> Dd -> Dd -> Dd
--- intersectionInferA' c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in
+-- intersectionInferA' c@((inf, _) : _) a_id b_id a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in
 --     case inf of
 --         Dc -> let -- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
---             dcR = intersectionLocal @Dc c a dcB
+--             dcR = intersectionLocal @Dc c a_id b_id adcB
 --             n1R = (if n0B == (1,0) then
---                     absorb @Neg1 c (mixedIntersection @Neg1 c n1B a) dcR  else
---                     remove_outercomplement_from @Neg1 c n0B (absorb @Neg1 c (mixedIntersection @Neg1 c n1B a) dcR))
---             n0R = absorb @Neg0 c (mixedIntersection @Neg0 c n0B dcR) dcR --`debug` ( "inter: " ++ show (mixedIntersection @Neg0 c n0A dcR) ++ "\n n0A: " ++ show n0A  ++ "\n dcR" ++ show dcR)
+--                     absorb @Neg1 c a_id b_id (mixedIntersection @Neg1 c n1B a) dcR  else
+--                     remove_outercomplement_from @Neg1 c n0B (absorb @Neg1 c a_id b_id (mixedIntersection @Neg1 c n1B a) dcR))
+--             n0R = absorb @Neg0 c a_id b_id (mixedIntersection @Neg0 c n0B dcR) dcR --`debug` ( "inter: " ++ show (mixedIntersection @Neg0 c n0A dcR) ++ "\n n0A: " ++ show n0A  ++ "\n dcR" ++ show dcR)
 --             p1R = if p0B == (1,0) then
---                 absorb @Pos1 c (mixedIntersection @Pos1 c p1B a) dcR else
---                 remove_outercomplement_from @Pos1 c p0B (absorb @Pos1 c (mixedIntersection @Pos1 c p1B a) dcR)
---             p0R = absorb @Neg0 c (mixedIntersection @Pos0 c p0B dcR) dcR
+--                 absorb @Pos1 c a_id b_id (mixedIntersection @Pos1 c p1B a) dcR else
+--                 remove_outercomplement_from @Pos1 c p0B (absorb @Pos1 c a_id b_id (mixedIntersection @Pos1 c p1B a) dcR)
+--             p0R = absorb @Neg0 c a_id b_id (mixedIntersection @Pos0 c p0B dcR) dcR
 --             in InfNodes positionB dcR n1R n0R p1R p0R
 
 --         Neg1 -> let -- replace all the A stuf with (dc: 0, neg1: a, neg0: 1, pos1: 0, pos0: 1)
 --             n1R = unionLocal @Neg1 c
---                 (intersectionLocal @Neg1 c a n1B)
+--                 (intersectionLocal @Neg1 c a_id b_id an1B)
 --                 (if n0B == (1,0) then n1R' else remove_outercomplement_from @Neg1 c n0B n1R')
---             n1R' = mixedIntersection @Neg1 c a dcB
+--             n1R' = mixedIntersection @Neg1 c a_id b_id adcB
 --             in InfNodes positionB 0 n1R 1 0 1
 --         Neg0 -> let -- replace all the A stuf with (dc: 1, neg1: 0, neg0: a, pos1: 0, pos0: 1)
---             n0R' = intersectionLocal @Neg0 c a n0B
+--             n0R' = intersectionLocal @Neg0 c a_id b_id an0B
 --             n0R = mixedIntersection @Neg0 c n0R' dcB
 --             in InfNodes positionB dcB 0 n0R 0 1
 --         Pos1 -> let -- replace all the A stuf with (dc: 0, neg1: 0, neg0: 1, pos1: a, pos0: 1)
 --             p1R = unionLocal @Pos1 c
---                 (intersectionLocal @Pos1 c a n1B)
+--                 (intersectionLocal @Pos1 c a_id b_id an1B)
 --                 (if n0B == (1,0) then p1R' else remove_outercomplement_from @Pos1 c n0B p1R')
---             p1R' = mixedIntersection @Pos1 c a dcB
+--             p1R' = mixedIntersection @Pos1 c a_id b_id adcB
 --             in InfNodes positionB 0 0 1 p1R 1
 --         Pos0 -> let -- replace all the A stuf with (dc: 1, neg1: 0, neg0: a, pos1: 0, pos0: 1)
---             p0R' = intersectionLocal @Pos0 c a p0B
+--             p0R' = intersectionLocal @Pos0 c a_id b_id ap0B
 --             p0R = mixedIntersection @Pos0 c p0R' dcB
 --             in InfNodes positionB dcB 0 1 0 p0R
 -- intersectionInferA' _ _ _ = undefined
 
--- intersectionInferB :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
--- intersectionInferB [] _ _ = error "empty context"
--- intersectionInferB _ (Leaf _) _ = error "Leaf in A"
--- intersectionInferB _ (EndInfNode _) _ = error "EndNode in A"
--- intersectionInferB _ (Node _ _ _) _ = error "Node in A"
+intersectionInferB :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+intersectionInferB Context{func_stack = []} _ _ _ _ = error "empty context"
+intersectionInferB _ _ _ (Leaf _) _ = error "Leaf in A"
+intersectionInferB _ _ _ (EndInfNode _) _ = error "EndNode in A"
+intersectionInferB _ _ _ (Node _ _ _) _ = error "Node in A"
 
--- intersectionInferB c a b =  intersectionInferB' c a b `debug4` ("intersectionInferB: " ++ show c ++ " ; " ++ show a ++ " ; " ++ show b ++ " = \n " ++ show (intersectionInferB' c a b) ++ "\n")
+-- intersectionInferB c a_id b_id a b =  intersectionInferB' c a_id b_id a b `debug4` ("intersectionInferB: " ++ show c ++ " ; " ++ show a ++ " ; " ++ show b ++ " = \n " ++ show (intersectionInferB' c a_id b_id a b) ++ "\n")
 -- intersectionInferB' :: [(Inf, FType)] -> Dd -> Dd -> Dd
--- intersectionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A)  b' = let b = EndInfNode b' in
+-- intersectionInferB' c@((inf, _) : _) a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b' = let b = EndInfNode b' in
 --     case inf of
 --         Dc -> let
 --             dcR = intersectionLocal @Dc c dcA b
 --             n1R = (if n0A == (1,0) then
---                 absorb @Neg1 c (mixedIntersection @Neg1 c n1A b) dcR  else
---                 remove_outercomplement_from @Neg1 c n0A (absorb @Neg1 c (mixedIntersection @Neg1 c n1A b) dcR))
---             n0R = absorb @Neg0 c (mixedIntersection @Neg0 c n0A dcR) dcR
+--                 absorb @Neg1 c a_id b_id (mixedIntersection @Neg1 c n1A b) dcR  else
+--                 remove_outercomplement_from @Neg1 c n0A (absorb @Neg1 c a_id b_id (mixedIntersection @Neg1 c n1A b) dcR))
+--             n0R = absorb @Neg0 c a_id b_id (mixedIntersection @Neg0 c n0A dcR) dcR
 --             p1R = if p0A == (1,0) then
---                 absorb @Pos1 c (mixedIntersection @Pos1 c p1A b) dcR else
---                 remove_outercomplement_from @Pos1 c p0A (absorb @Pos1 c (mixedIntersection @Pos1 c p1A b) dcR)
---             p0R = absorb @Pos0 c (mixedIntersection @Pos0 c p0A dcR) dcR `debug` ("\n"++ show (absorb @Pos0 c (mixedIntersection @Pos0 c p0A dcR) dcR) ++ "\n" ++ show (mixedIntersection @Pos0 c p0A dcR)++"\n")
+--                 absorb @Pos1 c a_id b_id (mixedIntersection @Pos1 c p1A b) dcR else
+--                 remove_outercomplement_from @Pos1 c p0A (absorb @Pos1 c a_id b_id (mixedIntersection @Pos1 c p1A b) dcR)
+--             p0R = absorb @Pos0 c a_id b_id (mixedIntersection @Pos0 c p0A dcR) dcR `debug` ("\n"++ show (absorb @Pos0 c a_id b_id (mixedIntersection @Pos0 c p0A dcR) dcR) ++ "\n" ++ show (mixedIntersection @Pos0 c p0A dcR)++"\n")
 --             in (InfNodes positionA dcR n1R n0R p1R p0R) `debug` ("\n\n ------ " ++ show ( InfNodes positionA dcR n1R n0R p1R p0R))
 
 --         Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
@@ -316,13 +316,13 @@ addInfNode c n inf conseq  =
 --             in InfNodes positionA dcA 0 1 0 p0R
 
 
--- intersectionInferB' _ _ _ = undefined
+-- intersectionInferB' _ _ _ _ _ = undefined
 
 
 intersectionMain :: Context -> NodeId -> NodeId -> (Context, NodeId)
 intersectionMain c a b = intersectionMain' c a b (getDd c a) (getDd c b)`debug` (colorize "green" "intersectionMain: " ++ show c ++ "; " ++ show (getDd c a) ++ " ; "  ++ show (getDd c b) )
  --intersectionMain' (c : cs) a b  `debug4` ("intersectionMain, from " ++ show c ++ "; " ++ show a ++ " ; "  ++ show b ++ "= \n " ++ show (intersectionMain' (c : cs) a b))
--- intersectionMain [] _ _ = error "empty list not possible"
+-- intersectionMain Context{func_stack = []} _ _ _ _ = error "empty list not possible"
 
 intersectionMain' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 intersectionMain'  c@Context{} a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B) = withCache c (a_id, b_id) $
@@ -334,10 +334,10 @@ intersectionMain'  c@Context{} a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p
 --             ++ "\n\t dcB = " ++ show dcB
 --             ++ "\n")
 
---         n1R = absorb @Neg1 c (unionLocal @Neg1 c
+--         n1R = absorb @Neg1 c a_id b_id (unionLocal @Neg1 c
 --             (intersectionLocal @Neg1 c n1A n1B) -- overlapping points are by definition not inside the others dc, thus have to be preserved
 --             (if n0R' == (1,0) then n1R' else remove_outercomplement_from @Neg1 c n0R' n1R')) dcR -- holes absorb points under intersection
---             `debug` (("\nn1R \t ((n1A ^ n1B) v (n0R' / n1R')) @ dcR \t = " ++ show (absorb @Neg1 c (unionLocal @Neg1 c
+--             `debug` (("\nn1R \t ((n1A ^ n1B) v (n0R' / n1R')) @ dcR \t = " ++ show (absorb @Neg1 c a_id b_id (unionLocal @Neg1 c
 --                 (intersectionLocal @Neg1 c n1A n1B)
 --                 (if n0R' == (1,0) then n1R' else remove_outercomplement_from @Neg1 c n0R' n1R')) dcR)
 --             ++ "\n \t ((n1A ^ n1B) v (n0R' / n1R')) = " ++  show (unionLocal @Neg1 c
@@ -359,15 +359,15 @@ intersectionMain'  c@Context{} a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p
 --             ++ "\n\t n0A = " ++ show (n0A)
 --             ++ "\n\t n0B = " ++ show (n0B)
 --             ++ "\n")
---         n0R = absorb @Neg0 c (mixedIntersection @Neg0 c n0R' dcR) dcR-- keep the holes that fit inside dcR
---             `debug` ("\nn0R \t (n0R' ^ dcR) @ dcR = " ++ show (absorb @Neg0 c (mixedIntersection @Neg0 c n0R' dcR) dcR)
+--         n0R = absorb @Neg0 c a_id b_id (mixedIntersection @Neg0 c n0R' dcR) dcR-- keep the holes that fit inside dcR
+--             `debug` ("\nn0R \t (n0R' ^ dcR) @ dcR = " ++ show (absorb @Neg0 c a_id b_id (mixedIntersection @Neg0 c n0R' dcR) dcR)
 --             ++ "\n\t (n0R' ^ dcR) = " ++ show (mixedIntersection @Neg0 c n0R' dcR)
 --             ++ "\n\t dcR = " ++ show dcR
 --             ++ "\n")
 
 --         -- if the local hole fits inside dcR but the consequence of n0R' does not fit inside the consequenc of dcR it should return n0R' -> Leaf false
 --         ------------------------------------
---         p1R = absorb @Pos1 c (unionLocal @Pos1 c
+--         p1R = absorb @Pos1 c a_id b_id (unionLocal @Pos1 c
 --             (intersectionLocal @Pos1 c p1A p1B)
 --             (if p0R' == (1,0) then p1R' else remove_outercomplement_from @Pos1 c p0R' p1R')) dcR
 --             `debug` ("\np1R \t (p1A ^ p1B) v (p1R' / p0R') \t = " ++ show (unionLocal @Pos1 c
@@ -397,91 +397,91 @@ intersectionMain'  c@Context{} a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p
 --             ++ "\n\t p0A = " ++ show p0A
 --             ++ "\n\t p0B = " ++ show p0B
 --             ++ "\n")
---         p0R = absorb @Pos0 c (mixedIntersection @Pos0 c p0R' dcR) dcR
---             `debug` ("\np0R \t (p0R' ^ dcR) @ dcR = " ++ show (absorb @Pos0 c (mixedIntersection @Pos0 c p0R' dcR) dcR)
+--         p0R = absorb @Pos0 c a_id b_id (mixedIntersection @Pos0 c p0R' dcR) dcR
+--             `debug` ("\np0R \t (p0R' ^ dcR) @ dcR = " ++ show (absorb @Pos0 c a_id b_id (mixedIntersection @Pos0 c p0R' dcR) dcR)
 --             ++ "\n\t (p0R' ^ dcR) = " ++ show (mixedIntersection @Pos0 c p0R' dcR)
 --             ++ "\n\t dcR = " ++ show dcR
 --             ++ "\n")
 --         in InfNodes positionA dcR n1R n0R p1R p0R
---     | positionA > positionB = intersectionInferA c a b
---     | positionA < positionB = intersectionInferB c a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
+--     | positionA > positionB = intersectionInferA c a_id b_id a b
+--     | positionA < positionB = intersectionInferB c a_id b_id a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
 intersectionMain' c a_id b_id a b = error (show a ++ ", " ++ show b ++ ", "++ show c)
 
--- unionInferA :: Context -> NodeId -> NodeId -> (Context, NodeId)
--- unionInferA [] _ _ = error "empty context"
--- unionInferA _ _ (Leaf _) = error "Leaf in A"
--- unionInferA _ _ (EndInfNode _) = error "EndNode in A"
--- unionInferA _ _ (Node _ _ _) = error "Node in A"
+unionInferA :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+unionInferA Context{func_stack = []} _ _ _ _ = error "empty context"
+unionInferA  _ _ _ _ (Leaf _) = error "Leaf in A"
+unionInferA  _ _ _ _ (EndInfNode _) = error "EndNode in A"
+unionInferA  _ _ _ _ (Node _ _ _) = error "Node in A"
 
--- unionInferA c a b =  unionInferA' c a b `debug4` ("unionInferA: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (unionInferA' c a b ))
+-- unionInferA c a_id b_id a b =  unionInferA' c a_id b_id a b `debug4` ("unionInferA: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (unionInferA' c a_id b_id a b ))
 -- unionInferA' :: [(Inf, FType)] -> Dd -> Dd -> Dd
--- unionInferA' c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in
+-- unionInferA' c@((inf, _) : _) a_id b_id a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in
 --     case inf of
 --         Dc -> let
 --             dcR = unionLocal @Dc c  a dcB --pass along the consequence of B for both dcA and not dcA
---             n1R = absorb @Neg1 c (mixedUnion @Neg1 c n1B dcR) dcR
+--             n1R = absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1B dcR) dcR
 
 --             n0R = let n0R' = mixedUnion @Neg0 c n0B a in
---                 if n1B == (0,0) then absorb @Neg0 c n0R' dcR else absorb @Neg0 c (remove_outercomplement_from @Neg0 c n1B n0R') dcR
+--                 if n1B == (0,0) then absorb @Neg0 c n0R' dcR else absorb @Neg0 c a_id b_id (remove_outercomplement_from @Neg0 c n1B n0R') dcR
 
---             p1R = absorb @Pos1 c (mixedUnion @Pos1 c p1B dcR) dcR
+--             p1R = absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1B dcR) dcR
 --             p0R = let p0R' = mixedUnion @Pos0 c p0B a in
---                 if p1B == (0,0) then absorb @Pos0 c p0R' dcR else absorb @Pos0 c (remove_outercomplement_from @Pos0 c p1B p0R') dcR
+--                 if p1B == (0,0) then absorb @Pos0 c p0R' dcR else absorb @Pos0 c a_id b_id (remove_outercomplement_from @Pos0 c p1B p0R') dcR
 
 --             in InfNodes positionB dcR n1R n0R p1R p0R
 
 --         Neg1 -> let -- replace all the A stuf with (dc: 0, neg1: a, neg0: 1, pos1: 0, pos0: 1)
---             n1R' = unionLocal @Neg1 c a n1B `debug` ("--------- " ++ show n1B)
+--             n1R' = unionLocal @Neg1 c a_id b_id an1B `debug` ("--------- " ++ show n1B)
 --             n1R = mixedUnion @Neg1 c n1R' dcB
 --             in InfNodes positionB 0 n1R 1 0 1
 --         Neg0 -> let -- replace all the A stuf with (dc: 1, neg1: 0, neg0: a, pos1: 0, pos0: 1)
 --             n0R = intersectionLocal @Neg0 c
---                 (unionLocal @Neg0 c a n0B)
+--                 (unionLocal @Neg0 c a_id b_id an0B)
 --                 (if n1B == (1,0) then n0R' else remove_outercomplement_from @Neg0 c n1B n0R')
---             n0R' = mixedUnion @Neg0 c a dcB
+--             n0R' = mixedUnion @Neg0 c a_id b_id adcB
 --             in InfNodes positionB dcB 0 n0R 0 1
 --         Pos1 -> let -- replace all the A stuf with (dc: 0, neg1: 0, neg0: 1, pos1: a, pos0: 1)
---             p1R' = unionLocal @Pos1 c a p1B
+--             p1R' = unionLocal @Pos1 c a_id b_id ap1B
 --             p1R = mixedUnion @Pos1 c p1R' dcB
 --             in InfNodes positionB 0 0 1 p1R 1
 --         Pos0 -> let -- replace all the A stuf with (dc: 1, neg1: 0, neg0: a, pos1: 0, pos0: 1)
 --             p0R = intersectionLocal @Pos0 c
---                 (unionLocal @Pos0 c a n0B)
+--                 (unionLocal @Pos0 c a_id b_id an0B)
 --                 (if p1B == (1,0) then p0R' else remove_outercomplement_from @Pos0 c p1B p0R')
---             p0R' = mixedUnion @Pos0 c a dcB
+--             p0R' = mixedUnion @Pos0 c a_id b_id adcB
 --             in InfNodes positionB dcB 0 1 0 p0R
 -- unionInferA' _ _ _ = undefined
 
 
--- unionInferB :: Context -> NodeId -> NodeId -> (Context, NodeId)
--- unionInferB [] _ _ = error "empty context"
--- unionInferB _ (Leaf _) _ = error "Leaf in A"
--- unionInferB _ (EndInfNode _) _ = error "EndNode in A"
--- unionInferB _ (Node _ _ _) _ = error "Node in A"
+unionInferB :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+unionInferB Context{func_stack = []} _ _ _ _ = error "empty context"
+unionInferB _ _ _ (Leaf _) _ = error "Leaf in A"
+unionInferB _ _ _ (EndInfNode _) _ = error "EndNode in A"
+unionInferB _ _ _ (Node _ _ _) _ = error "Node in A"
 
--- unionInferB c a b =  unionInferB' c a b  `debug4` ("unionInferB: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (unionInferB' c a b ))
+-- unionInferB c a_id b_id a b =  unionInferB' c a_id b_id a b  `debug4` ("unionInferB: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (unionInferB' c a_id b_id a b ))
 -- unionInferB' :: [(Inf, FType)] -> Dd -> Dd -> Dd
--- unionInferB' c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let b = EndInfNode b' in
+-- unionInferB' c@((inf, _) : _) a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let b = EndInfNode b' in
 --     case inf of
 --         Dc -> let
 --             dcR = unionLocal @Dc c b dcA
 --                 `debug` ("\ndcR \t = " ++ show (unionLocal @Dc c b dcA))
---             n1R = absorb @Neg1 c (mixedUnion @Neg1 c n1A dcR) dcR
---                 `debug` ("\nn1R (n1A ^ dcR) @ dcR \t = " ++ show (absorb @Neg1 c (mixedUnion @Neg1 c n1A dcR) dcR))
+--             n1R = absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1A dcR) dcR
+--                 `debug` ("\nn1R (n1A ^ dcR) @ dcR \t = " ++ show (absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1A dcR) dcR))
 
 --             n0R = (let n0R' = mixedUnion @Neg0 c n0A b in
---                 if n1A == (0,0) then absorb @Neg0 c  n0R' dcR else  absorb @Neg0 c (remove_outercomplement_from @Neg0 c n1A n0R') dcR)
+--                 if n1A == (0,0) then absorb @Neg0 c  n0R' dcR else  absorb @Neg0 c a_id b_id (remove_outercomplement_from @Neg0 c n1A n0R') dcR)
 --                 `debug` ("**n0R' = n0A v b = " ++ show (mixedUnion @Neg0 c n0A b) ++ "\n" ++
 --                 "**n0R' @ dcR = " ++ show (absorb @Neg0 c  (mixedUnion @Neg0 c n0A b) dcR) ++ "\n" ++
 --                 "**n0A = " ++ show n0A ++ "\n" ++
 --                 "**b = " ++ show b ++ "\n")
 
---             p1R = absorb @Pos1 c (mixedUnion @Pos1 c p1A dcR) dcR
---                 `debug` ("\np1R (p1A ^ dcR) @ dcR \t = " ++ show (absorb @Pos1 c (mixedUnion @Pos1 c p1A dcR) dcR))
+--             p1R = absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1A dcR) dcR
+--                 `debug` ("\np1R (p1A ^ dcR) @ dcR \t = " ++ show (absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1A dcR) dcR))
 --             p0R = (let p0R' =  mixedUnion @Pos0 c p0A b in
---                 if p1A == (0,0) then absorb @Pos0 c p0R' dcR else absorb @Pos0 c (remove_outercomplement_from @Pos0 c p1A p0R') dcR)
+--                 if p1A == (0,0) then absorb @Pos0 c p0R' dcR else absorb @Pos0 c a_id b_id (remove_outercomplement_from @Pos0 c p1A p0R') dcR)
 --                 `debug` ("p0R' = " ++ show (mixedUnion @Pos0 c p0A b) ++ "\n")
---                 `debug` ("p0R' @ dcR = " ++ show (absorb @Pos0 c (mixedUnion @Pos0 c p0A b) dcR) ++ "\n")
+--                 `debug` ("p0R' @ dcR = " ++ show (absorb @Pos0 c a_id b_id (mixedUnion @Pos0 c p0A b) dcR) ++ "\n")
 --                 `debug` ("p0A = " ++ show p0A)
 --             in InfNodes positionA dcR n1R n0R p1R p0R
 --         Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
@@ -525,8 +525,8 @@ unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes p
 --             ++ "\n\t dcB = " ++ show dcB
 --             ++ "\n")
 
---         n1R = absorb @Neg1 c (mixedUnion @Neg1 c n1R' dcR) dcR
---             `debug` ("\nn1R \t (n1R' v  dcR) @ dcR = " ++ show (absorb @Neg1 c (mixedUnion @Neg1 c n1R' dcR) dcR)
+--         n1R = absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1R' dcR) dcR
+--             `debug` ("\nn1R \t (n1R' v  dcR) @ dcR = " ++ show (absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1R' dcR) dcR)
 --             ++ "\n\t (n1R' ^ dcR) = " ++ show (mixedUnion @Neg1 c n1R' dcR)
 --             ++ "\n\t n1R' = " ++ show n1R'
 --             ++ "\n\t dcR = " ++ show dcR
@@ -537,10 +537,10 @@ unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes p
 --             ++ "\n\t n1B = " ++ show n1B
 --             ++ "\n")
 
---         n0R = absorb @Neg0 c (intersectionLocal @Neg0 c
+--         n0R = absorb @Neg0 c a_id b_id (intersectionLocal @Neg0 c
 --             (unionLocal @Neg0 c n0A n0B)
 --             (if n1R' == (0,0) then n0R' else remove_outercomplement_from @Neg0 c n1R' n0R')) dcR
---             `debug2` ("\nn0R \t ((n0A v n0B) ^ (n0R' / n1R')) @ dcR = " ++ show ( absorb @Neg0 c (intersectionLocal @Neg0 c
+--             `debug2` ("\nn0R \t ((n0A v n0B) ^ (n0R' / n1R')) @ dcR = " ++ show ( absorb @Neg0 c a_id b_id (intersectionLocal @Neg0 c
 --                     (unionLocal @Neg0 c n0A n0B)
 --                     (if n1R' == (0,0) then n0R' else remove_outercomplement_from @Neg0 c n1R' n0R')) dcR)
 --                 ++ "\n\t (n0A v n0B) = " ++ show (unionLocal @Neg0 c n0A n0B)
@@ -570,8 +570,8 @@ unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes p
 
 --         ------------------------------------
 --         -- n0R = (n0A cap n0B) cup ((n0A cap neg dcB) cap n1B) cup ((n0B cap neg dcA) cap n1A) <-> (n0A cup n0B) cap n1R* cap neg dcR
---         p1R = absorb @Pos1 c (mixedUnion @Pos1 c p1R' dcR) dcR
---             `debug` ("\np1R \t (p1R' ^ dcR) @ dcR = " ++ show (absorb @Pos1 c (mixedUnion @Pos1 c p1R' dcR) dcR)
+--         p1R = absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1R' dcR) dcR
+--             `debug` ("\np1R \t (p1R' ^ dcR) @ dcR = " ++ show (absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1R' dcR) dcR)
 --             ++ "\n\t p1R' = " ++ show p1R'
 --             ++ "\n\t dcR = " ++ show dcR
 --             ++ "\n")
@@ -581,10 +581,10 @@ unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes p
 --             ++ "\n\t p1B = " ++ show p1B
 --             ++ "\n")
 
---         p0R = absorb @Pos0 c (intersectionLocal @Pos0 c
+--         p0R = absorb @Pos0 c a_id b_id (intersectionLocal @Pos0 c
 --             (unionLocal @Pos0 c p0A p0B)
 --             (if p1R' == (0,0) then p0R' else remove_outercomplement_from @Pos0 c p1R' p0R')) dcR
---             `debug` ("\np0R = ((p0A v p0B) ^ (p0R' / p1R')) @dcR \t = " ++ show (absorb @Pos0 c (intersectionLocal @Pos0 c
+--             `debug` ("\np0R = ((p0A v p0B) ^ (p0R' / p1R')) @dcR \t = " ++ show (absorb @Pos0 c a_id b_id (intersectionLocal @Pos0 c
 --                 (unionLocal @Pos0 c p0A p0B)
 --                 (if p1R' == (0,0) then p0R' else remove_outercomplement_from @Pos0 c p1R' p0R')) dcR)
 --             ++ "\n\t (p0A v p0B) = " ++ show (unionLocal @Pos0 c p0A p0B)
@@ -614,26 +614,28 @@ unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes p
 
 --         in InfNodes positionA dcR n1R n0R p1R p0R `debug2` ("unionMain = " ++ show (InfNodes positionA dcR n1R n0R p1R p0R))
 
---     | positionA > positionB = unionInferA c a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
+--     | positionA > positionB = unionInferA c a_id b_id a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
 
 --     -- c cannot be empty..
---     | positionA < positionB = unionInferB c a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
-unionMain' c a b _ _ = error "no 2 StartInfNode's in union main"
+--     | positionA < positionB = unionInferB c a_id b_id a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
+unionMain' c a_id b_id a b = error "no 2 StartInfNode's in union main"
 
 
 -- -- captures the general patterns for the functions
 class Dd1 a where
+    apply :: Context -> NodeId -> NodeId -> DdManipulation -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     intersectionLocal' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     mixedIntersection' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     mixedUnion' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     unionLocal' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     remove_outercomplement_from' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
---     absorb' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
---     traverse_and_return' :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+    absorb' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+    traverse_and_return' :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 
 
 
 instance (DdF4 a) => Dd1 a where
+    apply c a_key b_key f a_id b_id a b = let (c', r) = f c a_id b_id a b in withCache c (a_key, b_key) $ applyInfElimRule @a c' $ getDd c r
     -- reached leaf, so return a result here
     remove_outercomplement_from' c a_id b_id a@(Leaf _) b@(Leaf _)
         | a_id == false @a = (c, false @a)  --oposite, thus turn false and true around (becaus @a implies the type of b)
@@ -660,10 +662,10 @@ instance (DdF4 a) => Dd1 a where
     remove_outercomplement_from' Context{func_stack=[]} _ _ a@(EndInfNode _) b@(Leaf _) = error "empty context"
 
 
-    remove_outercomplement_from' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(EndInfNode d) = withCache c (a_id, b_id) $ inferNodeB @a (remove_outercomplement_from @a) c a_id b_id a b
-    remove_outercomplement_from' c a_id b_id a@(EndInfNode d) b@(Node positionB pos_childB neg_childB) = withCache c (a_id, b_id) $ inferNodeA_opposite @a (remove_outercomplement_from @a) c a_id b_id a b
+    remove_outercomplement_from' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(EndInfNode d) = inferNodeB @a (remove_outercomplement_from @a) c a_id b_id a b
+    remove_outercomplement_from' c a_id b_id a@(EndInfNode d) b@(Node positionB pos_childB neg_childB) = inferNodeA_opposite @a (remove_outercomplement_from @a) c a_id b_id a b
 --     -- removecomplements cannot be nested
-    remove_outercomplement_from' c@(Context{func_stack = (f:fs)}) a_id b_id (EndInfNode a) (EndInfNode b) = let (c', r) = (negation c a (getDd c a)) in continue_outer f c'{func_stack = fs} r b (getDd c r) (getDd c b)  -- todo negation a makes sense? or should i use maybe_negate on both to make sure we get the same polarity?
+    remove_outercomplement_from' c@(Context{func_stack = (f:fs)}) a_id b_id (EndInfNode a) (EndInfNode b) = let (c', r) = (negation c a (getDd c a)) in continue_outer f c'{func_stack = fs} r b (getDd c' r) (getDd c b)  -- todo negation a makes sense? or should i use maybe_negate on both to make sure we get the same polarity?
     remove_outercomplement_from' c@(Context{func_stack = []}) a_id b_id a@(EndInfNode childA)  b@(EndInfNode childB) = error "should not have empty context stack"
 
     -- No leafs involved
@@ -681,75 +683,91 @@ instance (DdF4 a) => Dd1 a where
             withCache c (a_id, b_id) $ let (c', r) = (remove_outercomplement_from @a c a_id neg_childB a (getDd c neg_childB)) in insert c' $ Node positionB pos_childB r
 
 
---     remove_outercomplement_from' c a_id b_id a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) -- check define inner recursion for lobsided intersectio/union: (-. a .^. b)?
---         | positionA > positionB = case to_constr @a of
---             Dc -> error "remove outer complement from with a dc should not be possible"
---             Neg1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a False c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Neg0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a True c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Pos1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a False c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Pos0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a True c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---         | positionA < positionB =  withCache c (a_id, b_id) $ remove_outercomplement_from @a c neg_childA b
---         | positionA == positionB =  undefined
---     remove_outercomplement_from' c a_id b_id a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB)
---         | positionA > positionB =  withCache c (a_id, b_id) $ remove_outercomplement_from @a c a_id b_id a neg_childB
---         | positionA < positionB =   case to_constr @a of
---             Dc -> error "remove outer complement from with a dc should not be possible"
---             Neg1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a False c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Neg0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a True c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Pos1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a False c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Pos0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a True c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---         | positionA == positionB =  undefined
+    remove_outercomplement_from' c a_id b_id a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _) -- check define inner recursion for lobsided intersectio/union: (-. a .^. b)?
+        | positionA > positionB = case to_constr @a of
+            Dc -> error "remove outer complement from with a dc should not be possible"
+            Neg1 -> f True
+            Neg0 -> f False
+            Pos1 -> f True
+            Pos0 -> f False
+        | positionA < positionB =  withCache c (a_id, b_id) $ remove_outercomplement_from @a c neg_childA b_id (getDd c neg_childA) b
+        | positionA == positionB =  undefined
+        where
+            f b' = apply @a c{func_stack = ((to_constr @a, Remove) : func_stack c)} a_id b_id (t_and_rInferA_ @a b') a_id b_id a b
 
---     remove_outercomplement_from' c a_id b_id a@(InfNodes{}) b@(EndInfNode d) =
---         case to_constr @a of
---             Dc -> error "remove outer complement from with a dc should not be possible"
---             Neg1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a False c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Neg0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a True c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Pos1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a False c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Pos0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a True c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---     remove_outercomplement_from' c a_id b_id a@(EndInfNode d) b@(InfNodes{}) =
---         case to_constr @a of
---             Dc -> error "remove outer complement from with a dc should not be possible"
---             Neg1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a False c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Neg0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a True c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Pos1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a False c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
---             Pos0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a True c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b
+    remove_outercomplement_from' c a_id b_id a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB)
+        | positionA > positionB =  withCache c (a_id, b_id) $ remove_outercomplement_from @a c a_id neg_childB a (getDd c neg_childB)
+        | positionA < positionB =   case to_constr @a of
+            Dc -> error "remove outer complement from with a dc should not be possible"
+            Neg1 -> f False
+            Neg0 -> f True
+            Pos1 -> f False
+            Pos0 -> f True
+        | positionA == positionB =  undefined
+        where
+            f b' = apply @a c{func_stack = ((to_constr @a, Remove) : func_stack c)} a_id b_id (t_and_rInferB_ @a b') a_id b_id a b
 
 
---     remove_outercomplement_from' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
---         | positionA == positionB = case to_constr @a of
---             Dc -> error "absorb with a dc as first argument should not be possible"
---             Neg1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rMain False c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---             Neg0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rMain True c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---             Pos1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rMain False c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---             Pos0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rMain True c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---         | positionA < positionB = case to_constr @a of
---             Dc -> error "remove outer complement from with a dc should not be possible"
---             Neg1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a False c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---             Neg0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a True c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---             Pos1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a False c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---             Pos0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a True c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---         | positionA > positionB = case to_constr @a of
---             Dc -> error "remove outer complement from with a dc should not be possible"
---             Neg1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a False c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---             Neg0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a True c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---             Pos1 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a False c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---             Pos0 -> withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a True c{func_stack = ((to_constr @a, Remove): func_stack c) a b
---     remove_outercomplement_from' c a_id b_id a b = undefined `debug4` (show a ++ "  :  " ++ show b)
+    remove_outercomplement_from' c a_id b_id a@(InfNodes{}) b@(EndInfNode d) =
+        case to_constr @a of
+            Dc -> error "remove outer complement from with a dc should not be possible"
+            Neg1 -> f False
+            Neg0 -> f True
+            Pos1 -> f False
+            Pos0 -> f True
+        where
+            f b' = apply @a c{func_stack = ((to_constr @a, Remove) : func_stack c)} a_id b_id (t_and_rInferB_ @a b') a_id b_id a b
+
+    remove_outercomplement_from' c a_id b_id a@(EndInfNode d) b@(InfNodes{}) =
+        case to_constr @a of
+            Dc -> error "remove outer complement from with a dc should not be possible"
+            Neg1 -> f False
+            Neg0 -> f True
+            Pos1 -> f False
+            Pos0 -> f True
+        where
+            f b' = apply @a c{func_stack = ((to_constr @a, Remove) : func_stack c)} a_id b_id (t_and_rInferA_ @a b') a_id b_id a b
+
+
+    remove_outercomplement_from' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
+        | positionA == positionB = case to_constr @a of
+            Dc -> error "absorb with a dc as first argument should not be possible"
+            Neg1 -> fm False
+            Neg0 -> fm True
+            Pos1 -> fm False
+            Pos0 -> fm True
+        | positionA < positionB = case to_constr @a of
+            Dc -> error "remove outer complement from with a dc should not be possible"
+            Neg1 -> fb False
+            Neg0 -> fb True
+            Pos1 -> fb False
+            Pos0 -> fb True
+        | positionA > positionB = case to_constr @a of
+            Dc -> error "remove outer complement from with a dc should not be possible"
+            Neg1 -> fa False
+            Neg0 -> fa True
+            Pos1 -> fa False
+            Pos0 -> fa True
+        where
+            fm b' = apply @a c{func_stack = ((to_constr @a, Remove) : func_stack c)} a_id b_id (t_and_rMain b') a_id b_id a b
+            fb b' = apply @a c{func_stack = ((to_constr @a, Remove) : func_stack c)} a_id b_id (t_and_rInferB_ @a b') a_id b_id a b
+            fa b' = apply @a c{func_stack = ((to_constr @a, Remove) : func_stack c)} a_id b_id (t_and_rInferA_ @a b') a_id b_id a b
+
+    remove_outercomplement_from' c a_id b_id a b = undefined `debug4` (show a ++ "  :  " ++ show b)
 
     intersectionLocal' c a_id b_id a@(Leaf True) b = (c, b_id) --`debug` ("returning" ++ show b_id)
     intersectionLocal' c@(Context{func_stack = (f:fs)}) a_id b_id a@(Leaf False) b@(EndInfNode childB ) = withCache c (a_id, b_id) $ intersectionLocal_arg f c{func_stack = fs} a_id childB a b
     intersectionLocal' c a_id b_id a@(Leaf False) b@(Leaf _) = (c, a_id)  --`debug` ("returning" ++ show a_id)-- dc case for leafs
 
-    -- intersectionLocal' c a_id b_id a@(Leaf False) b@(InfNodes {}) =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersectionInferA_ @a c a b -- leaf with node or end infnode
-    intersectionLocal' c a_id b_id a@(Leaf False) b = withCache c (a_id, b_id) $ inferNodeA @a (intersectionLocal @a) c  a_id b_id a b -- leaf with node or end infnode
+    intersectionLocal' c a_id b_id a@(Leaf False) b@(InfNodes {}) =  apply @a c a_id b_id (intersectionInferA_ @a) a_id b_id a b -- leaf with node or end infnode
+    intersectionLocal' c a_id b_id a@(Leaf False) b = inferNodeA @a (intersectionLocal @a) c  a_id b_id a b -- leaf with node or end infnode
 
-    intersectionLocal' c a_id b_id a b@(Leaf True) = (,) c $ a_id  --`debug` ("returning" ++ show a_id)
-    intersectionLocal' c@(Context{func_stack = (f:fs)}) a_id b_id a@(EndInfNode childA ) b@(Leaf False) = withCache c (a_id, b_id) $ intersectionLocal_arg f c{func_stack = fs} childA b_id a b
+    intersectionLocal' c a_id b_id a b@(Leaf True) = (,) c a_id  --`debug` ("returning" ++ show a_id)
+    intersectionLocal' c@(Context{func_stack = (f:fs)}) a_id b_id a@(EndInfNode childA ) b@(Leaf False) = apply @a c{func_stack = fs} a_id b_id (intersectionLocal_arg f) childA b_id a b
 
-    intersectionLocal' c a_id b_id a@(Leaf _) b@(Leaf False) = (,) c $ b_id -- dc case for leafs
-    -- intersectionLocal' c a_id b_id a@(InfNodes {}) b@(Leaf False) = applyInfElimRule @a c $ intersectionInferB_ @a c a b -- leaf with node or end infnode
-    intersectionLocal' c a_id b_id a b@(Leaf False) = withCache c (a_id, b_id) $ inferNodeB @a (intersectionLocal @a) c a_id b_id a b -- leaf with node or end infnode
+    intersectionLocal' c a_id b_id a@(Leaf _) b@(Leaf False) = (,) c b_id -- dc case for leafs
+    intersectionLocal' c a_id b_id a@(InfNodes {}) b@(Leaf False) = apply @a c a_id b_id (intersectionInferB_ @a) a_id b_id a b -- leaf with node or end infnode
+    intersectionLocal' c a_id b_id a b@(Leaf False) = inferNodeB @a (intersectionLocal @a) c a_id b_id a b -- leaf with node or end infnode
 
     -- infer node at DdF4, and here the shared abstrations
     intersectionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
@@ -759,31 +777,31 @@ instance (DdF4 a) => Dd1 a where
                 (c'', neg_result) = flub (intersectionLocal @a) c' neg_childA neg_childB
             in  withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result) `debug` "applying elim? "
         -- Mismatch, but with a inference we ontinue recursion with the earliest (thus lowest valued) node.
-        | positionA < positionB = withCache c (a_id, b_id) $ inferNodeB @a (intersectionLocal @a) c a_id b_id a b
-        | positionA > positionB = withCache c (a_id, b_id) $ inferNodeA @a (intersectionLocal @a) c a_id b_id a b
+        | positionA < positionB = inferNodeB @a (intersectionLocal @a) c a_id b_id a b
+        | positionA > positionB = inferNodeA @a (intersectionLocal @a) c a_id b_id a b
 
     -- go one recursive layer deeper !
     intersectionLocal' c a_id b_id a@(InfNodes positionA _ _ _ _ _) b@(Node positionB pos_childB neg_childB)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA > positionB =  withCache c (a_id, b_id) $ inferNodeA @a (intersectionLocal @a) c  a_id b_id a b -- infer node A
-        -- | positionA < positionB =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersectionInferB_ @a c a_id b_id a b -- infer infnode B and start intersection inside it
+        | positionA > positionB =  inferNodeA @a (intersectionLocal @a) c  a_id b_id a b -- infer node A
+        | positionA < positionB = apply @a c a_id b_id (intersectionInferB_ @a) a_id b_id a b -- infer infnode B and start intersection inside it
     intersectionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB _ _ _ _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        -- | positionA > positionB =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersectionInferA_ @a c a_id b_id a b
-        | positionA < positionB =  withCache c (a_id, b_id) $ inferNodeB @a (intersectionLocal @a) c  a_id b_id a b
-    -- intersectionLocal'  c a_id b_id a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _)
-    --     | positionA == positionB =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersection  c{func_stack = ((to_constr @a, Inter): func_stack c) a b `debug5` ("infinf: " ++ show a ++ show b) -- start intersection and push local-intersection to the context
-    --     | positionA < positionB =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersectionInferB_ @a c  a_id b_id a b -- infer infnode B
-    --     | positionA > positionB =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersectionInferA_ @a c  a_id b_id a b -- infer infnode A
-    -- intersectionLocal' c a_id b_id a@(InfNodes positionA _ _ _ _ _) b@(EndInfNode _) =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersectionInferB_ @a c a b
-    -- intersectionLocal' c a_id b_id a@(EndInfNode _) b@(InfNodes positionB _ _ _ _ _) =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersectionInferA_ @a c a b
+        | positionA > positionB =  apply @a c a_id b_id (intersectionInferA_ @a) a_id b_id a b
+        | positionA < positionB =  inferNodeB @a (intersectionLocal @a) c  a_id b_id a b
+    intersectionLocal'  c a_id b_id a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _)
+        | positionA == positionB =  apply @a c{func_stack = ((to_constr @a, Inter): func_stack c)} a_id b_id (intersection) a_id b_id a b `debug5` ("infinf: " ++ show a ++ show b) -- start intersection and push local-intersection to the context
+        | positionA < positionB =  apply @a c a_id b_id (intersectionInferB_ @a) a_id b_id a b -- infer infnode B
+        | positionA > positionB =  apply @a c a_id b_id (intersectionInferA_ @a) a_id b_id a b -- infer infnode A
+    intersectionLocal' c a_id b_id a@(InfNodes positionA _ _ _ _ _) b@(EndInfNode _) =  apply @a c a_id b_id (intersectionInferB_ @a) a_id b_id a b
+    intersectionLocal' c a_id b_id a@(EndInfNode _) b@(InfNodes positionB _ _ _ _ _) =  apply @a c a_id b_id (intersectionInferA_ @a) a_id b_id a b
 
     -- continue local traversal
-    intersectionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(EndInfNode childB) = withCache c (a_id, b_id) $ inferNodeB @a (intersectionLocal @a) c a_id b_id a b
-    intersectionLocal' c a_id b_id a@(EndInfNode childA) b@(Node positionB pos_childB neg_childB) = withCache c (a_id, b_id) $ inferNodeA @a (intersectionLocal @a) c a_id b_id a b
+    intersectionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(EndInfNode childB) = inferNodeB @a (intersectionLocal @a) c a_id b_id a b
+    intersectionLocal' c a_id b_id a@(EndInfNode childA) b@(Node positionB pos_childB neg_childB) = inferNodeA @a (intersectionLocal @a) c a_id b_id a b
     -- continue previous super domain traversal
     intersectionLocal' c@(Context{func_stack = (f:fs)}) a_id b_id a@(EndInfNode childA)  b@(EndInfNode childB) = withCache c (a_id, b_id) $ (continue_outer f c{func_stack = fs} childA childB (getDd c childA) (getDd c childB)) `debug2` ("endinfendinf interLocqal : " ++ "show (continue_outer f c{func_stack=fs} childA childB)" ++ " \n : " ++ show childA ++ " , " ++ show childB)
-    intersectionLocal' c@(Context{func_stack = []}) a_id b_id a@(EndInfNode childA)  b@(EndInfNode childB) = error "should not have empty context stack"-- applyInfElimRule @a c $ intersection  [] childA childB
+    intersectionLocal' c@(Context{func_stack = []}) a_id b_id a@(EndInfNode childA)  b@(EndInfNode childB) = error "should not have empty context stack"-- applyInfElimRule @a c $ intersection  Context{func_stack = []} childA childB
 
 
     intersectionLocal' c _ _ a b = error ("how did we get here? " ++  show c ++ show a ++ "  -  " ++ show b)
@@ -791,14 +809,14 @@ instance (DdF4 a) => Dd1 a where
     unionLocal' c a_id b_id a@(Leaf False) b = (,) c b_id
     unionLocal' c@(Context{func_stack = (f:fs)}) a_id b_id a@(Leaf True) b@(EndInfNode childB ) = withCache c (a_id, b_id) $ unionLocal_arg f c{func_stack = fs} a_id childB a b `debug2` ("endif a = true, f_stack = " ++ show f ++ "," ++ show fs ++ " a: " ++ show a ++ " b: " ++ show childB)
     unionLocal' c a_id b_id a@(Leaf True) b@(Leaf _) = (,) c (1,0)
---     unionLocal' c a_id b_id a@(Leaf True) b@(InfNodes {}) =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferA_ @a c a b
-    unionLocal' c a_id b_id a@(Leaf True) b = withCache c (a_id, b_id) $ inferNodeA @a (unionLocal @a) c a_id b_id a b -- leaf with node or end infnode
+    unionLocal' c a_id b_id a@(Leaf True) b@(InfNodes {}) =  apply @a c a_id b_id (unionInferA_ @a) a_id b_id a b
+    unionLocal' c a_id b_id a@(Leaf True) b = inferNodeA @a (unionLocal @a) c a_id b_id a b -- leaf with node or end infnode
 
     unionLocal' c a_id b_id a b@(Leaf False) = (,) c a_id
     unionLocal' c@(Context{func_stack = (f:fs)}) a_id b_id a@(EndInfNode childA ) b@(Leaf True) = withCache c (a_id, b_id) $ unionLocal_arg f c{func_stack = fs} childA b_id a b `debug2` ("endif b = true, c = " ++ show f ++ "," ++ show fs ++ " a: " ++ show childA ++ " b: "  ++ show b)
     unionLocal' c a_id b_id a@(Leaf _) b@(Leaf True) = (,) c (1,0)
---     unionLocal' c a_id b_id a@(InfNodes {}) b@(Leaf True) =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferB_ @a c a b
-    unionLocal' c a_id b_id a b@(Leaf True) = withCache c (a_id, b_id) $ inferNodeB @a (unionLocal @a) c a_id b_id a b -- leaf with node or end infnode
+    unionLocal' c a_id b_id a@(InfNodes {}) b@(Leaf True) = apply @a c a_id b_id (unionInferB_ @a) a_id b_id a b
+    unionLocal' c a_id b_id a b@(Leaf True) = inferNodeB @a (unionLocal @a) c a_id b_id a b -- leaf with node or end infnode
 
 
     unionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
@@ -807,34 +825,34 @@ instance (DdF4 a) => Dd1 a where
             let (c', pos_result) = flub (unionLocal @a) c pos_childA pos_childB
                 (c'', neg_result) = flub (unionLocal @a) c' neg_childA neg_childB
             in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
-        | positionA < positionB = withCache c (a_id, b_id) $ inferNodeB @a (unionLocal @a) c a_id b_id a b
-        | positionA > positionB = withCache c (a_id, b_id) $ inferNodeA @a (unionLocal @a) c a_id b_id a b
+        | positionA < positionB = inferNodeB @a (unionLocal @a) c a_id b_id a b
+        | positionA > positionB = inferNodeA @a (unionLocal @a) c a_id b_id a b
 
     unionLocal' c a_id b_id a@(InfNodes positionA _ _ _ _ _)  b@(Node positionB pos_childB neg_childB)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA > positionB = withCache c (a_id, b_id) $ inferNodeA @a (unionLocal @a) c a_id b_id a b
-        -- | positionA < positionB = withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferA_ @a c a_id b_id a b -- infer infnode for A
+        | positionA > positionB = inferNodeA @a (unionLocal @a) c a_id b_id a b
+        | positionA < positionB = apply @a c a_id b_id (unionInferA_ @a) a_id b_id a b -- infer infnode for A
 
     unionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA)  b@(InfNodes positionB _ _ _ _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes" -- a possible option: (InfNodes (dcA .*. pos_childB) (n1A .*. pos_childB) (n0A .*. pos_childB) (p1A .*. pos_childB) (p0A .*. pos_childB))
-        | positionA < positionB =  withCache c (a_id, b_id) $ inferNodeB @a (unionLocal @a) c a_id b_id a b
---         | positionA > positionB =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferB_ @a c a_id b_id a b -- infer infnode for B
+        | positionA < positionB =  inferNodeB @a (unionLocal @a) c a_id b_id a b
+        | positionA > positionB =  apply @a c a_id b_id (unionInferB_ @a) a_id b_id a b -- infer infnode for B
 
     unionLocal' c a_id b_id a@(InfNodes positionA _ _ _ _ _)  b@(InfNodes positionB _ _ _ _ _)
-        | positionA == positionB = let (c', r) = union (c{func_stack = (to_constr @a, Union) : func_stack c}) a_id b_id in withCache c' (a_id, b_id) $ applyInfElimRule @a c' (getDd c r)
---         | positionA < positionB =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferB_ @a c a_id b_id a b -- infer infnode A
---         | positionA > positionB =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferA_ @a c a_id b_id a b -- infer infnode B
+        | positionA == positionB = apply @a c{func_stack = (to_constr @a, Union) : func_stack c} a_id b_id union a_id b_id a b
+        | positionA < positionB =  apply @a c a_id b_id (unionInferB_ @a) a_id b_id a b -- infer infnode A
+        | positionA > positionB =  apply @a c a_id b_id (unionInferA_ @a) a_id b_id a b -- infer infnode B
 
---     unionLocal' c a_id b_id a@(InfNodes {}) b@(EndInfNode _) =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferB_ @a c a_id b_id a b
---     unionLocal' c a_id b_id a@(EndInfNode _) b@(InfNodes {}) =  withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferA_ @a c a_id b_id a b
+    unionLocal' c a_id b_id a@(InfNodes {}) b@(EndInfNode _) =  apply @a c a_id b_id (unionInferB_ @a) a_id b_id a b
+    unionLocal' c a_id b_id a@(EndInfNode _) b@(InfNodes {}) =  apply @a c a_id b_id (unionInferA_ @a) a_id b_id a b
 
     -- continue local traversal
-    unionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(EndInfNode childB) = withCache c (a_id, b_id) $ inferNodeB @a (unionLocal @a) c a_id b_id a b
-    unionLocal' c a_id b_id a@(EndInfNode childA) b@(Node positionB pos_childB neg_childB) = withCache c (a_id, b_id) $ inferNodeA @a (unionLocal @a) c a_id b_id a b
+    unionLocal' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(EndInfNode childB) = inferNodeB @a (unionLocal @a) c a_id b_id a b
+    unionLocal' c a_id b_id a@(EndInfNode childA) b@(Node positionB pos_childB neg_childB) = inferNodeA @a (unionLocal @a) c a_id b_id a b
 
 --     -- continue previous super domain traversal
     unionLocal' c@(Context{func_stack = (f:fs)}) a_id b_id a@(EndInfNode childA)  b@(EndInfNode childB) = withCache c (a_id, b_id) $ continue_outer f c{func_stack = fs} childA childB (getDd c childA) (getDd c childB)  `debug2` ("endinf endinf union local, childA = " ++ show childA  ++ " \n \t childB = " ++ show childB )
-    unionLocal' c@(Context{func_stack = []}) a_id b_id a@(EndInfNode childA)  b@(EndInfNode childB) = error "should not have empty context stack"  -- applyInfElimRule @a c $ union  [] childA childB
+    unionLocal' c@(Context{func_stack = []}) a_id b_id a@(EndInfNode childA)  b@(EndInfNode childB) = error "should not have empty context stack"  -- applyInfElimRule @a c $ union  Context{func_stack = []} childA childB
     unionLocal' c a_id b_id a b = error (show c ++ show a ++ show b)
 
     mixedIntersection' c a_id b_id (Leaf _) (Leaf _) = if a_id == false @a then (c, false @a) else (c, (0,0))-- if n then 1 if n' then 0
@@ -856,7 +874,7 @@ instance (DdF4 a) => Dd1 a where
             in withCache c'' (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
 
 --         -- Mismatch
-        | positionA > positionB = withCache c (a_id, b_id) $ inferNodeA @a (mixedIntersection @a) c a_id b_id a b
+        | positionA > positionB = inferNodeA @a (mixedIntersection @a) c a_id b_id a b
         | positionA < positionB =
             let (c', pos_result) = mixedIntersection @a c pos_childA b_id (getDd c pos_childA) b
                 (c'', neg_result) = mixedIntersection @a c' neg_childA b_id (getDd c neg_childA) b
@@ -869,27 +887,27 @@ instance (DdF4 a) => Dd1 a where
                 in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
 
     mixedIntersection' c a_id b_id a@(EndInfNode _) b@(Node positionB pos_childB neg_childB) =
-        withCache c (a_id, b_id) $ inferNodeA @a (mixedIntersection @a) c a_id b_id a b
+        inferNodeA @a (mixedIntersection @a) c a_id b_id a b
 
     mixedIntersection' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(InfNodes positionB dcB n1B n0B p1B p0B)
-        | positionA == positionB = let (c', r) = intersection c{func_stack = ((to_constr @a, MixedIntersection): func_stack c)} a_id b_id in withCache c' (a_id, b_id) $ applyInfElimRule @a c' (getDd c r)
-        -- | positionA > positionB = let (c',r) = intersectionInferA_ @a c a_id b_id a b in withCache c' (a_id, b_id) $ applyInfElimRule @a c' r
-        -- | positionB > positionA = let (c',r) = intersectionInferB_ @a c a_id b_id a b in withCache c' (a_id, b_id) $ applyInfElimRule @a c' r
+        | positionA == positionB = apply @a c{func_stack = ((to_constr @a, MixedIntersection): func_stack c)} a_id b_id (intersection) a_id b_id a b
+        | positionA > positionB = apply @a c a_id b_id (intersectionInferA_ @a) a_id b_id a b
+        | positionB > positionA = apply @a c a_id b_id (intersectionInferB_ @a) a_id b_id a b
 
---     mixedIntersection' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB)
---         | positionA == positionB = error "not yet implemented for zdd types, bdd is impossible"
---         | positionA > positionB = inferNodeA @a (mixedIntersection @a) c a_id b_id a b
---         | positionB > positionA = withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersectionInferB_ @a c a_id b_id a b
---     mixedIntersection' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB dcB n1B n0B p1B p0B)
---         | positionA == positionB = error "not yet implemented for zdd types, bdd is impossible"
---         | positionA > positionB = withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersectionInferA_ @a c a_id b_id a b
---         | positionB > positionA =
---                 let (c', pos_result) = mixedIntersection @a c pos_childA b
---                     (c'', neg_result) = mixedIntersection @a c neg_childA b
---                 in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
---     -- Both InfNodes have been reached - run the usual intersection.
+    mixedIntersection' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB)
+        | positionA == positionB = error "not yet implemented for zdd types, bdd is impossible"
+        | positionA > positionB = inferNodeA @a (mixedIntersection @a) c a_id b_id a b
+        | positionB > positionA = apply @a c a_id b_id (intersectionInferB_ @a) a_id b_id a b
+    mixedIntersection' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB dcB n1B n0B p1B p0B)
+        | positionA == positionB = error "not yet implemented for zdd types, bdd is impossible"
+        | positionA > positionB = apply @a c a_id b_id (intersectionInferA_ @a) a_id b_id a b
+        | positionB > positionA =
+                let (c', pos_result) = mixedIntersection @a c pos_childA b_id (getDd c pos_childA) b
+                    (c'', neg_result) = mixedIntersection @a c' neg_childA b_id (getDd c neg_childA) b
+                in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+    -- Both InfNodes have been reached - run the usual intersection.
     mixedIntersection' c@(Context{func_stack = (f:fs)}) a_id b_id (EndInfNode a)  (EndInfNode b) = withCache c (a_id, b_id) $ continue_outer f c{func_stack = fs} a b (getDd c a) (getDd c b)
-    mixedIntersection' c@(Context{func_stack = []}) a_id b_id (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersection  [] a (negate_maybe @a b)
+    mixedIntersection' c@(Context{func_stack = []}) a_id b_id (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- apply @a c a_id b_id (intersection  Context{func_stack = []} a (negate_maybe @a b)
     mixedIntersection' c a_id b_id a b = error ("mixedinter - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)
 
     mixedUnion' c a_id b_id (Leaf _) (Leaf _) = if a_id == false @a then (c, false @a) else (c, (1,0))-- if n then 1 if n' then 0
@@ -924,156 +942,158 @@ instance (DdF4 a) => Dd1 a where
     mixedUnion' c a_id b_id a@(EndInfNode _) b@(Node positionB pos_childB neg_childB) =
         inferNodeA @a (mixedUnion @a) c a_id b_id a b
 
---     mixedUnion' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(InfNodes positionB dcB n1B n0B p1B p0B)
---         | positionA == positionB = withCache c (a_id, b_id) $ applyInfElimRule @a c $ union  c{func_stack = ((to_constr @a, MixedUnion): func_stack c) a b
---         | positionA > positionB = withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferA_ @a c a_id b_id a b
---         | positionB > positionA = withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferB_ @a c a_id b_id a b
---     mixedUnion' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB)
---         | positionA == positionB = error "not yet implemented for zdd types, bdd is impossible"
---         | positionA > positionB = inferNodeA @a (mixedUnion @a) c a_id b_id a b
---         | positionB > positionA = withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferB_ @a c a_id b_id a b
---     mixedUnion' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB dcB n1B n0B p1B p0B)
---         | positionA == positionB = undefined
---         | positionA > positionB = withCache c (a_id, b_id) $ applyInfElimRule @a c $ unionInferA_ @a c a_id b_id a b
---         | positionB > positionA =
---             let (c', pos_result) = mixedUnion @a c pos_childA b
---                 (c'', neg_result) = mixedUnion @a c neg_childA b
---             in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
---     -- Both InfNodes have been reached - run the usual union.
+    mixedUnion' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(InfNodes positionB dcB n1B n0B p1B p0B)
+        | positionA == positionB = apply @a c{func_stack = ((to_constr @a, MixedUnion): func_stack c)} a_id b_id (union) a_id b_id a b
+        | positionA > positionB = apply @a c a_id b_id (unionInferA_ @a) a_id b_id a b
+        | positionB > positionA = apply @a c a_id b_id (unionInferB_ @a) a_id b_id a b
+    mixedUnion' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB)
+        | positionA == positionB = error "not yet implemented for zdd types, bdd is impossible"
+        | positionA > positionB = inferNodeA @a (mixedUnion @a) c a_id b_id a b
+        | positionB > positionA = apply @a c a_id b_id (unionInferB_ @a) a_id b_id a b
+    mixedUnion' c a_id b_id a@(Node positionA pos_childA neg_childA) b@(InfNodes positionB dcB n1B n0B p1B p0B)
+        | positionA == positionB = undefined
+        | positionA > positionB = apply @a c a_id b_id (unionInferA_ @a) a_id b_id a b
+        | positionB > positionA =
+            let (c', pos_result) = mixedUnion @a c pos_childA b_id (getDd c pos_childA) b
+                (c'', neg_result) = mixedUnion @a c' neg_childA b_id (getDd c neg_childA) b
+            in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+    -- Both InfNodes have been reached - run the usual union.
     mixedUnion' c@(Context{func_stack = (f:fs)}) a_id b_id (EndInfNode a)  (EndInfNode b) =  unionLocal_arg f c{func_stack = fs} a b (getDd c a) (getDd c b)
-    mixedUnion' c@(Context{func_stack = []}) a_id b_id (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- withCache c (a_id, b_id) $ applyInfElimRule @a c $ intersection  [] a (negate_maybe @a b)
+    mixedUnion' c@(Context{func_stack = []}) a_id b_id (EndInfNode a)  (EndInfNode b) = error "should not have an empty context, check if top layer has DC context given along" -- apply @a c a_id b_id (intersection  Context{func_stack = []} a (negate_maybe @a b)
     mixedUnion' c a_id b_id a b = error ("mixedunion - " ++ show c ++ " ; "++ show a ++ "  ;  " ++ show b)
 
---     absorb' c a_id b_id a@(Leaf _) dc = if a == dc then (c, false @a) else (c, a)
---     absorb' c a_id b_id a@(EndInfNode _) dc@(Node positionD pos_childD neg_childD)  =  inferNodeA @a (absorb @a) c a_id b_id a dc
---     absorb' c (EndInfNode a) dc@(Leaf _)  = if a == dc then (c, false @a) else (c, EndInfNode a)
---     absorb' c a_id b_id a@(InfNodes {}) dc@(Leaf _)  = (c, a)
---     absorb' c a_id b_id a@(Node positionA pos_childA neg_childA) dc@(EndInfNode _)  = --infere Dc node
---         let (c', pos_result) = absorb @a c pos_childA dc
---             (c'', neg_result) = absorb @a c neg_childA dc
---         in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
---     absorb' c a_id b_id a@(EndInfNode a') dc@(EndInfNode dc') = if a' == dc' then (c, false @a) else (c, a)
---     absorb' c a_id b_id a@(Node positionA pos_childA neg_childA) dc@(Leaf _) =
---         let (c', pos_result) = absorb @a c pos_childA dc
---             (c'', neg_result) = absorb @a c neg_childA dc
---         in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+    absorb' c a_id b_id a@(Leaf _) dc = if a == dc then (c, false @a) else (c, a_id)
+    -- absorb' c a_id b_id a@(EndInfNode _) dc@(Node positionD pos_childD neg_childD)  = inferNodeA @a (absorb @a) c a_id b_id a dc
+    absorb' c a_id b_id a@(EndInfNode a_child) dc@(Leaf _)  = if (getDd c a_child) == dc then (c, false @a) else (c, a_id)
+    absorb' c a_id b_id a@(InfNodes {}) dc@(Leaf _)  = (c, a_id)
+    absorb' c a_id b_id a@(Node positionA pos_childA neg_childA) dc@(EndInfNode _)  = --infere Dc node
+        let (c', pos_result) = absorb @a c pos_childA b_id (getDd c pos_childA) dc
+            (c'', neg_result) = absorb @a c' neg_childA b_id (getDd c neg_childA) dc
+        in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+    absorb' c a_id b_id a@(EndInfNode a') dc@(EndInfNode dc') = if a' == dc' then (c, false @a) else (c, a_id)
+    absorb' c a_id b_id a@(Node positionA pos_childA neg_childA) dc@(Leaf _) =
+        let (c', pos_result) = absorb @a c pos_childA b_id (getDd c pos_childA) dc
+            (c'', neg_result) = absorb @a c' neg_childA b_id (getDd c neg_childA) dc
+        in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
 
---     absorb' c a_id b_id a@(Node positionA pos_childA neg_childA)  dc@(Node positionD pos_childD neg_childD)
---         -- No mismatch
---         | positionA == positionD =
---             let (c', pos_result) = absorb @a c pos_childA pos_childD
---                 (c'', neg_result) = absorb @a c neg_childA neg_childD
---             in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+    absorb' c a_id b_id a@(Node positionA pos_childA neg_childA)  dc@(Node positionD pos_childD neg_childD)
+        -- No mismatch
+        | positionA == positionD =
+            let (c', pos_result) = absorb @a c pos_childA pos_childD (getDd c pos_childA) (getDd c pos_childD)
+                (c'', neg_result) = absorb @a c' neg_childA neg_childD (getDd c neg_childA) (getDd c neg_childD)
+            in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
 
---         -- Mismatch
---         | positionA > positionD = inferNodeA @a (absorb @a) c a_id b_id a dc
---         | positionA < positionD =
---             let (c', pos_result) = absorb @a c pos_childA dc
---                 (c'', neg_result) = absorb @a c neg_childA dc
---             in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+        -- Mismatch
+        | positionA > positionD = inferNodeA @a (absorb @a) c a_id b_id a dc
+        | positionA < positionD =
+            let (c', pos_result) = absorb @a c pos_childA b_id (getDd c pos_childA) dc
+                (c'', neg_result) = absorb @a c' neg_childA b_id (getDd c neg_childA) dc
+            in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
 
---     absorb' c a_id b_id a@(InfNodes {}) b@(InfNodes {}) = case to_constr @a of
---         Dc -> error "absorb with a dc as first argument should not be possible"
---         Neg1 -> f True c{func_stack = ((to_constr @a, Absorb) : func_stack c)
---         Neg0 -> f False c{func_stack = ((to_constr @a, Absorb) : func_stack c)
---         Pos1 -> f True c{func_stack = ((to_constr @a, Absorb) : func_stack c)
---         Pos0 -> f False c{func_stack = ((to_constr @a, Absorb) : func_stack c)
---         where
---                 f = \x y -> applyInfElimRule @a c $ t_and_rMain x y a b
+    absorb' c a_id b_id a@(InfNodes {}) b@(InfNodes {}) = case to_constr @a of
+        Dc -> error "absorb with a dc as first argument should not be possible"
+        Neg1 -> f True
+        Neg0 -> f False
+        Pos1 -> f True
+        Pos0 -> f False
+        where
+            f b' = apply @a c{func_stack = ((to_constr @a, Absorb) : func_stack c)} a_id b_id (t_and_rMain b') a_id b_id a b
 
---     absorb' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) dc@(Node positionD pos_childD neg_childD)
---         | positionA > positionD = inferNodeA @a (absorb @a) c a_id b_id a dc
---         | positionA < positionD = case to_constr @a of
---             Dc -> error "absorb with a dc as first argument should not be possible"
---             Neg1 -> f True ((Dc, Absorb) : func_stack c)
---             Neg0 -> f False ((Dc, Absorb) : func_stack c)
---             Pos1 -> f True ((Dc, Absorb) : func_stack c)
---             Pos0 -> f False ((Dc, Absorb) : func_stack c)
---         | otherwise = undefined
---             where
---                 f = \x y -> applyInfElimRule @Dc $ t_and_rInferB_ @Dc x y  a dc
---     -- add posB == posA, then we consider node to be AllNegs -> [1]
---     absorb' c a_id b_id a@(Node positionA pos_childA neg_childA) dc@(InfNodes positionD dcA n1A n0A p1A p0A)
---         | positionA > positionD =
---             let f = \x y -> applyInfElimRule @a c $ t_and_rInferA_ @a x y a dc
---             in case to_constr @a of
---                 Dc -> error "absorb with a dc as first argument should not be possible"
---                 Neg1 -> f True c{func_stack = ((to_constr @a, Absorb) : func_stack c)
---                 Neg0 -> f False c{func_stack = ((to_constr @a, Absorb) : func_stack c)
---                 Pos1 -> f True c{func_stack = ((to_constr @a, Absorb) : func_stack c)
---                 Pos0 -> f False c{func_stack = ((to_constr @a, Absorb) : func_stack c)
---         | positionA < positionD =
---             let (c', pos_result) = absorb @a c a_id b_id a pos_childA
---                 (c'', neg_result) = absorb @a c a_id b_id a neg_childA
---             in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionD pos_result neg_result)
---         | otherwise = undefined
---     absorb' c a_id b_id a@(InfNodes{}) b@(EndInfNode _) = let
---         l = not $ (to_constr @a) `elem` [Neg0, Pos0]
---         in withCache c (a_id, b_id) $ applyInfElimRule @Dc $ t_and_rInferB_ @Dc l ((Dc, Absorb) : func_stack c) a b -- intersectionInferB c{func_stack = ((to_constr @a, Absorb): func_stack c) a b
---     absorb' c a_id b_id a@(EndInfNode _) b@(InfNodes{}) = let
---         l = not $ (to_constr @a) `elem` [Neg0, Pos0]
---         in withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a l c{func_stack = ((to_constr @a, Absorb) : func_stack c) a b -- intersectionInferB c{func_stack = ((to_constr @a, Absorb): func_stack c) a b
---     absorb' c a_id b_id a b = error $ "absorb , " ++ "a = " ++ show a ++ "b = " ++ show b
+    absorb' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) dc@(Node positionD pos_childD neg_childD)
+        | positionA > positionD = inferNodeA @a (absorb @a) c a_id b_id a dc
+        | positionA < positionD = case to_constr @a of
+            Dc -> error "absorb with a dc as first argument should not be possible"
+            Neg1 -> f True
+            Neg0 -> f False
+            Pos1 -> f True
+            Pos0 -> f False
+        | otherwise = undefined
+            where
+                f b' = apply @Dc c{func_stack = ((Dc, Absorb) : func_stack c)} a_id b_id (t_and_rInferB b') a_id b_id a dc
+    -- add posB == posA, then we consider node to be AllNegs -> [1]
+    absorb' c a_id b_id a@(Node positionA pos_childA neg_childA) dc@(InfNodes positionD dcA n1A n0A p1A p0A)
+        | positionA > positionD =  case to_constr @a of
+                Dc -> error "absorb with a dc as first argument should not be possible"
+                Neg1 -> f True
+                Neg0 -> f False
+                Pos1 -> f True
+                Pos0 -> f False
+        | positionA < positionD =
+            let (c', pos_result) = absorb @a c pos_childA b_id (getDd c pos_childA) dc
+                (c'', neg_result) = absorb @a c' pos_childA b_id (getDd c neg_childA) dc
+            in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionD pos_result neg_result)
+        | otherwise = undefined
+            where
+                f b' = apply @a c{func_stack = ((to_constr @a, Absorb) : func_stack c)} a_id b_id (t_and_rInferA b') a_id b_id a dc
+
+    absorb' c a_id b_id a@(InfNodes{}) b@(EndInfNode _) = let
+        l = not $ (to_constr @a) `elem` [Neg0, Pos0]
+        in apply @Dc c{func_stack = ((Dc, Absorb) : func_stack c)} a_id b_id (t_and_rInferB_ @Dc l) a_id b_id a b -- intersectionInferB c{func_stack = ((to_constr @a, Absorb): func_stack c)} a b
+    absorb' c a_id b_id a@(EndInfNode _) b@(InfNodes{}) = let
+        l = not $ (to_constr @a) `elem` [Neg0, Pos0]
+        in apply @a c{func_stack = ((Dc, Absorb) : func_stack c)} a_id b_id (t_and_rInferA_ @a l) a_id b_id a b -- intersectionInferB c{func_stack = ((to_constr @a, Absorb): func_stack c)} a b
+
+    absorb' c a_id b_id a b = error $ "absorb , " ++ "a = " ++ show a ++ "b = " ++ show b
 
 
---     -- use inferA because maybe we need to pop back to top level where absorb or remove_complement is being applied
+    -- use inferA because maybe we need to pop back to top level where absorb or remove_complement is being applied
 
---     traverse_and_return' l c a_id b_id a'@(Leaf a) b'@(Leaf b)
---         | absorb_or_remove c = if a == b && b == l then Leaf $ not l else (c, b')
---         | (a /= b) && b == l = (c, Leaf $ not l)
---         | otherwise = (c, b')
---     traverse_and_return' l c a_id b_id a@(Leaf _) b@(InfNodes {})
---         | absorb_or_remove c = if a == b && b == Leaf l then (c, Leaf $ not l) else withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a l c a_id b_id a b
---         | (a /= b) && b == Leaf l = (c, Leaf $ not l)
---         | otherwise = withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a l c a_id b_id a b
---     traverse_and_return' l c a_id b_id a@(InfNodes {}) b@(Leaf _)
---         | absorb_or_remove c = if a == b && b == Leaf l then (c, Leaf $ not l) else withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a l c a_id b_id a b
---         | (a /= b) && b == Leaf l = (c, Leaf $ not l)
---         | otherwise = withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a l c a_id b_id a b
---     -- for when no Leaf is changed we return a, thus a should be of the right type
---     -- test carefully
---     -- first check whether the flip needs to happen before applying infelimrule
---     traverse_and_return' l c@(Context{func_stack = (f:fs)}) a@(Leaf _) (EndInfNode b')  = if a == b' && b' == Leaf l then (c, Leaf $ not l) else withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_r_arg f l c{func_stack = fs} a b' -- what if EndInfNode EndInfnode (a == b); should not be possible since we require all DD's to be Endinfnode reduced.
---     traverse_and_return' l c@(Context{func_stack = (f:fs)}) (EndInfNode a') b@(Leaf _)  = if a' == b && b == Leaf l then (c, Leaf $ not l) else withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_r_arg f l c{func_stack = fs} a' b
---     -- go back one recursively if on the context there is a t_and_r or absorb call
---     traverse_and_return' l c@(Context{func_stack = (f:fs)}) a@(EndInfNode a') b@(EndInfNode b') = if a' == b' && b' == Leaf l then (c, Leaf $ not l) else withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_r_arg f l c{func_stack = fs} a' b'
---     traverse_and_return' l [] _ _ = error "should not have an empty context, check if top layer has DC context given along"
+    traverse_and_return' l c a_id b_id a'@(Leaf a) b'@(Leaf b)
+        | absorb_or_remove c = if a == b && b == l then (c, leaf $ not l) else (c, b_id)
+        | (a /= b) && b == l = (c, leaf $ not l)
+        | otherwise = (c, b_id)
+    traverse_and_return' l c a_id b_id a@(Leaf _) b@(InfNodes {})
+        | absorb_or_remove c = if a == b && b == Leaf l then (c, leaf $ not l) else apply @a c a_id b_id (t_and_rInferA_ @a l) a_id b_id a b
+        | (a /= b) && b == Leaf l = (c, leaf $ not l)
+        | otherwise = apply @a c a_id b_id (t_and_rInferA_ @a l) a_id b_id a b
+    traverse_and_return' l c a_id b_id a@(InfNodes {}) b@(Leaf _)
+        | absorb_or_remove c = if a == b && b == Leaf l then (c, leaf $ not l) else apply @a c a_id b_id (t_and_rInferA_ @a l) a_id b_id a b
+        | (a /= b) && b == Leaf l = (c, leaf $ not l)
+        | otherwise = apply @a c a_id b_id (t_and_rInferA_ @a l) a_id b_id a b
+    -- for when no Leaf is changed we return a, thus a should be of the right type
+    -- test carefully
+    -- first check whether the flip needs to happen before applying infelimrule
+    -- traverse_and_return' l c@(Context{func_stack = (f:fs)}) a@(Leaf _) (EndInfNode b')  = if a == b' && b' == Leaf l then (c, leaf $ not l) else apply @a c{func_stack = fs} a_id b_id (t_and_r_arg f l)  a b' -- what if EndInfNode EndInfnode (a == b); should not be possible since we require all DD's to be Endinfnode reduced.
+    -- traverse_and_return' l c@(Context{func_stack = (f:fs)}) (EndInfNode a') b@(Leaf _)  = if a' == b && b == Leaf l then (c, leaf $ not l) else apply @a c{func_stack = fs} a_id b_id (t_and_r_arg f l)  a' b
+    -- -- go back one recursively if on the context there is a t_and_r or absorb call
+    -- traverse_and_return' l c@(Context{func_stack = (f:fs)}) a@(EndInfNode a') b@(EndInfNode b') = if a' == b' && b' == Leaf l then (c, leaf $ not l) else apply @a c{func_stack = fs} a_id b_id (t_and_r_arg f l)  a' b'
+    traverse_and_return' l Context{func_stack = []} _ _ _ _ = error "should not have an empty context, check if top layer has DC context given along"
 
---     traverse_and_return' l c a_id b_id a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
---         -- No mismatch
---         | positionA == positionB =
---             let (c', pos_result) = traverse_and_return @a l c pos_childA pos_childB
---                 (c'', neg_result) = traverse_and_return @a l c neg_childA neg_childB
---             in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
---         -- Mismatch
---         | positionA > positionB = inferNodeA @a (traverse_and_return @a l) c a_id b_id a b
---         | positionA < positionB = inferNodeB @a (traverse_and_return @a l) c a_id b_id a b
---     traverse_and_return' l c a_id b_id a@(EndInfNode _) b@(Node positionD pos_childD neg_childD)  =  inferNodeA @a (traverse_and_return @a l) c a_id b_id a b
---     traverse_and_return' l c a_id b_id a@(Node positionD pos_childD neg_childD) b@(EndInfNode _)  =  inferNodeB @a (traverse_and_return @a l) c a_id b_id a b
+    traverse_and_return' l c a_id b_id a@(Node positionA pos_childA neg_childA)  b@(Node positionB pos_childB neg_childB)
+        -- No mismatch
+        | positionA == positionB =
+            let (c', pos_result) = traverse_and_return @a l c pos_childA pos_childB (getDd c pos_childA) (getDd c pos_childB)
+                (c'', neg_result) = traverse_and_return @a l c' neg_childA neg_childB (getDd c neg_childA) (getDd c neg_childB)
+            in withCache c (a_id, b_id) $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+        -- Mismatch
+        | positionA > positionB = inferNodeA @a (traverse_and_return @a l) c a_id b_id a b
+        | positionA < positionB = inferNodeB @a (traverse_and_return @a l) c a_id b_id a b
+    traverse_and_return' l c a_id b_id a@(EndInfNode _) b@(Node positionD pos_childD neg_childD)  =  inferNodeA @a (traverse_and_return @a l) c a_id b_id a b
+    traverse_and_return' l c a_id b_id a@(Node positionD pos_childD neg_childD) b@(EndInfNode _)  =  inferNodeB @a (traverse_and_return @a l) c a_id b_id a b
 
---     traverse_and_return' l c a_id b_id a@(Node positionA pos_childA neg_childA) b@(Leaf _) = inferNodeB @a (traverse_and_return @a l) c a_id b_id a b
---     traverse_and_return' l c a_id b_id a@(Leaf _) b@(Node positionB pos_childB neg_childB) = inferNodeA @a (traverse_and_return @a l) c a_id b_id a b
+    traverse_and_return' l c a_id b_id a@(Node positionA pos_childA neg_childA) b@(Leaf _) = inferNodeB @a (traverse_and_return @a l) c a_id b_id a b
+    traverse_and_return' l c a_id b_id a@(Leaf _) b@(Node positionB pos_childB neg_childB) = inferNodeA @a (traverse_and_return @a l) c a_id b_id a b
 
---     traverse_and_return' l c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(InfNodes positionB dcB n1B n0B p1B p0B)
---         -- test t_and_rMain here (look what a clean union call does different from unionMain)
---         | positionA == positionB = withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rMain l c{func_stack = ((to_constr @a, T_and_r): func_stack c) a b
---         | positionA > positionB = withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a l c a_id b_id a b
---         | positionB > positionA = withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a l c a_id b_id a b
---     traverse_and_return' l c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB)
---         | positionA < positionB = inferNodeB @a (traverse_and_return @a l) c a_id b_id a b
---         | positionA > positionB = withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a l c a_id b_id a b
---         | positionA == positionB = undefined
---     -- for posB == posA; then we consider node to be AllNegs -> [1]
---     traverse_and_return' l c a_id b_id a@(Node positionA pos_childD neg_childD) b@(InfNodes positionB dcB n1B n0B p1B p0B)
---         | positionA > positionB = inferNodeA @a (traverse_and_return @a l) c a_id b_id a b
---         | positionA < positionB = withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a l c a_id b_id a b
---         | positionA == positionB = undefined
+    traverse_and_return' l c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(InfNodes positionB dcB n1B n0B p1B p0B)
+        -- test t_and_rMain here (look what a clean union call does different from unionMain)
+        | positionA == positionB = apply @a c{func_stack = ((to_constr @a, T_and_r): func_stack c)} a_id b_id (t_and_rMain l) a_id b_id a b
+        | positionA > positionB = apply @a c a_id b_id (t_and_rInferA_ @a l) a_id b_id a b
+        | positionB > positionA = apply @a c a_id b_id (t_and_rInferB_ @a l) a_id b_id a b
+    traverse_and_return' l c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(Node positionB pos_childB neg_childB)
+        | positionA < positionB = inferNodeB @a (traverse_and_return @a l) c a_id b_id a b
+        | positionA > positionB = apply @a c a_id b_id (t_and_rInferA_ @a l) a_id b_id a b
+        | positionA == positionB = undefined
+    -- for posB == posA; then we consider node to be AllNegs -> [1]
+    traverse_and_return' l c a_id b_id a@(Node positionA pos_childD neg_childD) b@(InfNodes positionB dcB n1B n0B p1B p0B)
+        | positionA > positionB = inferNodeA @a (traverse_and_return @a l) c a_id b_id a b
+        | positionA < positionB = apply @a c a_id b_id (t_and_rInferB_ @a l) a_id b_id a b
+        | positionA == positionB = undefined
 
---     -- add infnode to b and perform traverse and return. No need to flip the result, that gets done/determined at the leaf level
---     -- we have to take along the leaf we are checking with, thus if we are in finite land; we only have to check for the finite other types where we can expect to see the leaf we are checking weith
---     traverse_and_return' l c a_id b_id a@(InfNodes{}) b@(EndInfNode _) = withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferB_ @a l c a_id b_id a b
---     traverse_and_return' l c a_id b_id a@(EndInfNode _) b@(InfNodes{}) = withCache c (a_id, b_id) $ applyInfElimRule @a c $ t_and_rInferA_ @a l c a_id b_id a b
---     traverse_and_return' l c a_id b_id a b = error $ "traverse_and_return , " ++ "a = " ++ show a ++ "b = " ++ show b
+    -- add infnode to b and perform traverse and return. No need to flip the result, that gets done/determined at the leaf level
+    -- we have to take along the leaf we are checking with, thus if we are in finite land; we only have to check for the finite other types where we can expect to see the leaf we are checking weith
+    traverse_and_return' l c a_id b_id a@(InfNodes{}) b@(EndInfNode _) = apply @a c a_id b_id (t_and_rInferB_ @a l) a_id b_id a b
+    traverse_and_return' l c a_id b_id a@(EndInfNode _) b@(InfNodes{}) = apply @a c a_id b_id (t_and_rInferA_ @a l) a_id b_id a b
+    traverse_and_return' l c a_id b_id a b = error $ "traverse_and_return , " ++ "a = " ++ show a ++ "b = " ++ show b
 
 absorb_or_remove :: Context -> Bool
 absorb_or_remove c@(Context {func_stack = ((_, f) : cs)})
@@ -1089,20 +1109,20 @@ class DdF4 a where
     unionLocal :: DdManipulation
     mixedIntersection :: DdManipulation
     mixedUnion :: DdManipulation
---     absorb :: DdManipulation
---     traverse_and_return :: Bool -> Context -> NodeId -> NodeId -> (Context, NodeId)
+    absorb :: DdManipulation
+    traverse_and_return :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     remove_outercomplement_from :: DdManipulation
 
     false :: NodeId
     true :: NodeId
     negate_maybe :: Context -> NodeId -> Dd -> (Context, NodeId)
     applyInfElimRule :: Context -> Dd -> (Context, NodeId)
---     intersectionInferA_ :: DdManipulation
---     intersectionInferB_ :: DdManipulation
---     unionInferA_ :: DdManipulation
---     unionInferB_ :: DdManipulation
---     t_and_rInferA_ :: Bool -> Context -> NodeId -> NodeId -> (Context, NodeId)
---     t_and_rInferB_ :: Bool -> Context -> NodeId -> NodeId -> (Context, NodeId)
+    intersectionInferA_ :: DdManipulation
+    intersectionInferB_ :: DdManipulation
+    unionInferA_ :: DdManipulation
+    unionInferB_ :: DdManipulation
+    t_and_rInferA_ :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+    t_and_rInferB_ :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     inferNodeA :: DdManipulation -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     inferNodeA_opposite :: DdManipulation -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     inferNodeB :: DdManipulation -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
@@ -1128,18 +1148,18 @@ instance DdF4 Dc where
     false = (-1,-1) --hack to not be equal to any leaf
     true = (-1,-1)
     negate_maybe c d_id _ = (c, d_id)
---     intersectionInferB_ c a_id b_id a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB ((Dc, Inter): func_stack c) a b
---     intersectionInferB_ _ _ _ _ _ = undefined
---     intersectionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Dc, Inter): func_stack c) a b
---     intersectionInferA_ _ _ _ _ _ = undefined
---     unionInferB_ c a_id b_id a@(InfNodes positionA _ _ _ _ _) b = unionInferB ((Dc, Union): func_stack c) a b
---     unionInferB_ _ _ _ _ _ = undefined
---     unionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = unionInferA ((Dc, Union): func_stack c) a b
---     unionInferA_ _ _ _ _ _ = undefined
---     t_and_rInferA_ l c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l ((Dc, T_and_r): func_stack c) a b
---     t_and_rInferA_ l _ _ _ _ _ = undefined
---     t_and_rInferB_ l c a_id b_id a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l ((Dc, T_and_r): func_stack c) a b
---     t_and_rInferB_ l _ _ _ _ _ = undefined
+--     intersectionInferB_ c a_id b_id a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB ((Dc, Inter): func_stack c)} a b
+    intersectionInferB_ _ _ _ _ _ = undefined
+--     intersectionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Dc, Inter): func_stack c)} a b
+    intersectionInferA_ _ _ _ _ _ = undefined
+--     unionInferB_ c a_id b_id a@(InfNodes positionA _ _ _ _ _) b = unionInferB ((Dc, Union): func_stack c)} a b
+    unionInferB_ _ _ _ _ _ = undefined
+--     unionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = unionInferA ((Dc, Union): func_stack c)} a b
+    unionInferA_ _ _ _ _ _ = undefined
+--     t_and_rInferA_ l c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l ((Dc, T_and_r): func_stack c)} a b
+    t_and_rInferA_ l _ _ _ _ _ = undefined
+--     t_and_rInferB_ l c a_id b_id a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l ((Dc, T_and_r): func_stack c)} a b
+    t_and_rInferB_ l _ _ _ _ _ = undefined
     intersectionLocal c a_id b_id a b = let (c', r) = intersectionLocal' @Dc c a_id b_id a b in (c', r)
         `debug2` ("intersectionLocal Dc: " ++ " ; " ++ show a ++ " ; "  ++ show b ++ " ;  " ++ show a_id ++ " ; "  ++ show b_id ++ "\n" ++ showTree c a ++ "\n" ++ showTree c b ++ "\n==\n") --"\n result: \n" ++ showTree c' (getDd c' r))
     -- comparing nodes, allowed mis-matches based on each inference rule
@@ -1147,13 +1167,13 @@ instance DdF4 Dc where
         `debug2` (colorize "green" "unionLocal Dc: " ++ " ; " ++ show a ++ " ; "  ++ show b ++ " ;  " ++ show a_id ++ " ; "  ++ show b_id ++ "\n" ++ showTree c a ++ "\n" ++ showTree c b ++ "\n==\n") --"\n result: \n" ++ showTree c' (getDd c' r))
 
 
---     traverse_and_return c a b =  traverse_and_return' @Dc c a b
---         `debug2` ("traverse_and_return dc: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    traverse_and_return c a_id b_id a b =  traverse_and_return' @Dc c a_id b_id a b
+        `debug2` ("traverse_and_return dc: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 
-    mixedIntersection c a b = error "mixedintersection only with finite kinds"
-    mixedUnion c a b = error "mixedintersection only with finite kinds"
-    -- absorb = error "mixedintersection only with finite kinds"
+    mixedIntersection c a_id b_id a b = error "mixedintersection only with finite kinds"
+    mixedUnion c a_id b_id a b = error "mixedintersection only with finite kinds"
+    absorb = error "mixedintersection only with finite kinds"
     remove_outercomplement_from = error ""
 
     inferNodeA f c a_id b_id a b@(Node positionB pos_childB neg_childB) =
@@ -1193,28 +1213,28 @@ instance DdF4 Neg1 where
     true = (1,0)
     negate_maybe c d_id _ = (c, d_id)
 
---     intersectionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB ((Neg1, Inter): func_stack c) a b
---     intersectionInferB_ _ _ _ = undefined
---     intersectionInferA_ c a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Neg1, Inter): func_stack c) a b
---     intersectionInferA_ _ _ _ = undefined
---     unionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = unionInferB ((Neg1, Union): func_stack c) a b
---     unionInferB_ _ _ _ = undefined
---     unionInferA_ c a b@(InfNodes positionB _ _ _ _ _) = unionInferA ((Neg1, Union): func_stack c) a b
---     unionInferA_ _ _ _ = undefined
---     t_and_rInferA_ l c a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l ((Neg1, T_and_r): func_stack c) a b
---     t_and_rInferA_ l _ _ _ = undefined
---     t_and_rInferB_ l c a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l ((Neg1, T_and_r): func_stack c) a b
---     t_and_rInferB_ l _ _ _ = undefined
+--     intersectionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB ((Neg1, Inter): func_stack c)} a b
+    intersectionInferB_ _ _ _ = undefined
+--     intersectionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Neg1, Inter): func_stack c)} a b
+    intersectionInferA_ _ _ _ = undefined
+--     unionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = unionInferB ((Neg1, Union): func_stack c)} a b
+    unionInferB_ _ _ _ = undefined
+--     unionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = unionInferA ((Neg1, Union): func_stack c)} a b
+    unionInferA_ _ _ _ = undefined
+--     t_and_rInferA_ l c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l ((Neg1, T_and_r): func_stack c)} a b
+    t_and_rInferA_ l _ _ _ = undefined
+--     t_and_rInferB_ l c a_id b_id a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l ((Neg1, T_and_r): func_stack c)} a b
+    t_and_rInferB_ l _ _ _ = undefined
 
     intersectionLocal c a_id b_id a b = intersectionLocal' @Neg1 c a_id b_id a b
         `debug` ("intersectionLocal neg1: " ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     unionLocal c a_id b_id a b = unionLocal' @Neg1 c a_id b_id a b
         `debug` ("unionLocal neg1: " ++ " ; " ++ show a ++ " ; "  ++ show b)
---     traverse_and_return c a b =  traverse_and_return' @Neg1 c a b
---         `debug` ("traverse_and_return neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    traverse_and_return c a_id b_id a b =  traverse_and_return' @Neg1 c a_id b_id a b
+        `debug` ("traverse_and_return neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
---     absorb c a b = absorb' @Neg1 c a b  `debug2` ("absorb neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    absorb c a_id b_id a b = absorb' @Neg1 c a_id b_id a b  `debug2` ("absorb neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     inferNodeA f c a_id b_id a  b@(Node positionB pos_childB neg_childB) =
         let (c', r) = f c a_id b_id (Node positionB (0,0) a_id) b in applyElimRule @Neg1 c' (getDd c' r)
@@ -1226,13 +1246,13 @@ instance DdF4 Neg1 where
         let (c', r) = f c a_id b_id a (Node positionA (0,0) b_id) in applyElimRule @Neg1 c' $ getDd c' r
     inferNodeB _ _ a_id b_id  _ _ = undefined
 
-    mixedIntersection c a b = mixedIntersection' @Neg1 c a b
+    mixedIntersection c a_id b_id a b = mixedIntersection' @Neg1 c a_id b_id a b
         `debug2` ("mixedIntersection neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
-    mixedUnion c a b = mixedUnion' @Neg1 c a b
+    mixedUnion c a_id b_id a b = mixedUnion' @Neg1 c a_id b_id a b
         `debug2` ("mixedUnion neg1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
-    remove_outercomplement_from c a b =  remove_outercomplement_from' @Neg1 c a b
+    remove_outercomplement_from c a_id b_id a b =  remove_outercomplement_from' @Neg1 c a_id b_id a b
         `debug2` ("remove_f0s1_from_f1s1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 
@@ -1258,30 +1278,30 @@ instance DdF4 Neg0 where
     true = (0,0)
     negate_maybe c d_id d = negation c d_id d
 
---     intersectionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB ((Neg0, Inter): func_stack c) a b
---     intersectionInferB_ _ _ _ = undefined
---     intersectionInferA_ c a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Neg0, Inter): func_stack c) a b
---     intersectionInferA_ _ _ _ = undefined
---     unionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = unionInferB ((Neg0, Union): func_stack c) a b
---     unionInferB_ _ _ _ = undefined
---     unionInferA_ c a b@(InfNodes positionB _ _ _ _ _) = unionInferA ((Neg0, Union): func_stack c) a b
---     unionInferA_ _ _ _ = undefined
---     t_and_rInferA_ l c a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l ((Neg0, T_and_r): func_stack c) a b
---     t_and_rInferA_ l _ _ _ = undefined
---     t_and_rInferB_ l c a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l ((Neg0, T_and_r): func_stack c) a b
---     t_and_rInferB_ l _ _ _ = undefined
+--     intersectionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB ((Neg0, Inter): func_stack c)} a b
+    intersectionInferB_ _ _ _ = undefined
+--     intersectionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Neg0, Inter): func_stack c)} a b
+    intersectionInferA_ _ _ _ = undefined
+--     unionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = unionInferB ((Neg0, Union): func_stack c)} a b
+    unionInferB_ _ _ _ = undefined
+--     unionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = unionInferA ((Neg0, Union): func_stack c)} a b
+    unionInferA_ _ _ _ = undefined
+--     t_and_rInferA_ l c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l ((Neg0, T_and_r): func_stack c)} a b
+    t_and_rInferA_ l _ _ _ = undefined
+--     t_and_rInferB_ l c a_id b_id a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l ((Neg0, T_and_r): func_stack c)} a b
+    t_and_rInferB_ l _ _ _ = undefined
 
 --         -- Leaf and node
-    unionLocal c a b = unionLocal' @Neg0 c a b
+    unionLocal c a_id b_id a b = unionLocal' @Neg0 c a_id b_id a b
         `debug2` ("unionLocal neg0: " ++ " ; " ++ show a ++ " ; "  ++ show b )
 
-    intersectionLocal c a b = intersectionLocal' @Neg0 c a b
+    intersectionLocal c a_id b_id a b = intersectionLocal' @Neg0 c a_id b_id a b
         `debug2` ("intersectionLocal neg0: " ++ " ; " ++ show a ++ " ; "  ++ show b )
 
---     traverse_and_return c a b =  traverse_and_return' @Neg0 c a b
---         `debug` ("traverse_and_return neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
---     absorb c a b =  absorb' @Neg0 c a b
---         `debug` ("absorb neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    traverse_and_return c a_id b_id a b =  traverse_and_return' @Neg0 c a_id b_id a b
+        `debug` ("traverse_and_return neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    absorb c a_id b_id a b =  absorb' @Neg0 c a_id b_id a b
+        `debug` ("absorb neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     inferNodeA f c a_id b_id a b@(Node positionB pos_childB neg_childB) =
         let (c', r) = f c a_id b_id (Node positionB (1, 0) a_id) b in applyElimRule @Neg0 c' (getDd c' r)
@@ -1292,14 +1312,14 @@ instance DdF4 Neg0 where
     inferNodeB _ _ a_id b_id _ _ = undefined
 
 
-    mixedIntersection c a b = mixedIntersection' @Neg0 c a b
+    mixedIntersection c a_id b_id a b = mixedIntersection' @Neg0 c a_id b_id a b
         `debug2` ("mixedIntersection neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
-    mixedUnion c a b = mixedUnion' @Neg0 c a b
+    mixedUnion c a_id b_id a b = mixedUnion' @Neg0 c a_id b_id a b
         `debug2` ("mixedUnion neg0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 
-    remove_outercomplement_from c a b =  remove_outercomplement_from' @Neg0 c a b
+    remove_outercomplement_from c a_id b_id a b =  remove_outercomplement_from' @Neg0 c a_id b_id a b
         `debug2` ("remove_f0s1_from_f1s1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 
@@ -1324,30 +1344,30 @@ instance DdF4 Pos1 where
     negate_maybe c d_id _ = (c, d_id)
 
 
---     intersectionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB ((Pos1, Inter): func_stack c) a b
---     intersectionInferB_ _ _ _ = undefined
---     intersectionInferA_ c a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Pos1, Inter): func_stack c) a b
---     intersectionInferA_ _ _ _ = undefined
---     unionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = unionInferB ((Pos1, Union): func_stack c) a b
---     unionInferB_ _ _ _ = undefined
---     unionInferA_ c a b@(InfNodes positionB _ _ _ _ _) = unionInferA ((Pos1, Union): func_stack c) a b
---     unionInferA_ _ _ _ = undefined
---     t_and_rInferA_ l c a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l ((Pos1, T_and_r): func_stack c) a b
---     t_and_rInferA_ l _ _ _ = undefined
---     t_and_rInferB_ l c a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l ((Pos1, T_and_r): func_stack c) a b
---     t_and_rInferB_ l _ _ _ = undefined
+--     intersectionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB c(func_stack = ((Pos1, Inter): func_stack c)) a b
+    intersectionInferB_ _ _ _ = undefined
+--     intersectionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA c(func_stack = ((Pos1, Inter): func_stack c)) a b
+    intersectionInferA_ _ _ _ = undefined
+--     unionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = unionInferB c(func_stack = ((Pos1, Union): func_stack c)) a b
+    unionInferB_ _ _ _ = undefined
+--     unionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = unionInferA c(func_stack = ((Pos1, Union): func_stack c)) a b
+    unionInferA_ _ _ _ = undefined
+--     t_and_rInferA_ l c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l c(func_stack = ((Pos1, T_and_r): func_stack c)) a b
+    t_and_rInferA_ l _ _ _ = undefined
+--     t_and_rInferB_ l c a_id b_id a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l c(func_stack = ((Pos1, T_and_r): func_stack c)) a b
+    t_and_rInferB_ l _ _ _ = undefined
 
-    intersectionLocal c a b = intersectionLocal' @Pos1 c a b
+    intersectionLocal c a_id b_id a b = intersectionLocal' @Pos1 c a_id b_id a b
         `debug` ("intersectionLocal pos1: " ++ " ; " ++ show a ++ " ; "  ++ show b)
 
-    unionLocal c a b = unionLocal' @Pos1 c a b
+    unionLocal c a_id b_id a b = unionLocal' @Pos1 c a_id b_id a b
         `debug2` ("unionLocal pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
---     traverse_and_return c a b =  traverse_and_return' @Pos1 c a b
---         `debug` ("traverse_and_return pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    traverse_and_return c a_id b_id a b =  traverse_and_return' @Pos1 c a_id b_id a b
+        `debug` ("traverse_and_return pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
---     absorb c a b = absorb' @Pos1 c a b
---         `debug2` ("absorb pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    absorb c a_id b_id a b = absorb' @Pos1 c a_id b_id a b
+        `debug2` ("absorb pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     inferNodeA f c a_id b_id a b@(Node positionB pos_childB neg_childB) =
         let (c', r) = f c a_id b_id (Node positionB a_id (0,0)) b in applyElimRule @Pos1 c' $ getDd c' r
@@ -1357,13 +1377,13 @@ instance DdF4 Pos1 where
         let (c', r) = f c a_id b_id a (Node positionA b_id (0,0)) in applyElimRule @Pos1 c' $ getDd c' r
     inferNodeB _ c a_id b_id a b = error ("infernodeB: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
-    mixedIntersection c a b = mixedIntersection' @Pos1 c a b
+    mixedIntersection c a_id b_id a b = mixedIntersection' @Pos1 c a_id b_id a b
         `debug2` ("mixedIntersection pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
-    mixedUnion c a b = mixedUnion' @Pos1 c a b
+    mixedUnion c a_id b_id a b = mixedUnion' @Pos1 c a_id b_id a b
         `debug2` ("mixedUnion pos1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
-    remove_outercomplement_from c a b =  remove_outercomplement_from' @Pos1 c a b
+    remove_outercomplement_from c a_id b_id a b =  remove_outercomplement_from' @Pos1 c a_id b_id a b
         `debug2` ("remove_f0s1_from_f1s1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 
@@ -1386,30 +1406,30 @@ instance DdF4 Pos0 where
 
     false = (1,0)
     true = (0,0)
---     negate_maybe d = negation d
+    negate_maybe = negation
 
---     intersectionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB ((Pos0, Inter): func_stack c) a b
---     intersectionInferB_ _ _ _ = undefined
---     intersectionInferA_ c a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA ((Pos0, Inter): func_stack c) a b
---     intersectionInferA_ _ _ _ = undefined
---     unionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = unionInferB ((Pos0, Union): func_stack c) a b
---     unionInferB_ _ _ _ = undefined
---     unionInferA_ c a b@(InfNodes positionB _ _ _ _ _) = unionInferA ((Pos0, Union): func_stack c) a b
---     unionInferA_ _ _ _ = undefined
---     t_and_rInferA_ l c a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l ((Pos0, T_and_r): func_stack c) a b
---     t_and_rInferA_ l _ _ _ = undefined
---     t_and_rInferB_ l c a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l ((Pos0, T_and_r): func_stack c) a b
---     t_and_rInferB_ l _ _ _ = undefined
+--     intersectionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = intersectionInferB c(func_stack = ((Pos0, Inter): func_stack c)) a b
+    intersectionInferB_ _ _ _ = undefined
+--     intersectionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = intersectionInferA c(func_stack = ((Pos0, Inter): func_stack c)) a b
+    intersectionInferA_ _ _ _ = undefined
+--     unionInferB_ c a@(InfNodes positionA _ _ _ _ _) b = unionInferB c(func_stack = ((Pos0, Union): func_stack c)) a b
+    unionInferB_ _ _ _ = undefined
+--     unionInferA_ c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = unionInferA c(func_stack = ((Pos0, Union): func_stack c)) a b
+    unionInferA_ _ _ _ = undefined
+--     t_and_rInferA_ l c a_id b_id a b@(InfNodes positionB _ _ _ _ _) = t_and_rInferA l c(func_stack = ((Pos0, T_and_r): func_stack c)) a b
+    t_and_rInferA_ l _ _ _ = undefined
+--     t_and_rInferB_ l c a_id b_id a b@(InfNodes positionA _ _ _ _ _) = t_and_rInferB l c(func_stack = ((Pos0, T_and_r): func_stack c)) a b
+    t_and_rInferB_ l _ _ _ = undefined
 
 --     -- Leaf and node
-    unionLocal c a b = unionLocal' @Pos0 c a b  `debug2` ("unionLocal pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    unionLocal c a_id b_id a b = unionLocal' @Pos0 c a_id b_id a b  `debug2` ("unionLocal pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
---     --unionLocal c a@(InfNodes positionA dcA n1A n0A p1A p0A) 1 = union @False c a (inferInfNode c True a)
---     --unionLocal c 1 b@(InfNodes positionB dcB n1B n0B p1B p0B) = union @False c (inferInfNode c True b) b
-    intersectionLocal c a b = intersectionLocal' @Pos0 c a b
+--     --unionLocal c a@(InfNodes positionA dcA n1A n0A p1A p0A) 1 = union @False c a_id b_id a (inferInfNode c True a)
+--     --unionLocal c 1 b@(InfNodes positionB dcB n1B n0B p1B p0B) = union @False c a_id b_id (inferInfNode c True b) b
+    intersectionLocal c a_id b_id a b = intersectionLocal' @Pos0 c a_id b_id a b
         `debug2` ("intersectionLocal pos0: " ++ " ; " ++ show a ++ " ; "  ++ show b)
 
---     absorb c a b = absorb' @Pos0 c a b  `debug2` ("absorb pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    absorb c a_id b_id a b = absorb' @Pos0 c a_id b_id a b  `debug2` ("absorb pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
     inferNodeA f c a_id b_id a  b@(Node positionB pos_childB neg_childB) =
         let (c', r) = f c a_id b_id (Node positionB a_id (1,0)) b in applyElimRule @Pos0 c' $ getDd c' r
@@ -1419,113 +1439,117 @@ instance DdF4 Pos0 where
         let (c', r) = f c a_id b_id a (Node positionA b_id (1,0)) in applyElimRule @Pos0 c' $ getDd c' r
     inferNodeB _ c a_id b_id a b= error (show c ++ " , a = " ++ show a ++ " , b = " ++ show b)
 
-    mixedIntersection c a b = mixedIntersection' @Pos0 c a b
+    mixedIntersection c a_id b_id a b = mixedIntersection' @Pos0 c a_id b_id a b
         `debug2` ("mixedIntersection pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
-    mixedUnion c a b = mixedUnion' @Pos0 c a b
+    mixedUnion c a_id b_id a b = mixedUnion' @Pos0 c a_id b_id a b
         `debug2` ("mixedUnion pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
---     traverse_and_return c a b =  traverse_and_return' @Pos0 c a b
---         `debug` ("traverse_and_return pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
+    traverse_and_return c a_id b_id a b =  traverse_and_return' @Pos0 c a_id b_id a b
+        `debug` ("traverse_and_return pos0: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
-    remove_outercomplement_from c a b =  remove_outercomplement_from' @Pos0 c a b
+    remove_outercomplement_from c a_id b_id a b =  remove_outercomplement_from' @Pos0 c a_id b_id a b
         `debug2` ("remove_f0s1_from_f1s1: " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)
 
 
 
 -- -- tandr simple functions
--- t_and_rInferA :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
--- t_and_rInferA _ [] _ _ = error "empty context"
--- t_and_rInferA _ _ _ (Leaf _) = error "Leaf in A"
--- t_and_rInferA _ _ _ (EndInfNode _) = error "EndNode in A"
--- t_and_rInferA _ _ _ (Node _ _ _) = error "Node in A"
--- t_and_rInferA l c a b =  t_and_rInferA' l c a b `debug5` ("t_and_rInferA" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferA' l c a b ))
--- t_and_rInferB' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
--- t_and_rInferB' l c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let b = EndInfNode b' in
---     (if l then
---         (case inf of
---                 Dc -> error "inferring an infnode for a Dc context should not happen.. i think"
---                     -- dcR = traverse_and_return @Dc l c dcA b --inter
---                     -- n1R = traverse_and_return @Neg1 l c n1A b -- union
---                     -- n0R = traverse_and_return @Neg0 l c n0A b
---                     -- p1R = traverse_and_return @Pos1 l c p1A b
---                     -- p0R = traverse_and_return @Pos0 l c p0A b
---                     -- in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
---                 Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
---                     n1R = traverse_and_return @Neg1 l c n1A b --inter dcA
---                     in InfNodes positionA dcA n1R n0A p1A p0A
---                 Neg0 -> let -- replace all the B stuf with (dc: 1, neg1: 0, neg0: b, pos1: 0, pos0: 1)
---                     n0R = traverse_and_return @Neg0 l c n0A b
---                     in InfNodes positionA dcA n1A n0R p1A p0A
---                 Pos1 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: b, pos0: 1)
---                     -- for absorb dcA has to be checked with leaf false
---                     -- there is something and it can only get less inb the finite types
---                     -- so only local 1 ands 0s get pruned and nothing else changes
---                     -- thus intersection/union/remove_compl and absorb do not have to be performed on the finite types if they are changed
---                     p1R = traverse_and_return @Pos1 l c p1A b
---                     in applyElimRule @Pos1 (InfNodes positionA dcA n1A n0A p1R p0A)
---                 Pos0 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: 0, pos0: b)
---                     p0R = traverse_and_return @Pos0 l c p0A b
---                     in applyElimRule @Pos0 (InfNodes positionA dcA n1A n0A p1A p0R)
---         ) else (case inf of
---             -- todo how does l change the function?
---                 Dc -> error "inferring an infnode for a Dc context should not happen.. i think"
---                     -- dcR = traverse_and_return @Dc l c dcA b --inter
---                     -- n1R = traverse_and_return @Neg1 l c n1A b -- union
---                     -- n0R = traverse_and_return @Neg0 l c n0A b
---                     -- p1R = traverse_and_return @Pos1 l c p1A b
---                     -- p0R = traverse_and_return @Pos0 l c p0A b
---                     -- in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
---                 Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
---                     n1R = traverse_and_return @Neg1 l c n1A b --inter dcA
---                     in InfNodes positionA dcA n1R n0A p1A p0A
---                 Neg0 -> let -- replace all the B stuf with (dc: 1, neg1: 0, neg0: b, pos1: 0, pos0: 1)
---                     n0R = traverse_and_return @Neg0 l c n0A b
---                     in InfNodes positionA dcA n1A n0R p1A p0A
---                 Pos1 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: b, pos0: 1)
---                     -- for absorb dcA has to be checked with leaf false
---                     -- there is something and it can only get less inb the finite types
---                     -- so only local 1 ands 0s get pruned and nothing else changes
---                     -- thus intersection/union/remove_compl and absorb do not have to be performed on the finite types if they are changed
---                     p1R = traverse_and_return @Pos1 l c p1A b
---                     in InfNodes positionA dcA n1A n0A p1R p0A
---                 Pos0 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: 0, pos0: b)
---                     p0R = traverse_and_return @Pos0 l c p0A b
---                     in InfNodes positionA dcA n1A n0A p1A p0R))
+t_and_rInferA :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+t_and_rInferA _ Context{func_stack = []} _ _ _ _ = error "empty context"
+t_and_rInferA _  _ _ _ _ (Leaf _) = error "Leaf in A"
+t_and_rInferA _  _ _ _ _ (EndInfNode _) = error "EndNode in A"
+t_and_rInferA _  _ _ _ _ (Node _ _ _) = error "Node in A"
+t_and_rInferA l c a_id b_id a b =  t_and_rInferA' l c a_id b_id a b `debug5` ("t_and_rInferA" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferA' l c a_id b_id a b ))
 
--- t_and_rInferB' l c a b = error (" : " ++ show a ++ show b ++ show c ++ show l)
 
--- t_and_rInferB :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
--- t_and_rInferB _ [] _ _ = error "empty context"
--- t_and_rInferB _ _ _ (Leaf _) = error "Leaf in A"
--- t_and_rInferB _ _ _ (EndInfNode _) = error "EndNode in A"
--- t_and_rInferB _ _ _ (Node _ _ _) = error "Node in A"
--- t_and_rInferB l c a b =  t_and_rInferB' l c a b `debug4` ("t_and_rInferB" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferB' l c a b ))
--- t_and_rInferA' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
--- t_and_rInferA' l c@((inf, _) : _) a' b@(InfNodes positionB dcB n1B n0B p1B p0B) = let a = EndInfNode a' in let
---             dcR = traverse_and_return @Dc l c dcB a
---             n1R = traverse_and_return @Neg1 l c n1B a
---             n0R = traverse_and_return @Neg0 l c n0B a
---             p1R = traverse_and_return @Pos1 l c p1B a
---             p0R = traverse_and_return @Pos0 l c p0B a
---             in InfNodes positionB dcR n1R n0R p1R p0R
--- t_and_rInferA' _ _ _ _ = undefined
+t_and_rInferA' :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+t_and_rInferA' l c@Context{func_stack = ((inf, _) : _)} a_id b_id a' b@(InfNodes positionB dcB n1B n0B p1B p0B) =
+    let (c', a) = insert c (EndInfNode a_id) in
+        let
+        (c'', dcR) = traverse_and_return @Dc l c' a dcB (getDd c a) (getDd c dcB)
+        (c''', n1R) = traverse_and_return @Neg1 l c'' a n1B (getDd c a) (getDd c n1B)
+        (c'''', n0R) = traverse_and_return @Neg0 l c''' a n0B (getDd c a) (getDd c n0B)
+        (c''''', p1R) = traverse_and_return @Pos1 l c'''' a p1B (getDd c a) (getDd c p1B)
+        (c'''''', p0R) = traverse_and_return @Pos0 l c''''' a p0B (getDd c a) (getDd c p0B)
+        in insert c'''''' $ InfNodes positionB dcR n1R n0R p1R p0R
+t_and_rInferA' _ _ _ _ _ _ = undefined
 
--- t_and_rMain :: Bool -> Context -> NodeId -> NodeId -> (Context, NodeId)
--- t_and_rMain _ [] _ _ = error "empty context"
--- t_and_rMain _ _ _ (Leaf _) = error "Leaf in A"
--- t_and_rMain _ _ _ (EndInfNode _) = error "EndNode in A"
--- t_and_rMain _ _ _ (Node _ _ _) = error "Node in A"
--- t_and_rMain l c a b =  t_and_rMain' l c a b `debug4` ("t_and_rMain" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rMain' l c a b ))
--- t_and_rMain' :: Bool -> [(Inf, FType)] -> Dd -> Dd -> Dd
--- t_and_rMain' l c@((inf, _) : _) a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(InfNodes positionB dcB n1B n0B p1B p0B) = let
---             dcR = traverse_and_return @Dc l c dcA dcB
---             n1R = traverse_and_return @Neg1 l c n1A n1B
---             n0R = traverse_and_return @Neg0 l c n0A n0B
---             p1R = traverse_and_return @Pos1 l c p1A p1B
---             p0R = traverse_and_return @Pos0 l c p0A p0B
---             in InfNodes positionB dcR n1R n0R p1R p0R
--- t_and_rMain' _ _ _ _ = undefined
+t_and_rInferB :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+t_and_rInferB _ Context{func_stack = []} _ _ _ _ = error "empty context"
+t_and_rInferB _  _ _ _ _ (Leaf _) = error "Leaf in A"
+t_and_rInferB _  _ _ _ _ (EndInfNode _) = error "EndNode in A"
+t_and_rInferB _  _ _ _ _ (Node _ _ _) = error "Node in A"
+t_and_rInferB l c a_id b_id a b =  t_and_rInferB' l c a_id b_id a b `debug4` ("t_and_rInferB" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b ++ " = " ++ show (t_and_rInferB' l c a_id b_id a b ))
+t_and_rInferB' :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+t_and_rInferB' l c@Context{func_stack = ((inf, _) : _)} a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let (c', b) = insert c (EndInfNode b_id) in
+    (if l then
+        (case inf of
+                Dc -> error "inferring an infnode for a Dc context should not happen.. i think"
+                    -- (c', dcR) = traverse_and_return @Dc l c dcA b (getDd c ) (getDd c b) --inter
+                    -- (c', n1R) = traverse_and_return @Neg1 l c n1A b (getDd c ) (getDd c b) -- union
+                    -- (c', n0R) = traverse_and_return @Neg0 l c n0A b (getDd c ) (getDd c b)
+                    -- (c', p1R) = traverse_and_return @Pos1 l c p1A b (getDd c ) (getDd c b)
+                    -- (c', p0R) = traverse_and_return @Pos0 l c p0A b (getDd c ) (getDd c b)
+                    -- in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
+                Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
+                    (c'', n1R) = traverse_and_return @Neg1 l c' n1A b (getDd c' n1A) (getDd c' b) --inter dcA
+                    in insert c'' $ InfNodes positionA dcA n1R n0A p1A p0A
+                Neg0 -> let -- replace all the B stuf with (dc: 1, neg1: 0, neg0: b, pos1: 0, pos0: 1)
+                    (c'', n0R) = traverse_and_return @Neg0 l c' n0A b (getDd c' n0A) (getDd c' b)
+                    in insert c'' $ InfNodes positionA dcA n1A n0R p1A p0A
+                Pos1 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: b, pos0: 1)
+                    -- for absorb dcA has to be checked with leaf false
+                    -- there is something and it can only get less inb the finite types
+                    -- so only local 1 ands 0s get pruned and nothing else changes
+                    -- thus intersection/union/remove_compl and absorb do not have to be performed on the finite types if they are changed
+                    (c'', p1R) = traverse_and_return @Pos1 l c' p1A b (getDd c' p1A) (getDd c' b)
+                    in applyElimRule @Pos1 c'' (InfNodes positionA dcA n1A n0A p1R p0A)
+                Pos0 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: 0, pos0: b)
+                    (c'', p0R) = traverse_and_return @Pos0 l c' p0A b (getDd c' p0A) (getDd c' b)
+                    in applyElimRule @Pos0 c'' (InfNodes positionA dcA n1A n0A p1A p0R)
+        ) else (case inf of
+            -- todo how does l change the function?
+                Dc -> error "inferring an infnode for a Dc context should not happen.. i think"
+                    -- (c'', dcR) = traverse_and_return @Dc l c' dcA b (getDd c' b) (getDd c' b) --inter
+                    -- (c'', n1R) = traverse_and_return @Neg1 l c' n1A b (getDd c' b) (getDd c' b) -- union
+                    -- (c'', n0R) = traverse_and_return @Neg0 l c' n0A b (getDd c' b) (getDd c' b)
+                    -- (c'', p1R) = traverse_and_return @Pos1 l c' p1A b (getDd c' b) (getDd c' b)
+                    -- (c'', p0R) = traverse_and_return @Pos0 l c' p0A b (getDd c' b) (getDd c' b)
+                    -- in applyElimRule @Dc (InfNodes positionA dcR n1R n0R p1R p0R)
+                Neg1 -> let -- replace all the B stuf with (dc: 0, neg1: b, neg0: 1, pos1: 0, pos0: 1)
+                    (c'', n1R) = traverse_and_return @Neg1 l c' n1A b (getDd c' b) (getDd c' b) --inter dcA
+                    in insert c'' $ InfNodes positionA dcA n1R n0A p1A p0A
+                Neg0 -> let -- replace all the B stuf with (dc: 1, neg1: 0, neg0: b, pos1: 0, pos0: 1)
+                    (c'', n0R) = traverse_and_return @Neg0 l c' n0A b (getDd c' b) (getDd c' b)
+                    in insert c'' $ InfNodes positionA dcA n1A n0R p1A p0A
+                Pos1 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: b, pos0: 1)
+                    -- for absorb dcA has to be checked with leaf false
+                    -- there is something and it can only get less inb the finite types
+                    -- so only local 1 ands 0s get pruned and nothing else changes
+                    -- thus intersection/union/remove_compl and absorb do not have to be performed on the finite types if they are changed
+                    (c'', p1R) = traverse_and_return @Pos1 l c' p1A b (getDd c' b) (getDd c' b)
+                    in insert c'' $ InfNodes positionA dcA n1A n0A p1R p0A
+                Pos0 -> let -- replace all the B stuf with (dc: 0, neg1: 0, neg0: 1, pos1: 0, pos0: b)
+                    (c'', p0R) = traverse_and_return @Pos0 l c' p0A b (getDd c' b) (getDd c' b)
+                    in insert c'' $ InfNodes positionA dcA n1A n0A p1A p0R))
+t_and_rInferB' l c a_id b_id a b = error (" : " ++ show a ++ show b ++ show c ++ show l)
+
+
+t_and_rMain :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+t_and_rMain _ Context{func_stack = []} a_id b_id _ _ = error "empty context"
+t_and_rMain _ _ a_id b_id _ (Leaf _) = error "Leaf in A"
+t_and_rMain _ _ a_id b_id _ (EndInfNode _) = error "EndNode in A"
+t_and_rMain _ _ a_id b_id _ (Node _ _ _) = error "Node in A"
+t_and_rMain l c a_id b_id a b =  t_and_rMain' l c a_id b_id a b `debug4` ("t_and_rMain" ++ show l ++ ": " ++ show c ++ " ; " ++ show a ++ " ; "  ++ show b)-- ++ " = " ++ show (t_and_rMain' l c a b ))
+t_and_rMain' :: Bool -> Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+t_and_rMain' l c@Context{func_stack = ((inf, _) : _)} a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b@(InfNodes positionB dcB n1B n0B p1B p0B) = let
+            (c', dcR) = traverse_and_return @Dc l c dcA dcB (getDd c dcA) (getDd c dcB)
+            (c'', n1R) = traverse_and_return @Neg1 l c' n1A n1B (getDd c n1A) (getDd c n1B)
+            (c''', n0R) = traverse_and_return @Neg0 l c'' n0A n0B (getDd c n0A) (getDd c n0B)
+            (c'''', p1R) = traverse_and_return @Pos1 l c''' p1A p1B (getDd c p1A) (getDd c p1B)
+            (c''''', p0R) = traverse_and_return @Pos0 l c'''' p0A p0B (getDd c p0A) (getDd c p0B)
+            in insert c''''' $ InfNodes positionB dcR n1R n0R p1R p0R
+t_and_rMain' _ _ _ _ _ _ = undefined
 
 
 
