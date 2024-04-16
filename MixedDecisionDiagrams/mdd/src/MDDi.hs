@@ -7,6 +7,7 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# HLINT ignore "Use camelCase" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
+{-# LANGUAGE TupleSections #-}
 module MDDi where
 import MDD
 import MDDmanipulation hiding (Neg, Or, And)
@@ -14,6 +15,7 @@ import DrawMDD
 import qualified Data.HashMap.Lazy as HashMap
 import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
 import Data.Foldable (foldl', Foldable (fold))
+import qualified Data.Map as Map
 
 
 -- todo sophisticated test suite,
@@ -32,12 +34,12 @@ infixl 4 -.
 -- infix 2 .*.   -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
 (.*.) c a b = -- intersection c{func_stack = [(Dc, Inter)]} a b (getDd c a) (getDd c b)
-    apply2 @Dc c{func_stack = [(Dc, Inter)]} a b intersection a b (getDd c a) (getDd c b)
+    apply2 @Dc c{func_stack = [(Dc, Inter)]} a b "intersection" intersection a b (getDd c a) (getDd c b)
     -- `MDDmanipulation.debug` "===========" ++
 
 infixl 3 .+.
 (.+.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
-(.+.) c a b = apply2 @Dc c{func_stack = [(Dc, Inter)]} a b union a b (getDd c a) (getDd c b)
+(.+.) c a b = apply2 @Dc c{func_stack = [(Dc, Inter)]} a b "union" union a b (getDd c a) (getDd c b)
 
 -- ite :: Context -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
 -- ite c x y z = (x .+. y) .*. ((-.) x .+. z)
@@ -58,7 +60,7 @@ infixl 3 .+.
 ------------------------------------ Test
 c = Context{
     nodelookup = defaultNodeMap,
-    cache = HashMap.empty :: HashMap.HashMap (NodeId, NodeId) NodeId,
+    cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId) NodeId) ["union", "intersection", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId) NodeId),
     cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
     func_stack = [],
     current_level = L [] 0,

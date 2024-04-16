@@ -90,8 +90,10 @@ data Context = Context {
 
 instance Show Context where
     show c = "Context {nodelookup keys = " ++ show (HashMap.keys (nodelookup c)) ++
-             "\n\t, cache keys = " ++ show (HashMap.keys (cache c)) ++
+             "\n\t, cache keys = " ++ show (Map.keys (cache c)) ++
              "\n\t, cache_ keys = " ++ show (HashMap.keys (cache_ c)) ++ "}\n"
+
+
 
 data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | T_and_r
     deriving (Eq, Show)
@@ -211,7 +213,7 @@ deep_equality = undefined
 
 -- * functions for Caching / Memoization of results during traversal
 
-type Cache =  HashMap.HashMap (NodeId, NodeId) NodeId
+type Cache =  Map.Map String (HashMap.HashMap (NodeId, NodeId) NodeId)
 type SingleCache =  HashMap.HashMap NodeId NodeId
 type ShowCache =  HashMap.HashMap NodeId [String]
 
@@ -240,16 +242,16 @@ withCache' c@Context { cache' = nc } key func_with_args =
 
 
 -- A higher-order function for handling cache lookup and update
-withCache :: Context -> (NodeId, NodeId) -> (Context, NodeId) -> (Context, NodeId)
-withCache c@Context { cache = nc} (keyA, keyB) func_with_args =
-  case HashMap.lookup (keyA, keyB) nc of
-    Just result -> (c, result) -- `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
-    Nothing -> let
-      (updatedContext, result) = func_with_args
-      updatedCache = HashMap.insert (keyA, keyB) result nc
-      in (updatedContext { cache = updatedCache }, result) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
-
-
+withCache :: Context -> (NodeId, NodeId, String) -> (Context, NodeId) -> (Context, NodeId)
+withCache c@Context { cache = nc} (keyA, keyB, keyFunc) func_with_args =
+  case Map.lookup keyFunc nc of
+    Just nc' -> case HashMap.lookup (keyA, keyB) nc' of
+      Just result -> (c, result) -- `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
+      Nothing -> let
+        (updatedContext, result) = func_with_args
+        updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB) result nc') nc
+        in (updatedContext { cache = updatedCache }, result) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
+    Nothing -> error ("function not in map, bad initialisation?: " ++ show keyFunc)
 
 
 -- * Basic construction of nodes
