@@ -20,13 +20,19 @@ import System.Console.ANSI
 -- |======================================== Data Types + Explanation ==============================================
 
 type NodeId = (HashedId, Int)
+
+show_id :: NodeId -> String
+show_id (k, alt) = "#" ++ show k ++ ":" ++ show alt
+
 type HashedId = Int
 
 data Inf = Dc | Neg1 | Neg0 | Pos1 | Pos0
     deriving (Eq, Show)
 
+
+ -- sets the inference type when traversing through the tree depending which literal type is inf. We place them at the top (of each sub path of infinite domain). We can have multiple branches due to the multiple possible contexts.
 data Dd =  Node Int NodeId NodeId               -- left = pos, right = neg
-                | InfNodes Int NodeId NodeId NodeId NodeId NodeId    -- sets the inference type when traversing through the tree depending which literal type is inf. We place them at the top (of each sub path of infinite domain). We can have multiple branches due to the multiple possible contexts.
+                | InfNodes Int NodeId NodeId NodeId NodeId NodeId
                 | EndInfNode NodeId
                 | Leaf Bool
     deriving (Eq)
@@ -138,16 +144,16 @@ getFreeKey nm
 insert_id :: HashedId -> Dd -> NodeLookup -> (NodeId, NodeLookup)
 insert_id k v nm = case HashMap.lookup k nm of
        Just result -> case match_alternative v result of -- there is something inserted at this key
-         Just (nr, t_entry) -> -- increment the reference count
+         Just (nr, t_entry) -> -- increment the reference countshow_dd settings c b_id
               ((k, nr) :: NodeId, HashMap.insert k (Map.insert nr (Entry{dd = v, reference_count=reference_count t_entry + 1}) result) nm)
-              `debug` (colorize "green" "insert: " ++ show k ++ " increment reference count : " ++ show (reference_count t_entry + 1))  -- it is the same Dd object, thus increment its reference count and return the NodeId with its map
+              -- `debug` (colorize "green" "insert: " ++ show k ++ " increment reference count : " ++ show (reference_count t_entry + 1))  -- it is the same Dd object, thus increment its reference count and return the NodeId with its map
          Nothing ->  -- it is not the same Dd object, get unused key in map
               let k' = getFreeKey result in
               ((k, k') :: NodeId, HashMap.insert k (Map.insert k' (Entry{dd = v, reference_count=1}) result) nm)
-              `debug` (colorize "green" "insert: " ++ show k ++ " as alt with freekey: " ++ show k')
+              -- `debug` (colorize "green" "insert: " ++ show k ++ " as alt with freekey: " ++ show k')
        Nothing -> -- key not found, insert current key with new alternatives map, and set its key 0 to value
         ((k, 0) :: NodeId, HashMap.insert k (Map.insert 0 Entry{dd = v, reference_count=1} Map.empty) nm)
-        `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
+        -- `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
 
 insert :: Context -> Dd -> (Context, NodeId)
 insert c@Context{nodelookup = nm} d = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, new_id)
@@ -207,7 +213,7 @@ deep_equality = undefined
 
 type Cache =  HashMap.HashMap (NodeId, NodeId) NodeId
 type SingleCache =  HashMap.HashMap NodeId NodeId
-type ShowCache =  HashMap.HashMap HashedId [String]
+type ShowCache =  HashMap.HashMap NodeId [String]
 
 
 withCache_ :: Context -> NodeId -> (Context, NodeId) -> (Context, NodeId)
@@ -221,7 +227,7 @@ withCache_ c@Context { cache_ = nc } key func_with_args =
 
 showMerged = True
 
-withCache' :: Context -> HashedId -> [String] -> (Context, [String])
+withCache' :: Context -> NodeId -> [String] -> (Context, [String])
 withCache' c@Context { cache' = nc } key func_with_args =
   case HashMap.lookup key nc of
     Just result -> if showMerged
@@ -237,11 +243,11 @@ withCache' c@Context { cache' = nc } key func_with_args =
 withCache :: Context -> (NodeId, NodeId) -> (Context, NodeId) -> (Context, NodeId)
 withCache c@Context { cache = nc} (keyA, keyB) func_with_args =
   case HashMap.lookup (keyA, keyB) nc of
-    Just result -> (c, result) `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
+    Just result -> (c, result) -- `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
     Nothing -> let
       (updatedContext, result) = func_with_args
       updatedCache = HashMap.insert (keyA, keyB) result nc
-      in (updatedContext { cache = updatedCache }, result)
+      in (updatedContext { cache = updatedCache }, result) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
 
 
 
@@ -279,7 +285,7 @@ l0 = leaf False
 makeNode :: Context -> Level -> (Context, NodeId)
 makeNode _ (L [] _) = error "empty context"
 makeNode c (L [(i, inf)] nodePosition)
-    | inf == Dc = let (c', rid) = loopDc nodePosition False in ins' c' (InfNodes i rid l0 l1 l0 l1) `debug` ("nodePosition:  " ++ show nodePosition)
+    | inf == Dc = let (c', rid) = loopDc nodePosition False in ins' c' (InfNodes i rid l0 l1 l0 l1) --`debug` ("nodePosition:  " ++ show nodePosition)
     | inf == Neg1 = let (c', rid) = loopNeg nodePosition False in ins' c' (InfNodes i l0 rid l1 l0 l1)
     | inf == Neg0 = let (c', rid) = loopNeg nodePosition True in ins' c' (InfNodes i l1 l0 rid l0 l1)
     | inf == Pos1 = let (c', rid) = loopPos nodePosition False in ins' c' (InfNodes i l0 l0 l1 rid l1)
@@ -355,10 +361,9 @@ makeLocalPath' c ((i, inf):ns) nodeList
 
 
 
-
 instance Show Dd where
-    show (Leaf True) = "1"
-    show (Leaf False) = "0"
+    show (Leaf True) = colorize "red" "1"
+    show (Leaf False) = colorize "green" "0"
     show (EndInfNode d) = " <> " ++ show d
     show (Node a l r) = " " ++ show a ++ " (" ++ show l ++ ") (" ++ show r ++ ")"
     show (InfNodes a dc (0,0) (1,0) (0,0) (1,0)) = " " ++ show a ++ " ( dc: " ++ show dc ++ " )"
@@ -391,7 +396,19 @@ col i c s = setSGRCode [SetColor Foreground i c] ++ s ++ setSGRCode [Reset]
 
 colorize :: String -> String -> String
 colorize c s
-    | c == "red" = setSGRCode [SetColor Foreground Vivid Red] ++ s ++ setSGRCode [Reset]
-    | c == "green" = setSGRCode [SetColor Foreground Vivid Green] ++ s ++ setSGRCode [Reset]
-    | c == "blue" = setSGRCode [SetColor Foreground Dull Blue] ++ s ++ setSGRCode [Reset]
+    | c == "red" = setColor24bit 255 100 100  ++ s ++ resetColor
+    | c == "soft red" = setColor24bit 255 130 130  ++ s ++ resetColor
+    | c == "green" = setColor24bit 100 200 100  ++ s ++ resetColor
+    | c == "soft green" = setColor24bit 150 255 150  ++ s ++ resetColor
+    | c == "dim green" = "\ESC[2m" ++ setColor24bit 0 255 0  ++ s ++ resetColor
+    | c == "dim red" = "\ESC[2m" ++ setColor24bit 255 0 0  ++ s ++ resetColor
+    | c == "blue" = "\ESC[2m" ++ setColor24bit 1 100 999  ++ s ++ resetColor
+    | c == "chill blue" = setColor24bit 150 200 255  ++ s ++ resetColor
+    | c == "orange" = setColor24bit 255 215 50  ++ s ++ resetColor
     | otherwise = setSGRCode [SetColor Foreground Vivid Blue] ++ s ++ setSGRCode [Reset]
+
+setColor24bit :: Int -> Int -> Int -> String
+setColor24bit r g b = "\ESC[38;2;" ++ show r ++ ";" ++ show g ++ ";" ++ show b ++ "m"
+
+resetColor :: String
+resetColor = "\ESC[0m"
