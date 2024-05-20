@@ -34,12 +34,12 @@ infixl 4 -.
 -- infix 2 .*.   -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
 (.*.) c a b = -- intersection c{func_stack = [(Dc, Inter)]} a b (getDd c a) (getDd c b)
-    apply2 @Dc Inter c a b "intersection" (intersectionLocal @Dc) a b (getDd c a) (getDd c b)
+    apply2 @Dc c{func_stack = [(Dc, Inter),(Dc, Inter)]} a b "intersection" intersection a b (getDd c a) (getDd c b)
     -- `MDDmanipulation.debug` "===========" ++
 
 infixl 3 .+.
 (.+.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
-(.+.) c a b = apply2 @Dc Union c a b "union" (unionLocal @Dc) a b (getDd c a) (getDd c b)
+(.+.) c a b = apply2 @Dc c{func_stack = [(Dc, Union), (Dc, Union)]} a b "union" union a b (getDd c a) (getDd c b)
 
 -- ite :: Context -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
 -- ite c x y z = (x .+. y) .*. ((-.) x .+. z)

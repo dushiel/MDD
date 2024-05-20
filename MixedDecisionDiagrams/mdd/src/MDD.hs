@@ -268,15 +268,12 @@ withCache' c@Context { cache' = nc } key func_with_args =
 
 -- A higher-order function for handling cache lookup and update
 withCache :: Context -> (NodeId, NodeId, String) -> (Context, NodeId) -> (Context, NodeId)
-withCache c@Context{cache = nc} (keyA, keyB, keyFunc) func_with_args =
+withCache c@Context { cache = nc} (keyA, keyB, keyFunc) func_with_args =
   case Map.lookup keyFunc nc of
     Just nc' -> case HashMap.lookup (keyA, keyB) nc' of
       Just result -> (c, result) -- `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
       Nothing -> let
         (updatedContext, result) = func_with_args
-        -- x = case getDd c result of
-        --   (EndInfNode d) -> error ("EndInf to be inserted in func cache" ++ show d)
-        --   _ -> updatedContext
         updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB) result nc') nc
         in (updatedContext { cache = updatedCache }, result) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
     Nothing -> error ("function not in map, bad initialisation?: " ++ show keyFunc)

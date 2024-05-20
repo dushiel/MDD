@@ -39,7 +39,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as Map
 import GHC.IO (unsafePerformIO)
 import GHC.IO.Encoding (TextEncoding(textEncodingName))
-import Data.Char (GeneralCategory(EnclosingMark))
 
 settings :: Show_setting
 settings = ShowSetting {
@@ -49,12 +48,10 @@ settings = ShowSetting {
             ,   display_context = False
             ,   display_leaf_cases = False
             ,   display_end_infs = False
-
             ,   debug_on = True
-
             ,   debug_open = True
             ,   debug_close = True
-            ,   debug_shorten_close = False
+            ,   debug_shorten_close = True
             ,   debug_func_stack = True
 }
 
@@ -489,7 +486,7 @@ intersectionMain c a b = debug_manipulation (intersectionMain' c a b (getDd c a)
  --intersectionMain' (c : cs) a b  `debug4` ("intersectionMain, from " ++ show c ++ "; " ++ show a ++ " ; "  ++ show_dd settings c b_id ++ "= \n " ++ show (intersectionMain' (c : cs) a b))
 -- intersectionMain Context{func_stack = []} _ _ _ _ = error "empty list not possible"
 
-intersectionMain' :: DdManipulation
+intersectionMain' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 intersectionMain'  c@Context{} !a_id !b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
     -- let (c', dcR) = supply_dds (intersectionLocal @Dc) c dcA dcB in insert c' $ InfNodes positionA dcR n1A n0A p1A p0A
     | positionA == positionB =  let
@@ -916,7 +913,7 @@ class Dd1 a where
     r0_rule :: Bool -> String -> Context -> NodeId -> NodeId -> (Context, NodeId)
     r0'_rule :: Bool -> String -> Context -> NodeId -> NodeId -> (Context, NodeId)
     apply :: FType -> Context -> NodeId -> NodeId -> String -> DdManipulation -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
-    apply2 :: FType -> Context -> NodeId -> NodeId -> String -> DdManipulation -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
+    apply2 :: Context -> NodeId -> NodeId -> String -> DdManipulation -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 
 
 
@@ -970,8 +967,8 @@ instance (DdF4 a) => Dd1 a where
 
 
     -- | take cache keys, manipulation function and its arguments, gives its result back with insertion in nodelookup map, func cache and elim rule
-    apply operator c a_key b_key f_key f a_id b_id a b = let (c', r) = f c{func_stack = (to_constr @a, operator) : func_stack c} a_id b_id a b in withCache c' (a_key, b_key, f_key) $ applyInfElimRule @a c' $ getDd c' r `debug` "apply" -- `debug` ("apply"  ++ (show_dd settings c a_id) ++ "\n" ++ (show_dd settings c b_id) ++ " ==> \n" ++ (show_dd settings c' r))
-    apply2 operator c a_key b_key f_key f a_id b_id a b = let (c', r) = f c{func_stack = (to_constr @a, operator) : func_stack c} a_id b_id a b in withCache c' (a_key, b_key, f_key) $ applyInfElimRule2 @a c' $ getDd c' r -- `debug` ("apply2222222222222222222222222222222222"  ++ (show_dd settings c a_id) ++ "\n" ++ (show_dd settings c b_id) ++ " ==> \n" ++ (show_dd settings c' r))
+    apply operator c a_key b_key f_key f a_id b_id a b = let (c', r) = f c{func_stack = (to_constr @a, operator) : func_stack c} a_id b_id a b in withCache c' (a_key, b_key, f_key) $ applyInfElimRule @a c' $ getDd c' r  -- `debug` ("apply"  ++ (show_dd settings c a_id) ++ "\n" ++ (show_dd settings c b_id) ++ " ==> \n" ++ (show_dd settings c' r))
+    apply2 c a_key b_key f_key f a_id b_id a b = let (c', r) = f c a_id b_id a b in withCache c' (a_key, b_key, f_key) $ applyInfElimRule2 @a c' $ getDd c' r -- `debug` ("apply2222222222222222222222222222222222"  ++ (show_dd settings c a_id) ++ "\n" ++ (show_dd settings c b_id) ++ " ==> \n" ++ (show_dd settings c' r))
      -- reached leaf, so return a result here
     remove_outercomplement_from' c a_id b_id a@(Leaf _) b@(Leaf _)
         | a_id == false @a = (c, false @a)  --oposite, thus turn false and true around (becaus @a implies the type of b)
@@ -1502,9 +1499,6 @@ instance DdF4 Dc where
         x@(InfNodes {}) -> insert c' $ EndInfNode r
         x -> (c', r)
     applyInfElimRule2 c (Leaf b) = (c, leaf b)
-    applyInfElimRule2 c (EndInfNode (0,0)) = (c, (0,0))
-    applyInfElimRule2 c (EndInfNode (1,0)) = (c, (1,0))
-    applyInfElimRule2 c (EndInfNode child) = (c, child)
     applyInfElimRule2 c d = applyElimRule @Dc c d
     applyElimRule c d@(Node _ posC negC) = if posC == negC then (c, posC) else insert c d
     applyElimRule c d@(InfNodes pos dcR n1R n0R p1R p0R) =
@@ -1974,14 +1968,7 @@ format' (n : ns) =
 -- memoize :: (Context -> NodeId -> NodeId -> (Context, NodeId)) -> Context -> Dd -> Dd -> String -> Int -> Dd
 -- memoize
 debug_manipulation :: (Context, NodeId) -> String -> String -> Context -> NodeId -> NodeId -> (Context, NodeId)
-debug_manipulation f f_key f_name old_c@Context{func_stack = []} a_id b_id =
-    let
-    leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
-                    "\n  ->   " ++ show_dd settings old_c a_id ++
-                    "\n  ->   " ++ show_dd settings old_c b_id ++ "\n"
-    in error $ "empty function stack" ++ leaf_msg ++ f_name
-
-
+debug_manipulation f f_key f_name old_c@Context{func_stack = []} a_id b_id = error "empty function stack"
 debug_manipulation f f_key f_name old_c@Context{cache = nc} a_id b_id =
     -- prepare message for before the calling of the function
     let
@@ -1992,13 +1979,8 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc} a_id b_id =
                 not ((a_id `elem` [(0,0), (1,0)] || b_id `elem` [(0,0), (1,0)]) && (not $ display_leaf_cases settings))
             then if debug_func_stack settings
                 then trace (show_func_stack old_c) (trace leaf_msg f)
-                else trace leaf_msg f'
-            else f'
-    f' = case Map.lookup f_key nc of
-            Just nc' -> case HashMap.lookup (a_id, b_id) nc' of
-                Just r' -> (old_c, r')
-                Nothing -> f
-            Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
+                else trace leaf_msg f
+            else f
     in
 
     -- after calling the function
