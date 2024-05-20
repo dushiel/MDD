@@ -39,7 +39,7 @@ infixl 4 -.
 
 infixl 3 .+.
 (.+.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
-(.+.) c a b = apply2 @Dc c{func_stack = [(Dc, Inter)]} a b "union" union a b (getDd c a) (getDd c b)
+(.+.) c a b = apply2 @Dc c{func_stack = [(Dc, Union)]} a b "union" union a b (getDd c a) (getDd c b)
 
 -- ite :: Context -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
 -- ite c x y z = (x .+. y) .*. ((-.) x .+. z)
@@ -222,11 +222,11 @@ test = do
             , (snd $ ddOf t_c $ F $ And (And (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ And (Var n2) (Var n_2))  `debug5` ("############# Test nr: 16 \n\n")
             , (snd $ ddOf t_c $ F $ Or (And (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Var  n_2)  `debug5` ("############# Test nr: 17 \n\n")
 
---             --double domain exclusive (18)
-            -- , (snd $ ddOf t_c $ (p'2 .+. p'_2) .*. p'2) == snd $ ddOf t_c $ ( Var p'2  `debug5` ("############# Test nr: 18 \n\n")
-            -- , (snd $ ddOf t_c $ (p'2 .+. p'_2) .*. p'_2) == snd $ ddOf t_c $ ( Var p'_2  `debug5` ("############# Test nr: 19 \n\n")
-            -- , (snd $ ddOf t_c $ (p'2 .*. p'_2) .+. p'2) == snd $ ddOf t_c $ ( Var p'2  `debug5` ("############# Test nr: 20 \n\n")
-            -- , (snd $ ddOf t_c $ (p'2 .*. p'_2) .*. p'_2) == snd $ ddOf t_c $ ( Var (p'2 .*. p'_2)  `debug5` ("############# Test nr: 21 \n\n")
+            --double domain exclusive (18)
+            , (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) `debug5` ("############# Test nr: 18 \n\n")
+            , (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'_2)) == (snd $ ddOf t_c $ ( Var p'_2 )) `debug5` ("############# Test nr: 19 \n\n")
+            , (snd $ ddOf t_c $ Or (And (Var p'2) (Var p'_2)) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) `debug5` ("############# Test nr: 20 \n\n")
+            , (snd $ ddOf t_c $ And (And (Var p'2) (Var p'_2)) (Var p'_2)) == (snd $ ddOf t_c $ And ( Var p'2) (Var p'_2) ) `debug5` ("############# Test nr: 21 \n\n")
             -- , (snd $ ddOf t_c $ (p'2 .+. p'_2) .+. p'2) == snd $ ddOf t_c $ ( Var (p'2 .+. p'_2)  `debug5` ("############# Test nr: 22 \n\n")
 
 --             --double domain inclusive s0 (23)

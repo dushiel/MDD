@@ -89,11 +89,12 @@ data Context = Context {
 }
 
 instance Show Context where
-    show c = "Context {nodelookup keys = " ++ show (HashMap.keys (nodelookup c)) ++
-             "\n\t, cache keys = " ++ show (Map.keys (cache c)) ++
-             "\n\t, cache_ keys = " ++ show (HashMap.keys (cache_ c)) ++ "}\n"
+    show c = "Context {nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
+             "\n\t, cache keys = " ++ show (Map.map HashMap.size (cache c)) ++
+             "\n\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "}\n"
 
-
+show_func_stack :: Context -> String
+show_func_stack Context{func_stack = fs} = "\n" ++ show fs
 
 data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | T_and_r
     deriving (Eq, Show)
@@ -112,6 +113,14 @@ getDd c@Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm 
           Just result2 -> dd result2
           Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with context:" ++ show c
        Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with context:" ++ show c
+
+getDd_ :: NodeLookup -> NodeId -> Dd
+getDd_ nm node_id = case HashMap.lookup (fst node_id) nm of
+       Just result -> case Map.lookup (snd node_id) result of
+          Just result2 -> dd result2
+          Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with nodelookup:"
+       Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with nodelookup:"
+
 
 getEntry :: Context -> NodeId -> TableEntry
 getEntry c@Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm of
@@ -156,6 +165,22 @@ insert_id k v nm = case HashMap.lookup k nm of
        Nothing -> -- key not found, insert current key with new alternatives map, and set its key 0 to value
         ((k, 0) :: NodeId, HashMap.insert k (Map.insert 0 Entry{dd = v, reference_count=1} Map.empty) nm)
         -- `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
+
+-- show_dd :: NodeLookup -> NodeId -> String
+-- -- show_dd c d = show c ++ show_dd s{display_context=False} c d
+-- -- show_dd ShowSetting{draw_tree=True} c d = showTree c (getDd c d)
+-- show_dd _ (0,0) = "[" ++ colorize "soft red" "0" ++ "]"
+-- show_dd _ (1,0) = "[" ++ colorize "soft green" "1" ++ "]"
+-- show_dd c d = case getDd_ c d of
+--   Node i rC lC -> show_i i "orange" ++ " (" ++ show_dd c rC ++ ") (" ++ show_dd c lC ++ ")"
+--   InfNodes i dc n1 n0 p1 p0 -> show_i i "chill blue" ++ " <{dc: " ++ show_dd c dc ++ "} {n1: " ++ show_dd c n1 ++ "} {n0: " ++ show_dd c n0 ++ "} {p1: " ++ show_dd c p1 ++ "} {p0: " ++ show_dd c p0 ++ "}>"
+--   EndInfNode child -> colorize "chill blue" "<>" ++ show_dd c child
+--   _ -> error "should not be possible"
+--   where
+--     show_i i c =  colorize "blue" ("#" ++ show d) ++ " "
+--       ++ show i
+
+
 
 insert :: Context -> Dd -> (Context, NodeId)
 insert c@Context{nodelookup = nm} d = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, new_id)

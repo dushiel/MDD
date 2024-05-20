@@ -40,7 +40,7 @@ appLast ss s = init ss ++ [last ss ++ s]
 showTree0' :: Context -> (Int -> String) -> Dd -> (Context, [String])
 showTree0' c _ (Leaf True) = (c, ["   "])
 showTree0' c _ (Leaf False) = (c, ["[0]"])
-showTree0' c f d@(Node a l r) = withCache' c'' (snd $ insert c d) $ ("("++ f a ++")") : concat (indentChildren [s1, s2])
+showTree0' c f d@(Node a l r) = withCache' c'' (snd $ insert c d) $ (("("++ f a ++")") ++ col Dull Blue (show_id (snd $ insert c d))) : concat (indentChildren [s1, s2])
     where
     (c', s1) = showTree0' c f (getDd c l)
     (c'',s2) = showTree0' c' f (getDd c r)
@@ -49,7 +49,7 @@ showTree0' c f x = showTree' c f x
 showTree1' :: Context -> (Int -> String) -> Dd -> (Context, [String])
 showTree1' c _ (Leaf True) = (c, ["[1]"])
 showTree1' c _ (Leaf False) = (c, ["   "])
-showTree1' c f d@(Node a l r) = withCache' c'' (snd $ insert c d) $ ("("++ f a ++")") : concat (indentChildren [s1, s2])
+showTree1' c f d@(Node a l r) = withCache' c'' (snd $ insert c d) $ (("("++ f a ++")") ++ col Dull Blue (show_id (snd $ insert c d))) : concat (indentChildren [s1, s2])
     where
     (c', s1) = showTree1' c f (getDd c l)
     (c'',s2) = showTree1' c' f (getDd c r)
@@ -234,7 +234,11 @@ data Show_setting = ShowSetting {
   display_context :: Bool,
   display_leaf_cases :: Bool,
   display_end_infs :: Bool,
-  debug_on :: Bool
+  debug_on :: Bool,
+  debug_open :: Bool,
+  debug_close :: Bool,
+  debug_shorten_close :: Bool,
+  debug_func_stack :: Bool
 }
 show_dd :: Show_setting -> Context -> NodeId -> String
 show_dd s@ShowSetting{display_context=True} c d = show c ++ show_dd s{display_context=False} c d
