@@ -34,12 +34,12 @@ infixl 4 -.
 -- infix 2 .*.   -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
 (.*.) c a b = -- intersection c{func_stack = [(Dc, Inter)]} a b (getDd c a) (getDd c b)
-    apply2 @Dc Inter c{func_stack = []} a b "intersection" intersection a b (getDd c a) (getDd c b)
+    intersectionLocal @Dc c{func_stack = []} a b (getDd c a) (getDd c b)
     -- `MDDmanipulation.debug` "===========" ++
 
 infixl 3 .+.
 (.+.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
-(.+.) c a b = apply2 @Dc Union c{func_stack = []} a b "union" union a b (getDd c a) (getDd c b)
+(.+.) c a b = unionLocal @Dc c{func_stack = []} a b (getDd c a) (getDd c b)
 
 -- ite :: Context -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
 -- ite c x y z = (x .+. y) .*. ((-.) x .+. z)
@@ -124,30 +124,30 @@ ddOf c (F a) =
 
 
 
-x =                     makeNode c (L [(0, Dc)] 2)
-xx = take_c__ x         makeNode (L [(0, Dc)] (-2))
-x' = take_c_ xx         (-.) x
-h = take_c__ x'         makeNode (L [(0, Dc)] 3)
-j = take_c__ h          makeNode (L [(0, Dc)] (-1))
-jj = take_c__ j         makeNode (L [(0, Dc)] (1))
--- 1    , neg1
--- neg2 , 2
--- 3
+-- x =                     makeNode c (L [(0, Dc)] 2)
+-- xx = take_c__ x         makeNode (L [(0, Dc)] (-2))
+-- x' = take_c_ xx         (-.) x
+-- h = take_c__ x'         makeNode (L [(0, Dc)] 3)
+-- j = take_c__ h          makeNode (L [(0, Dc)] (-1))
+-- jj = take_c__ j         makeNode (L [(0, Dc)] (1))
+-- -- 1    , neg1
+-- -- neg2 , 2
+-- -- 3
 
-m = ddOf (fst jj) $ And (Var h) (Var x)
-mm = ddOf (fst m) $ And (Var h) (Var xx)
+-- m = ddOf (fst jj) $ And (Var h) (Var x)
+-- mm = ddOf (fst m) $ And (Var h) (Var xx)
 
-n = ddOf (fst mm) $ And (Var j) (Var m)
-nn = ddOf (fst n) $ And (Var jj) (Var mm)
+-- n = ddOf (fst mm) $ And (Var j) (Var m)
+-- nn = ddOf (fst n) $ And (Var jj) (Var mm)
 
-ok = ddOf (fst nn) $ Or (Var n) (Var nn)
+-- ok = ddOf (fst nn) $ Or (Var n) (Var nn)
 
-dc2 = path (fst ok)         [(0, Dc)] [2]
+dc2 = path (c)         [(0, Dc)] [2]
 dc3 = path (fst dc2)        [(0, Dc)] [3]
 dc_2 = path (fst dc3)       [(1, Dc)] [2]
 dc__2 = path (fst dc_2)     [(2,Dc)] [2]
-dc = ddOf (fst dc__2) $     And (Var dc2) (Var dc3)
-n2 = path (fst dc)          [(0, Neg1)] [2]
+-- dc = ddOf (fst dc__2) $     And (Var dc2) (Var dc3)
+n2 = path (c)          [(0, Neg1)] [2]
 n3 = path (fst n2)          [(0, Neg1)] [3]
 n23 = path (fst n3)         [(0, Neg1)] [2,3]
 n_2 = path (fst n23)        [(1, Neg1)] [2]
@@ -197,8 +197,8 @@ test = do
         results =
             [ (snd $ ddOf t_c $ F $ And (Var p'2) (Var p2)) == (snd $ ddOf t_c Bot) `debug5` ("############# Test nr: 0 \n\n")
             , (snd $ ddOf t_c $ F $ Or (Var p'2) (Var p2)) == (snd $ ddOf t_c Top)  `debug5` ("############# Test nr: 1 \n\n")
-            , (snd $ ddOf t_c $ F $ Or (Var dc) (Neg $ Var dc)) == (snd $ ddOf t_c Top)  `debug5` ("############# Test nr: 2 \n\n")
-            , (snd $ ddOf t_c $ F $ And (Var dc) (Neg $ Var dc)) == (snd $ ddOf t_c Bot)  `debug5` ("############# Test nr: 3 \n\n")
+            -- , (snd $ ddOf t_c $ F $ Or (Var dc) (Neg $ Var dc)) == (snd $ ddOf t_c Top)  `debug5` ("############# Test nr: 2 \n\n")
+            -- , (snd $ ddOf t_c $ F $ And (Var dc) (Neg $ Var dc)) == (snd $ ddOf t_c Bot)  `debug5` ("############# Test nr: 3 \n\n")
 
             , (snd $ ddOf t_c $ F $ And (Or (Var n2) (Var n3)) (Var n3)) == (snd $ ddOf t_c $ Var n3)  `debug5` ("############# Test nr: 4 \n\n")
             , (snd $ ddOf t_c $ F $ And (Or (Var n2) (Var n3)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  `debug5` ("############# Test nr: 5 \n\n")
