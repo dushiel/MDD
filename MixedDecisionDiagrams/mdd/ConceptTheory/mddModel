@@ -1,0 +1,31 @@
+agents observe properties in an "event".
+they make words for it, using as elements symbols.
+the agents have a knowledge sharing base such that any group using the same base knows the public part of what he knows
+the agents can only share the words and not the properties (experiences)
+
+the knowledge bases are finite as they contain the finite words/descriptions
+
+
+a two order is needed: cause and result
+agent has knowledge about a properties of a cause and properties of a result
+it will write down the properties which have a symbol 
+
+trees are green 
+trees are agreed upon
+green is agreed upon
+
+assumed to be treated as knowledge and trusted / truthfull agents.
+
+
+two types of researchers: sufficient knowledge and neccessary knowledge
+A -> B
+A sufficient towards B
+B necessary towards A 
+
+// to have this property is sufficient to have the other property
+property = [ groups with agent x in it, sufficient/nessecary researchers, Colors of experiences (but also more complex: house-type, happy type, etc)]
+elements = [researchers, words, facts in knowledge base]
+
+2 researchers, 1 nec 1 suf, common knowledge words
+no words are in <-> relation 
+they receive half of an experience and must puzzle together the other half, 
