@@ -37,6 +37,8 @@ data Dd =  Node Int NodeId NodeId               -- left = pos, right = neg
                 | Leaf Bool
     deriving (Eq)
 
+-- type Dd' = (NodeId, Dd)
+
 -- | The level a given node resides on
 -- e.g. [(3, dc), (1, n1)] 4 =
 -- <3> dc: (<1> dc: 1, n1: (4) )
@@ -94,7 +96,7 @@ instance Show Context where
              "\n\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "}\n"
 
 show_func_stack :: Context -> String
-show_func_stack Context{func_stack = fs} = "\n" ++ show fs
+show_func_stack Context{func_stack = fs} = "\\n" ++ show fs
 
 data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | T_and_r
     deriving (Eq, Show)
@@ -435,6 +437,7 @@ colorize c s
     | c == "blue" = "\ESC[2m" ++ setColor24bit 1 100 999  ++ s ++ resetColor
     | c == "chill blue" = setColor24bit 150 200 255  ++ s ++ resetColor
     | c == "orange" = setColor24bit 255 215 50  ++ s ++ resetColor
+    | c == "dark" = setSGRCode [SetColor Foreground Dull White] ++ s ++ setSGRCode [Reset]
     | otherwise = setSGRCode [SetColor Foreground Vivid Blue] ++ s ++ setSGRCode [Reset]
 
 setColor24bit :: Int -> Int -> Int -> String

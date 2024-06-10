@@ -7,7 +7,20 @@ import System.IO
 -- import Test.Hspec
 import qualified Data.Map as Map
 import Data.Hashable
+import GHC.IO (unsafePerformIO)
+import GHC.IO.Encoding (TextEncoding(textEncodingName))
+import Data.Char (GeneralCategory(EnclosingMark))
+import System.IO (appendFile, hFlush, stdout, withFile, IOMode (AppendMode), hPutStrLn)
+import Control.DeepSeq (deepseq)
 import System.Console.ANSI
+    ( setSGRCode,
+      Color(Blue, Red, Green),
+      ColorIntensity(Vivid, Dull),
+      ConsoleLayer(Foreground),
+      SGR(Reset, SetColor) )
+
+import System.Console.ANSI
+import qualified Data.HashMap.Lazy as HashMap
 
 indentInit :: [String] -> [String]
 indentInit [] = []
@@ -235,11 +248,27 @@ data Show_setting = ShowSetting {
   display_leaf_cases :: Bool,
   display_end_infs :: Bool,
   debug_on :: Bool,
+  save_logs :: Bool,
   debug_open :: Bool,
   debug_close :: Bool,
   debug_shorten_close :: Bool,
   debug_func_stack :: Bool
 }
+
+
+format :: String -> String
+format s = format' $ words s
+
+format' :: [String] -> String
+format' [] = "" -- Base case: return an empty string for an empty list
+format' (n : n2 : n3 : ns) =
+    colorize "red" n ++ colorize "green" n2 ++ colorize "" n3 ++ format' ns
+format' (n : n2 : ns) =
+    colorize "red" n ++ colorize "green" n2 ++ format' ns
+format' (n : ns) =
+    n ++ format' ns
+
+
 show_dd :: Show_setting -> Context -> NodeId -> String
 show_dd s@ShowSetting{display_context=True} c d = show c ++ show_dd s{display_context=False} c d
 show_dd ShowSetting{draw_tree=True} c d = showTree c (getDd c d)
@@ -257,3 +286,112 @@ show_dd s c d = case getDd c d of
   where
     show_i i c = (if display_node_id's s then (if color s then colorize "blue" ("#" ++ show d) else ("#" ++ show d)) ++ " " else "")
       ++ (if color s then colorize c (show i) else show i)
+
+
+debug_manipulation :: (Context, NodeId) -> String -> String -> Context -> NodeId -> NodeId -> (Context, NodeId)
+debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a_id b_id = if not $ save_logs settings then
+    -- prepare message for before the calling of the function
+    let
+    leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
+                    "\n  ->   " ++ show_dd settings old_c a_id ++
+                    "\n  ->   " ++ show_dd settings old_c b_id ++ "\n"
+    (c,r) = if debug_on settings && debug_open settings &&
+                not ((a_id `elem` [(0,0), (1,0)] || b_id `elem` [(0,0), (1,0)]) && (not $ display_leaf_cases settings))
+                && not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)])
+            then if debug_func_stack settings
+                then myTrace (show_func_stack old_c) (myTrace leaf_msg f)
+                else myTrace leaf_msg f
+            else f
+    in
+
+    -- after calling the function
+    if debug_on settings && debug_close settings && not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)]) then
+        if a_id `elem` [(0,0), (1,0)] || b_id `elem` [(0,0), (1,0)]
+        then if not $ display_leaf_cases settings
+            then (c{func_stack=fs}, r)
+            else myTrace (show_func_stack old_c) $ myTrace (colorize "green" (f_name ++ " : ") ++
+                "\n  " ++ show_dd settings c a_id ++
+                " : " ++ show_dd settings c b_id ++
+                " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id r) ++
+                "\n") (c, r)
+        else
+        myTrace (show_func_stack old_c) $ myTrace (
+        case Map.lookup f_key nc of
+            Just nc' -> case HashMap.lookup (a_id, b_id) nc' of
+                Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
+                    ++ colorize "green" (f_name ++ " : ") ++
+                    (if not $ debug_shorten_close settings then
+                        "\n  ->   " ++ show_dd settings c a_id ++
+                        "\n  ->   " ++ show_dd settings c b_id
+                     else "") ++
+                    "\n  =>   " ++ show_dd settings c r ++
+                    "\n"
+                Nothing ->
+                    colorize "green" (f_name ++ " : ") ++
+                    (if not $ debug_shorten_close settings then
+                        "\n  ->   " ++ show_dd settings c a_id ++
+                        "\n  ->   " ++ show_dd settings c b_id
+                    else "") ++
+                    "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id r) ++
+                    "\n"
+            Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
+        ) (c{func_stack=fs}, r)
+    else (c{func_stack=fs}, r)
+
+
+    ---------------------------------------------------------
+    else
+    -- debug message for before the calling of the function
+    let
+    start_msg = ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c a_id) ++
+                ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c b_id ++ "\\n")
+    (c,r) = if not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)])
+            then myTrace "\"inner\":{" f
+            else f
+    in
+    -- debug for after calling the function
+
+    if not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)])
+        then myTrace ("\"" ++ colorize "green" f_name ++"\": {\n" ++ "\"func_stack before\": [\"" ++ show_func_stack old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
+            case Map.lookup f_key nc of
+                Just nc' -> case HashMap.lookup (a_id, b_id) nc' of
+                    Just rt -> myTrace (colorize "chill blue" "\"found cached result\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
+                        ++ show_dd settings c rt ++ "\\n\",\"close\":\""++ (colorize "dark" "") ++"\"},") (old_c, rt)
+                    Nothing ->
+                        myTrace ("},\"result\": \"\\n" ++ colorize "green" "  =>   " ++ show_dd settings c r ++ " " ++ col Vivid Blue (show_id r)
+                        ++ "\\n\",\"close\":\""++ (colorize "dark" "") ++"\"},") (c{func_stack=fs}, r)
+                Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
+        else (c{func_stack=fs}, r)
+
+jsonwrap :: String -> String -> String
+jsonwrap k v = "{ \""++ k ++"\": \"" ++ v ++ "\" }"
+
+show_a_b :: Context -> NodeId -> NodeId -> String
+show_a_b c a_id b_id = "\\n  ->   " ++ show_dd settings c a_id ++ "\\n  ->   " ++ show_dd settings c b_id
+
+
+myTrace :: String -> a -> a
+myTrace msg x = unsafePerformIO $ do
+    msg `deepseq` withFile "debug.log" AppendMode $ \h -> do
+        hPutStrLn h msg
+    return x
+
+
+
+settings :: Show_setting
+settings = ShowSetting {
+                color = True -- colorize
+            ,   display_node_id's = False -- show node_id's
+            ,   draw_tree = False
+            ,   display_context = False
+            ,   display_leaf_cases = True
+            ,   display_end_infs = True
+
+            ,   debug_on = True
+            ,   save_logs = True
+
+            ,   debug_open = True
+            ,   debug_close = True
+            ,   debug_shorten_close = False
+            ,   debug_func_stack = True
+}

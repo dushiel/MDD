@@ -33,6 +33,7 @@ library
   exposed-modules:
       AliceLanguage.Language1
       AliceLanguage.Language2
+      Debug_hs
       DotMDD
       DrawMDD
       Example
@@ -54,6 +55,7 @@ library
     , base >=4.7 && <5
     , bimap
     , containers
+    , deepseq >=1.4.4.0
     , fmt
     , graphviz
     , hashable
@@ -73,6 +75,7 @@ executable mdd-exe
     , base >=4.7 && <5
     , bimap
     , containers
+    , deepseq >=1.4.4.0
     , fmt
     , graphviz
     , hashable
@@ -86,6 +89,7 @@ executable my-other-main
   other-modules:
       AliceLanguage.Language1
       AliceLanguage.Language2
+      Debug_hs
       DotMDD
       DrawMDD
       Example
@@ -106,6 +110,7 @@ executable my-other-main
     , base >=4.7 && <5
     , bimap
     , containers
+    , deepseq >=1.4.4.0
     , fmt
     , graphviz
     , hashable

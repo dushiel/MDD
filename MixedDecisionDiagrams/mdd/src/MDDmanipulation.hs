@@ -27,36 +27,14 @@ import MDD hiding (debug)
 import Debug.Trace (trace)
 import DrawMDD
 import Data.Kind
-import System.Console.ANSI
-    ( setSGRCode,
-      Color(Blue, Red, Green),
-      ColorIntensity(Vivid, Dull),
-      ConsoleLayer(Foreground),
-      SGR(Reset, SetColor) )
+
 import Data.Map (Map)
 import Data.Hashable
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as Map
 import GHC.IO (unsafePerformIO)
-import GHC.IO.Encoding (TextEncoding(textEncodingName))
-import Data.Char (GeneralCategory(EnclosingMark))
 
-settings :: Show_setting
-settings = ShowSetting {
-                color = True -- colorize
-            ,   display_node_id's = False -- show node_id's
-            ,   draw_tree = False
-            ,   display_context = False
-            ,   display_leaf_cases = True
-            ,   display_end_infs = True
 
-            ,   debug_on = True
-
-            ,   debug_open = True
-            ,   debug_close = True
-            ,   debug_shorten_close = False
-            ,   debug_func_stack = True
-}
 
 -- todo parser from debug show output to DD
 -- todo add levels to the hashing
@@ -301,7 +279,7 @@ intersectionInferA  _ _ _ _ (Leaf _) = error "Leaf in A"
 intersectionInferA  _ _ _ _ (EndInfNode _) = error "EndNode in A"
 intersectionInferA  _ _ _ _ (Node _ _ _) = error "Node in A"
 
-intersectionInferA c a_id b_id a b = intersectionInferA' c a_id b_id a b  `debug3` ["intersectionInferA: ", show_dd settings c a_id ++ " ; " , show_dd settings c b_id ++ " = \n " , show_dd settings (fst $ intersectionInferA' c a_id b_id a b) (snd $ intersectionInferA' c a_id b_id a b) ++ "\n"]
+intersectionInferA c a_id b_id a b = debug_manipulation (intersectionInferA' c a_id b_id a b) "intersection" "intersectionInferA" c a_id b_id
 intersectionInferA' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 intersectionInferA' c'@Context{func_stack = ((inf, _) : _)} a_id' b_id a' b@(InfNodes positionB dcB n1B n0B p1B p0B) =
     case inf of
@@ -312,7 +290,7 @@ intersectionInferA' c'@Context{func_stack = ((inf, _) : _)} a_id' b_id a' b@(Inf
             (c2, !n1R ) = (if n0B == (1,0) then
                     absorb @Neg1 c21 absorb_a dcR (getDd c21 absorb_a) dcR_dd  else
                     remove_outercomplement_from @Neg1 c22 rmv_a n0B (getDd c22 rmv_a) n0B_dd)
-                    -- todo applyInfElimRule @Neg1 c1 $  for mied intersection below! probably!
+                    -- todo applyInfElimRule @Neg1 c1 $  for mixed intersection below! probably!
             (c21, !absorb_a) = mixedIntersection @Neg1 c1 n1B a_id n1B_dd a
             (c22, !rmv_a) = absorb @Neg1 c21 absorb_a dcR (getDd c21 absorb_a) dcR_dd
             (c3, !n0R ) = absorb @Neg0 c31 absorb_a3 dcR (getDd c31 absorb_a3) dcR_dd --`debug` ( "inter: " ++ show (mixedIntersection @Neg0 c n0A dcR) ++ "\n n0A: " ++ show n0A  ++ "\n dcR" ++ show dcR)
@@ -368,7 +346,7 @@ intersectionInferB _ _ _ (Leaf _) _ = error "Leaf in A"
 intersectionInferB _ _ _ (EndInfNode _) _ = error "EndNode in A"
 intersectionInferB _ _ _ (Node _ _ _) _ = error "Node in A"
 
-intersectionInferB c a_id b_id a b =  intersectionInferB' c a_id b_id a b `debug4` ("intersectionInferB:\n " ++ show_dd settings c a_id ++ " ;\n " ++ show_dd settings c b_id ++ " = \n " ++ show_dd settings (fst $ intersectionInferB' c a_id b_id a b) (snd $ intersectionInferB' c a_id b_id a b) ++ "\n")
+intersectionInferB c a_id b_id a b =  debug_manipulation (intersectionInferB' c a_id b_id a b) "intersection" "intersectionInferB" c a_id b_id
 intersectionInferB' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 intersectionInferB' c'@Context{func_stack = ((inf, _) : _)} a_id b_id' a@(InfNodes positionA dcA n1A n0A p1A p0A) b' =
     case inf of
@@ -439,47 +417,6 @@ intersectionInferB' c'@Context{func_stack = ((inf, _) : _)} a_id b_id' a@(InfNod
             p1A_dd = getDd c' p1A
             p0A_dd = getDd c' p0A
 
---     case inf of
---         Dc -> let
---             (c, dcR) = intersectionLocal @Dc c dcA b
---             (c, n1R) = (if n0A == (1,0) then
---                 absorb @Neg1 c a_id b_id (mixedIntersection @Neg1 c n1A b) dcR  else
---                 remove_outercomplement_from @Neg1 c n0A (absorb @Neg1 c a_id b_id (mixedIntersection @Neg1 c n1A b) dcR))
---             (c, n0R) = absorb @Neg0 c a_id b_id (mixedIntersection @Neg0 c n0A dcR) dcR
---             (c, p1R) = if p0A == (1,0) then
---                 absorb @Pos1 c a_id b_id (mixedIntersection @Pos1 c p1A b) dcR else
---                 remove_outercomplement_from @Pos1 c p0A (absorb @Pos1 c a_id b_id (mixedIntersection @Pos1 c p1A b) dcR)
---             (c, p0R) = absorb @Pos0 c a_id b_id (mixedIntersection @Pos0 c p0A dcR) dcR `debug` ("\n"++ show (absorb @Pos0 c a_id b_id (mixedIntersection @Pos0 c p0A dcR) dcR) ++ "\n" ++ show (mixedIntersection @Pos0 c p0A dcR)++"\n")
---             in (insert c $ InfNodes positionA dcR n1R n0R p1R p0R) `debug` ("\n\n ------ " ++ show ( InfNodes positionA dcR n1R n0R p1R p0R))
-
---         Neg1 -> let -- replace all the B stuf with (dc: (1,0), neg1: b, neg0: (1,0), pos1: (1,0), pos0: (1,0))
---             (c, n1R) = unionLocal @Neg1 c
---                 (intersectionLocal @Neg1 c n1A b)
---                 (if n0A == (1,0) then n1R' else remove_outercomplement_from @Neg1 c n0A n1R')
---             (c, n1R') = mixedIntersection @Neg1 c b dcA
---             in insert c $ InfNodes positionA (0,0) n1R (1,0) (0,0) (1,0)
---         Neg0 -> let -- replace all the B stuf with (dc: (1,0), neg1: (1,0), neg0: b, pos1: (1,0), pos0: (1,0))
---             (c, n0R') = intersectionLocal @Neg0 c n0A b
---             (c, n0R) = mixedIntersection @Neg0 c n0R' dcA
---             in insert c $ InfNodes positionA dcA (0,0) n0R (0,0) (1,0)
---         Pos1 -> let -- replace all the B stuf with (dc: (1,0), neg1: (1,0), neg0: (1,0), pos1: b, pos0: (1,0))
---             (c, p1R) = unionLocal @Pos1 c
---                 (intersectionLocal @Pos1 c n1A b )
---                 (if p0A == (1,0) then p1R' else remove_outercomplement_from @Pos1 c p0A p1R')
---             (c, p1R') = mixedIntersection @Pos1 c dcA b
---             in insert c $ InfNodes positionA (0,0) (0,0) (1,0) p1R (1,0)
---         Pos0 -> let -- replace all the B stuf with (dc: (1,0), neg1: (1,0), neg0: b, pos1: (1,0), pos0: (1,0))
---             (c, p0R') = intersectionLocal @Pos0 c p0A b
---             (c, p0R) = mixedIntersection @Pos0 c p0R' dcA
---             in insert c $ InfNodes positionA dcA (0,0) (1,0) (0,0) p0R
-
---         where
---             dcB_dd = getDd c dcB
---             n1B_dd = getDd c n1B
---             n0B_dd = getDd c n0B
---             p1B_dd = getDd c p1B
---             p0B_dd = getDd c p0B
-
 
 intersectionInferB' _ _ _ _ _ = undefined
 
@@ -487,12 +424,8 @@ intersectionInferB' _ _ _ _ _ = undefined
 intersectionMain :: Context -> NodeId -> NodeId -> (Context, NodeId)
 intersectionMain c a b = debug_manipulation (intersectionMain' c a b (getDd c a) (getDd c b))
     "intersection" "intersectionMain" c a b
- --intersectionMain' (c : cs) a b  `debug4` ("intersectionMain, from " ++ show c ++ "; " ++ show a ++ " ; "  ++ show_dd settings c b_id ++ "= \n " ++ show (intersectionMain' (c : cs) a b))
--- intersectionMain Context{func_stack = []} _ _ _ _ = error "empty list not possible"
-
 intersectionMain' :: DdManipulation
 intersectionMain'  c@Context{} !a_id !b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
-    -- let (c', dcR) = supply_dds (intersectionLocal @Dc) c dcA dcB in insert c' $ InfNodes positionA dcR n1A n0A p1A p0A
     | positionA == positionB =  let
         (c1, dcR) = intersectionLocal @Dc c dcA dcB (getDd c dcA)  (getDd c dcB) --`debug` ("intersection A ("++ show positionA ++ ")==B (" ++ show positionB )
             -- `debug` ("\nDcR dcA ^ dcB \t = " ++ show (intersectionLocal @Dc c dcA dcB (getDd c dcA) (getDd c dcB))
@@ -508,45 +441,7 @@ intersectionMain'  c@Context{} !a_id !b_id a@(InfNodes positionA dcA n1A n0A p1A
         (c7, p0R') = rOr1'_rule @And @Pos "" c6 p0A p0B -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
         (c8, p1R) = rAnd1_rule @And @Pos "" c7 p0R' dcR p1R' p1A p1B
         (c9, p0R) = rOr1_rule @And @Pos "" c8 p0R' dcR
-
-
         -- -- if the local hole fits inside dcR but the consequence of p0R' does not fit inside the consequenc of dcR it should return n0R' -> Leaf false
-        -- ------------------------------------
-        -- (c6, p1R )= absorb @Pos1 c a_id b_id (unionLocal @Pos1 c
-        --     (intersectionLocal @Pos1 c p1A p1B)
-        --     (if p0R' == (1,0) then p1R' else remove_outercomplement_from @Pos1 c p0R' p1R')) dcR
-        --     `debug` ("\np1R \t (p1A ^ p1B) v (p1R' / p0R') \t = " ++ show (unionLocal @Pos1 c
-        --         (intersectionLocal @Pos1 c p1A p1B)
-        --         (if p0R' == (1,0) then p1R' else remove_outercomplement_from @Pos1 c p0R' p1R'))
-        --     ++ "\n \t (p1A ^ p1B) = " ++ show (intersectionLocal @Pos1 c p1A p1B)
-        --     ++ "\n \t (p1R' / p0R') = " ++ show (if p0R' == (1,0) then p1R' else remove_outercomplement_from @Pos1 c p0R' p1R')
-        --     ++ "\n\t p0R' = " ++ show p0R'
-        --     ++ "\n\t p1R' = " ++ show p1R'
-        --     ++ "\n")
-        -- (c7, p1R') = unionLocal @Pos1 c
-        --     (mixedIntersection @Pos1 c p1A dcB)
-        --     (mixedIntersection @Pos1 c p1B dcA)
-        --     `debug` ("\np1R' \t (p1A ^ dcB) v (p1B ^ dcA) \t = " ++ show (unionLocal @Pos1 c
-        --         (mixedIntersection @Pos1 c p1A dcB)
-        --         (mixedIntersection @Pos1 c p1B dcA))
-        --     ++ "\n\t (p1A ^ dcB) = " ++ show (mixedIntersection @Pos1 c p1A dcB)
-        --     ++ "\n\t (p1B ^ dcA) = " ++ show (mixedIntersection @Pos1 c p1B dcA)
-        --     -- ++ "\n\t (rm p1R p0R')" ++ show (if p1R' == (0,0) then p0R' else remove_f1s0_from_f0s0 c p1R' p0R')
-        --     ++ "\n\t p1A = " ++ show p1A
-        --     ++ "\n\t p1B = " ++ show p1B
-        --     ++ "\n\t dcA = " ++ show dcA
-        --     ++ "\n\t dcB = " ++ show dcB
-        --     ++ "\n")
-        -- (c8, p0R') = intersectionLocal @Pos0 c p0A p0B -- local union then intersection
-        --     `debug` ("\np0R' \t p0A ^ p0B = " ++ show (intersectionLocal @Pos0 c p0A p0B)
-        --     ++ "\n\t p0A = " ++ show p0A
-        --     ++ "\n\t p0B = " ++ show p0B
-        --     ++ "\n")
-        -- (c9, p0R )= absorb @Pos0 c a_id b_id (mixedIntersection @Pos0 c p0R' dcR) dcR
-        --     `debug` ("\np0R \t (p0R' ^ dcR) @ dcR = " ++ show (absorb @Pos0 c a_id b_id (mixedIntersection @Pos0 c p0R' dcR) dcR)
-        --     ++ "\n\t (p0R' ^ dcR) = " ++ show (mixedIntersection @Pos0 c p0R' dcR)
-        --     ++ "\n\t dcR = " ++ show dcR
-        --     ++ "\n")
         in insert c9 $ InfNodes positionA dcR n1R n0R p1R p0R
     | positionA > positionB = withCache c (a_id, b_id, "intersection") $ intersectionInferA c a_id b_id a b `debug` "interA"
     | positionA < positionB = withCache c (a_id, b_id, "intersection") $ intersectionInferB c a_id b_id a b `debug` "interB"-- replace all the A stuf with (dc: a, neg1: 0, neg0: (1,0), pos1: (1,0), pos0: (1,0))
@@ -558,7 +453,7 @@ unionInferA  _ _ _ _ (Leaf _) = error "Leaf in A"
 unionInferA  _ _ _ _ (EndInfNode _) = error "EndNode in A"
 unionInferA  _ _ _ _ (Node _ _ _) = error "Node in A"
 
-unionInferA c a_id b_id a b =  force_eval_debug (unionInferA' c a_id b_id a b `debug5` ("unionInferA: " ++ show_dd settings c a_id ++ " ;\n "  ++ show_dd settings c b_id)) "close inferUnionA" -- ++ " = " ++ show (unionInferA' c a_id b_id a b ))
+unionInferA c a_id b_id a b =  debug_manipulation (unionInferA' c a_id b_id a b) "union" "unionInferA" c a_id b_id   -- ++ " = " ++ show (unionInferA' c a_id b_id a b ))
 unionInferA' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 unionInferA' c'@Context{func_stack = ((inf, _) : _)} a_id' b_id a' b@(InfNodes positionB dcB n1B n0B p1B p0B) =
     case inf of
@@ -595,10 +490,6 @@ unionInferA' c'@Context{func_stack = ((inf, _) : _)} a_id' b_id a' b@(InfNodes p
             in insert c2 $ InfNodes positionB (0,0) n1R (1,0) (0,0) (1,0)
 
         Neg0 -> let -- replace all the A stuf with (dc: (1,0), neg1: (1,0), neg0: a, pos1: (1,0), pos0: (1,0))
-            -- (c', n0R ) = intersectionLocal @Neg0 c
-            --     (unionLocal @Neg0 c a_id b_id an0B)
-            --     (if n1B == (1,0) then n0R' else remove_outercomplement_from @Neg0 c n1B n0R')
-            -- (c', n0R')  = mixedUnion @Neg0 c a_id b_id a dcB
             (c1, n0R ) = intersectionLocal @Neg1 c12 negcalc1 negcalc2 (getDd c12 negcalc1) (getDd c13 negcalc2)
             (c12, negcalc1) = unionLocal @Neg1 c a_id n1B a n1B_dd
             (c13, negcalc2) = (if n0B == (1,0) then (c2, n0R') else (c14, negcalc3))
@@ -606,10 +497,8 @@ unionInferA' c'@Context{func_stack = ((inf, _) : _)} a_id' b_id a' b@(InfNodes p
             (c2, n0R')  = mixedIntersection @Neg1 c a_id dcB a dcB_dd
             in insert c1 $ InfNodes positionB dcB (0,0) n0R (0,0) (1,0)
         Pos1 -> let -- replace all the A stuf with (dc: (1,0), neg1: (1,0), neg0: (1,0), pos1: a, pos0: (1,0))
-            (c1, p1R')  = unionLocal @Pos1 c a_id p1B a p1B_dd --`debug` ("--------- " ++ show p1B)
+            (c1, p1R')  = unionLocal @Pos1 c a_id p1B a p1B_dd
             (c2, p1R ) = mixedUnion @Pos1 c1 p1R' dcB (getDd c' p1R') dcB_dd
-            -- (c'', p1R')  = unionLocal @Pos1 c a_id b_id ap1B
-            -- (c', p1R ) = mixedUnion @Pos1 c'' p1R' dcB
             in insert c2 $ InfNodes positionB (0,0) (0,0) (1,0) p1R (1,0)
         Pos0 -> let -- replace all the A stuf with (dc: (1,0), neg1: (1,0), neg0: a, pos1: (1,0), pos0: (1,0))
             (c1, p0R ) = intersectionLocal @Pos1 c12 poscalc1 poscalc2 (getDd c12 poscalc1) (getDd c13 poscalc2)
@@ -627,21 +516,7 @@ unionInferA' c'@Context{func_stack = ((inf, _) : _)} a_id' b_id a' b@(InfNodes p
             n0B_dd = getDd c n0B
             p1B_dd = getDd c p1B
             p0B_dd = getDd c p0B
---     case inf of
---         Dc -> let
---             dcR = unionLocal @Dc c  a dcB --pass along the consequence of B for both dcA and not dcA
---             n1R = absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1B dcR) dcR
 
---             n0R = let n0R' = mixedUnion @Neg0 c n0B a in
---                 if n1B == (0,0) then absorb @Neg0 c n0R' dcR else absorb @Neg0 c a_id b_id (remove_outercomplement_from @Neg0 c n1B n0R') dcR
-
---             p1R = absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1B dcR) dcR
---             p0R = let p0R' = mixedUnion @Pos0 c p0B a in
---                 if p1B == (0,0) then absorb @Pos0 c p0R' dcR else absorb @Pos0 c a_id b_id (remove_outercomplement_from @Pos0 c p1B p0R') dcR
-
---             in InfNodes positionB dcR n1R n0R p1R p0R
-
---
 unionInferA' _ _ _ _ _ = undefined
 
 
@@ -651,9 +526,8 @@ unionInferB _ _ _ (Leaf _) _ = error "Leaf in A"
 unionInferB _ _ _ (EndInfNode _) _ = error "EndNode in A"
 unionInferB _ _ _ (Node _ _ _) _ = error "Node in A"
 
-unionInferB c a_id b_id a b =  unionInferB' c a_id b_id a b  `debug4` ("unionInferB:\n " ++ show_dd settings c a_id ++ " ;\n "  ++ show_dd settings c b_id)
+unionInferB c a_id b_id a b =  debug_manipulation (unionInferB' c a_id b_id a b) "union" "unionInferB" c a_id b_id
 unionInferB' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
--- unionInferB' c@Context{func_stack = ((inf, _) : _)} a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A) b' = let b = EndInfNode b' in
 unionInferB' c'@Context{func_stack = ((inf, _) : _)} a_id b_id' a@(InfNodes positionA dcA n1A n0A p1A p0A) b' =
     case inf of
         Dc -> let -- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
@@ -683,14 +557,10 @@ unionInferB' c'@Context{func_stack = ((inf, _) : _)} a_id b_id' a@(InfNodes posi
             in insert c5 $ InfNodes positionA dcR n1R n0R p1R p0R
 
         Neg1 -> let -- replace all the A stuf with (dc: (1,0), neg1: a, neg0: (1,0), pos1: (1,0), pos0: (1,0))
-            (c1, n1R')  = unionLocal @Neg1 c n1A b_id n1A_dd b `debug` ("--------- " ++ show n1A)
-            (c2, n1R ) = mixedUnion @Neg1 c' n1R' dcA (getDd c1 n1R') dcA_dd `debug` "hallo"
+            (c1, n1R')  = unionLocal @Neg1 c n1A b_id n1A_dd b
+            (c2, n1R ) = mixedUnion @Neg1 c' n1R' dcA (getDd c1 n1R') dcA_dd
             in insert c2 $ InfNodes positionA (0,0) n1R (1,0) (0,0) (1,0)
         Neg0 -> let -- replace all the A stuf with (dc: (1,0), neg1: (1,0), neg0: a, pos1: (1,0), pos0: (1,0))
-            -- (c', n0R ) = intersectionLocal @Neg0 c
-            --     (unionLocal @Neg0 c a_id b_id an0A)
-            --     (if n1A == (1,0) then n0R' else remove_outercomplement_from @Neg0 c n1A n0R')
-            -- (c', n0R')  = mixedUnion @Neg0 c a_id b_id a dcA
             (c1, n0R ) = intersectionLocal @Neg1 c12 negcalc1 negcalc2 (getDd c12 negcalc1) (getDd c13 negcalc2)
             (c12, negcalc1) = unionLocal @Neg1 c n1A b_id n1A_dd b
             (c13, negcalc2) = (if n0A == (1,0) then (c2, n0R') else (c14, negcalc3))
@@ -698,10 +568,8 @@ unionInferB' c'@Context{func_stack = ((inf, _) : _)} a_id b_id' a@(InfNodes posi
             (c2, n0R')  = mixedIntersection @Neg1 c b_id dcA b dcA_dd
             in insert c1 $ InfNodes positionA dcA (0,0) n0R (0,0) (1,0)
         Pos1 -> let -- replace all the A stuf with (dc: (1,0), neg1: (1,0), neg0: (1,0), pos1: a, pos0: (1,0))
-            (c1, p1R')  = unionLocal @Pos1 c p1A b_id p1A_dd b `debug` ("--------- " ++ show p1A)
+            (c1, p1R')  = unionLocal @Pos1 c p1A b_id p1A_dd b
             (c2, p1R ) = mixedUnion @Pos1 c1 p1R' dcA (getDd c' p1R') dcA_dd
-            -- (c'', p1R')  = unionLocal @Pos1 c a_id b_id ap1A
-            -- (c', p1R ) = mixedUnion @Pos1 c'' p1R' dcA
             in insert c2 $ InfNodes positionA (0,0) (0,0) (1,0) p1R (1,0)
         Pos0 -> let -- replace all the A stuf with (dc: (1,0), neg1: (1,0), neg0: a, pos1: (1,0), pos0: (1,0))
             (c1, p0R ) = intersectionLocal @Pos1 c12 poscalc1 poscalc2 (getDd c12 poscalc1) (getDd c13 poscalc2)
@@ -719,56 +587,7 @@ unionInferB' c'@Context{func_stack = ((inf, _) : _)} a_id b_id' a@(InfNodes posi
             n0A_dd = getDd c n0A
             p1A_dd = getDd c p1A
             p0A_dd = getDd c p0A
---     case inf of
---         Dc -> let
---             dcR = unionLocal @Dc c b dcA
---                 `debug` ("\ndcR \t = " ++ show (unionLocal @Dc c b dcA))
---             n1R = absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1A dcR) dcR
---                 `debug` ("\nn1R (n1A ^ dcR) @ dcR \t = " ++ show (absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1A dcR) dcR))
 
---             n0R = (let n0R' = mixedUnion @Neg0 c n0A b in
---                 if n1A == (0,0) then absorb @Neg0 c  n0R' dcR else  absorb @Neg0 c a_id b_id (remove_outercomplement_from @Neg0 c n1A n0R') dcR)
---                 `debug` ("**n0R' = n0A v b = " ++ show (mixedUnion @Neg0 c n0A b) ++ "\n" ++
---                 "**n0R' @ dcR = " ++ show (absorb @Neg0 c  (mixedUnion @Neg0 c n0A b) dcR) ++ "\n" ++
---                 "**n0A = " ++ show n0A ++ "\n" ++
---                 "**b = " ++ show_dd settings c b_id ++ "\n")
-
---             p1R = absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1A dcR) dcR
---                 `debug` ("\np1R (p1A ^ dcR) @ dcR \t = " ++ show (absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1A dcR) dcR))
---             p0R = (let p0R' =  mixedUnion @Pos0 c p0A b in
---                 if p1A == (0,0) then absorb @Pos0 c p0R' dcR else absorb @Pos0 c a_id b_id (rsorb @a c41 _0R1 dcR (getDd c41 _0R1) (getDd c dcR)
-                -- `debug` (col Vivid Green "\n_0R " ++ "\t (_0R' ^ dcR) @ dcR = " ++ show (absorb @a c41 _0R1 dcR (getDd c41 _0R1) (getDd c dcR)))
-            -- (c41, _0R1) = (if b then mixedIntersection @a else mixedUnion @a) c _0R' dcR (getDd c _0R') (getDd c dcR)
-                -- `debug` (col Vivid Green "\n_0R'' " ++ "\t (_0A ^ _0B) ^ dcR = " ++ show (mixedIntersection @a c42 _0R2 dcR (getDd c42 _0R2) (getDd c dcR)))
-            -- in (c4, _0R) -- `emove_outercomplement_from @Pos0 c p1A p0R') dcR)
---                 `debug` ("p0R' = " ++ show (mixedUnion @Pos0 c p0A b) ++ "\n")
---                 `debug` ("p0R' @ dcR = " ++ show (absorb @Pos0 c a_id b_id (mixedUnion @Pos0 c p0A b) dcR) ++ "\n")
---                 `debug` ("p0A = " ++ show p0A)
---             in InfNodes positionA dcR n1R n0R p1R p0R
---         Neg1 -> let -- replace all the B stuf with (dc: (1,0), neg1: b, neg0: (1,0), pos1: (1,0), pos0: (1,0))
---             n1R' = unionLocal @Neg1 c n1A b
---             n1R = mixedUnion @Neg1 c n1R' dcA
---             in InfNodes positionA (0,0) n1R (1,0) (0,0) (1,0)
---         Neg0 -> let -- replace all the B stuf with (dc: (1,0), neg1: (1,0), neg0: b, pos1: (1,0), pos0: (1,0))
---             n0R = intersectionLocal @Neg0 c
---                 (unionLocal @Neg0 c n0A b)
---                 (if n1A == (1,0) then n0R' else remove_outercomplement_from @Neg0 c n1A n0R')
---                 `debug` ("n0R = (n0A U b) ^ (n1A / n0R') = \n " ++ show n0R)
---             n0R' = mixedUnion @Neg0 c b dcA
---                 `debug` ("n0R' = (b ^ dcA) = \n " ++ show n0R')
---             in InfNodes positionA dcA (0,0) n0R (0,0) (1,0)
---         Pos1 -> let -- replace all the B stuf with (dc: (1,0), neg1: (1,0), neg0: (1,0), pos1: b, pos0: (1,0))
---             p1R' = unionLocal @Pos1 c p1A b
---             p1R = mixedUnion @Pos1 c p1R' dcA
---             in InfNodes positionA (0,0) (0,0) (1,0) p1R (1,0)
---         Pos0 -> let -- replace all the B stuf with (dc: (1,0), neg1: (1,0), neg0: b, pos1: (1,0), pos0: (1,0))
---             p0R = intersectionLocal @Pos0 c
---                 (unionLocal @Pos0 c n0A b )
---                 (if p1A == (1,0) then p0R' else remove_outercomplement_from @Pos0 c p1A p0R')
---                 `debug` ("p0R = (p0A U b) ^ (p1A / p0R') = \n " ++ show p0R)
---             p0R' = mixedUnion @Pos0 c b dcA
---                 `debug` ("p0R' = (b ^ dcA) = \n " ++ show p0R')
---             in InfNodes positionA dcA (0,0) (1,0) (0,0) p0R
 unionInferB' _ _ _ _ _ = undefined
 
 unionMain :: Context -> NodeId -> NodeId -> (Context, NodeId)
@@ -780,12 +599,6 @@ unionMain' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
     | positionA == positionB =  let
         (c1, dcR) = unionLocal @Dc c dcA dcB (getDd c dcA)  (getDd c dcB)
-
-        --`debug` ("intersection A ("++ show positionA ++ ")==B (" ++ show positionB ) -- ++ "), with c = " ++ show c)
-            -- `debug` ("\nDcR dcA ^ dcB \t = " ++ show (intersectionLocal @Dc c dcA dcB (getDd c dcA) (getDd c dcB))
-            -- ++ "\n\t dcA = " ++ show dcA
-            -- ++ "\n\t dcB = " ++ show dcB
-            -- ++ "\n")
         (c2, n1R') = rOr1'_rule @Or @Neg "" c1 n1A n1B --`debug` ("n1R' \n" ++ show_dd settings c p1A)
         (c3, n0R') = rAnd1'_rule @Or @Neg "" c2 n1R' n0A n0B dcA dcB -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
         (c4, n1R) = rOr1_rule @Or @Neg "" c3 n1R' dcR
@@ -799,108 +612,6 @@ unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes p
     | positionA > positionB = withCache c (a_id, b_id, "union") $ unionInferA c a_id b_id a b --`debug` ("unionA: " ++ (show_dd settings c a_id) ++ "\n" ++ (show_dd settings c b_id))
     | positionA < positionB = withCache c (a_id, b_id, "union") $ unionInferB c a_id b_id a b -- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
 unionMain' c a_id b_id a b = error (show a ++ ", " ++ show_dd settings c b_id ++ ", "++ show c)
---     | positionA == positionB =  let
-
---         dcR = unionLocal @Dc c  dcA dcB
---             `debug` ("\nDcR \t dcA v dcB = " ++ show (unionLocal @Dc c dcA dcB)
---             ++ "\n\t dcA = " ++ show dcA
---             ++ "\n\t dcB = " ++ show dcB
---             ++ "\n")
-
---         n1R = absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1R' dcR) dcR
---             `debug` ("\nn1R \t (n1R' v  dcR) @ dcR = " ++ show (absorb @Neg1 c a_id b_id (mixedUnion @Neg1 c n1R' dcR) dcR)
---             ++ "\n\t (n1R' ^ dcR) = " ++ show (mixedUnion @Neg1 c n1R' dcR)
---             ++ "\n\t n1R' = " ++ show n1R'
---             ++ "\n\t dcR = " ++ show dcR
---             ++ "\n")
---         n1R' = unionLocal @Neg1 c n1A n1B
---             `debug` ("\nn1R' \t n1A v n1B \b = " ++ show (unionLocal @Neg1 c n1A n1B)
---             ++ "\n\t n1A = " ++ show n1A
---             ++ "\n\t n1B = " ++ show n1B
---             ++ "\n")
-
---         n0R = absorb @Neg0 c a_id b_id (intersectionLocal @Neg0 c
---             (unionLocal @Neg0 c n0A n0B)
---             (if n1R' == (0,0) then n0R' else remove_outercomplement_from @Neg0 c n1R' n0R')) dcR
---             `debug` ("\nn0R \t ((n0A v n0B) ^ (n0R' / n1R')) @ dcR = " ++ show ( absorb @Neg0 c a_id b_id (intersectionLocal @Neg0 c
---                     (unionLocal @Neg0 c n0A n0B)
---                     (if n1R' == (0,0) then n0R' else remove_outercomplement_from @Neg0 c n1R' n0R')) dcR)
---                 ++ "\n\t (n0A v n0B) = " ++ show (unionLocal @Neg0 c n0A n0B)
---                 ++ "\n\t (n0R' / n1R') = " ++ show (if n1R' == (0,0) then n0R' else remove_outercomplement_from @Pos0 c n1R' n0R')
---                 ++ "\n\t n0A = " ++ show n0A
---                 ++ "\n\t n0B = " ++ show n0B
---                 ++ "\n\t n1R' = " ++ show n1R'
---                 ++ "\n\t n0R' = " ++ show n0R'
---                 ++ "\n")
---         n0R' = intersectionLocal @Neg0 c
---             (mixedUnion @Neg0 c n0A dcB) -- remove the holes that do fit in B (unioned away) // note that in consequence this reverts back to to union and is absorbed if consequence of n0A == dcR
---             (mixedUnion @Neg0 c n0B dcA) -- remove the holes that do fit in A (unioned away)
---             `debug` ("\nn0R' \t (n0A ^ dcB) ^ (n0B ^ dcA) = " ++ show (intersectionLocal @Neg0 c
---                 (mixedUnion @Neg0 c n0A dcB)
---                 (mixedUnion @Neg0 c n0B dcA))
---                 ++ "\n\t (n0A ^ dcB) ^ (n0B ^ dcA) = " ++ show (intersectionLocal @Neg0 c
---                                                 (mixedUnion @Neg0 c n0A dcB)
---                                                 (mixedUnion @Neg0 c n0B dcA))
---                 ++ "\n\t (n0A ^ dcB) = " ++ show (mixedUnion @Neg0 c n0A dcB)
---                 ++ "\n\t (n0B ^ dcA) = " ++ show (mixedUnion @Neg0 c n0B dcA)
---                 ++ "\n\t dcR = " ++ show dcR
---                 ++ "\n\t n0A = " ++ show n0A
---                 ++ "\n\t n0B = " ++ show n0B
---                 ++ "\n\t dcB = " ++ show dcB
---                 ++ "\n\t dcA = " ++ show dcA
---                 ++ "\n")
-
---         ------------------------------------
---         -- n0R = (n0A cap n0B) cup ((n0A cap neg dcB) cap n1B) cup ((n0B cap neg dcA) cap n1A) <-> (n0A cup n0B) cap n1R* cap neg dcR
---         p1R = absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1R' dcR) dcR
---             `debug` ("\np1R \t (p1R' ^ dcR) @ dcR = " ++ show (absorb @Pos1 c a_id b_id (mixedUnion @Pos1 c p1R' dcR) dcR)
---             ++ "\n\t p1R' = " ++ show p1R'
---             ++ "\n\t dcR = " ++ show dcR
---             ++ "\n")
---         p1R' = unionLocal @Pos1 c p1A p1B
---             `debug` ("\np1R \t p1A v p1B"
---             ++ "\n\t p1A = " ++ show p1A
---             ++ "\n\t p1B = " ++ show p1B
---             ++ "\n")
-
---         p0R = absorb @Pos0 c a_id b_id (intersectionLocal @Pos0 c
---             (unionLocal @Pos0 c p0A p0B)
---             (if p1R' == (0,0) then p0R' else remove_outercomplement_from @Pos0 c p1R' p0R')) dcR
---             `debug` ("\np0R = ((p0A v p0B) ^ (p0R' / p1R')) @dcR \t = " ++ show (absorb @Pos0 c a_id b_id (intersectionLocal @Pos0 c
---                 (unionLocal @Pos0 c p0A p0B)
---                 (if p1R' == (0,0) then p0R' else remove_outercomplement_from @Pos0 c p1R' p0R')) dcR)
---             ++ "\n\t (p0A v p0B) = " ++ show (unionLocal @Pos0 c p0A p0B)
---             ++ "\n\t (p0R' / p1R') = " ++ show (if p1R' == (0,0) then p0R' else remove_outercomplement_from @Pos0 c p1R' p0R')
---             ++ "\n\t p0A = " ++ show p0A
---             ++ "\n\t p0B = " ++ show p0B
---             ++ "\n\t p1R' = " ++ show p1R'
---             ++ "\n\t p0R' = " ++ show p0R'
---             ++ "\n")
---         p0R' = intersectionLocal @Pos0 c
---             (mixedUnion @Pos0 c p0A dcB) -- remove the holes that do fit in B: if the consequence of p0A after union is the same as the consequence of dcB, then it is also removed. If the consequence is smaller it is kept.
---             (mixedUnion @Pos0 c p0B dcA)
---             `debug` ("\np0R' \t  ((p0A ^ dcB) ^ (p0B ^ dcA)) \t = " ++ show (intersectionLocal @Pos0 c
---                                                 (mixedUnion @Pos0 c p0A dcB)
---                                                 (mixedUnion @Pos0 c p0B dcA))
---                 ++ "\n\t (p0A ^ dcB) ^ (p0B ^ dcA) = " ++ show (intersectionLocal @Pos0 c
---                                                 (mixedUnion @Pos0 c p0A dcB)
---                                                 (mixedUnion @Pos0 c p0B dcA))
---                 ++ "\n\t (p0A ^ dcB) = " ++ show (mixedUnion @Pos0 c p0A dcB)
---                 ++ "\n\t (p0B ^ dcA) = " ++ show (mixedUnion @Pos0 c p0B dcA)
---                 ++ "\n\t dcR = " ++ show dcR
---                 ++ "\n\t p0A = " ++ show p0A
---                 ++ "\n\t p0B = " ++ show p0B
---                 ++ "\n\t dcB = " ++ show dcB
---                 ++ "\n\t dcA = " ++ show dcA
---                 ++ "\n")
-
---         in InfNodes positionA dcR n1R n0R p1R p0R `debug` ("unionMain = " ++ show (InfNodes positionA dcR n1R n0R p1R p0R))
-
---     | positionA > positionB = unionInferA c a_id b_id a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
-
---     -- c cannot be empty..
---     | positionA < positionB = unionInferB c a_id b_id a b-- replace all the A stuf with (dc: a, neg1: 0, neg0: 1, pos1: 0, pos0: 1)
--- unionMain' c a_id b_id a b = error "no 2 StartInfNode's in union main"
 
 
 -- -- captures the general patterns for the functions
@@ -965,8 +676,7 @@ instance (DdF4 a) => Dd1 a where
         _ -> error "wrong string in rule"
 
     r0'_rule b s c _0A _0B = case s of
-        "" -> let (c', r) = (if b then intersectionLocal @a else unionLocal @a) c _0A _0B (getDd c _0A)  (getDd c _0B) in (c', r) --`debug` ("r0' " ++ "\n" ++ (show_dd settings c _0A) ++ "\n" ++ (show_dd settings c _0B) ++ "\n = " ++ (show_dd settings c' r))
-        -- `debug` (col Vivid Green "\n_0R' \t _0A ^ _0B = " ++ show (intersectionLocal @a c _0A _0B (getDd c _0A)  (getDd c _0B)))
+        "" -> let (c', r) = (if b then intersectionLocal @a else unionLocal @a) c _0A _0B (getDd c _0A)  (getDd c _0B) in (c', r)
         _ -> error "wrong string in rule"
 
 
@@ -1556,7 +1266,6 @@ instance DdF4 Dc where
         let (c', pos_result) = supply_dds f c a_id pos_childB
             (c'', neg_result) = supply_dds f c' a_id neg_childB
         in applyElimRule @Dc c'' (Node positionB pos_result neg_result)
-        -- `debug` ("infernodeA dc ; " ++ (show $ applyElimRule @Dc c (Node positionB pos_result neg_result)))
     inferNodeA _ c a_id b_id a b = error ("inferNode : " ++ show c ++ ", " ++ show a ++ ", " ++ show_dd settings c b_id)
 
     inferNodeA_opposite = inferNodeA @Dc
@@ -1564,10 +1273,7 @@ instance DdF4 Dc where
     inferNodeB f c a_id b_id a@(Node positionA pos_childA neg_childA) b =
         let (c', pos_result) = supply_dds f c pos_childA b_id
             (c'', neg_result) = supply_dds f c' neg_childA b_id
-        in applyElimRule @Dc c'' (Node positionA pos_result neg_result) -- `debug` ("====>" ++ show_dd settings (fst $ supply_dds f c pos_childA b_id) (snd $ supply_dds f c pos_childA b_id)
-        --  ++ "====>" ++ show_dd settings (fst $ supply_dds f c pos_childA b_id) neg_childA
-        --  ++ "====>" ++ show_dd settings (fst $ supply_dds f c neg_childA b_id) (snd $ supply_dds f c neg_childA b_id))
-        -- `debug` ("infernodeB dc ; " ++ (show $ applyElimRule @Dc (Node positionA pos_result neg_result)))
+        in applyElimRule @Dc c'' (Node positionA pos_result neg_result)
     inferNodeB f c a_id b_id a b = undefined `debug` ("infernodeB dc ; " ++ show c ++ "\n \t a: " ++ show a ++ " \n \t b: " ++ show_dd settings c b_id)
 
 
@@ -1803,9 +1509,6 @@ instance DdF4 Pos0 where
 --     -- Leaf and node
     unionLocal c a_id b_id a b = debug_manipulation (unionLocal' @Pos0 c a_id b_id a b  )
         "union" "unionLocal pos0" c a_id b_id
-
---     --unionLocal c a@(InfNodes positionA dcA n1A n0A p1A p0A) 1 = union @False c a_id b_id a (inferInfNode c True a)
---     --unionLocal c 1 b@(InfNodes positionB dcB n1B n0B p1B p0B) = union @False c a_id b_id (inferInfNode c True b) b
     intersectionLocal c a_id b_id a b = debug_manipulation (intersectionLocal' @Pos0 c a_id b_id a b)
         "intersection" "intersectionLocal pos0" c a_id b_id
 
@@ -1958,105 +1661,3 @@ debug4 f s = if True then trace (colorize "green" s) f else f
 
 debug5 :: a -> String -> a
 debug5 f s = if True then trace (colorize "red" s) f else f
-
-format :: String -> String
-format s = format' $ words s
-
-format' :: [String] -> String
-format' [] = "" -- Base case: return an empty string for an empty list
-format' (n : n2 : n3 : ns) =
-    colorize "red" n ++ colorize "green" n2 ++ colorize "" n3 ++ format' ns
-format' (n : n2 : ns) =
-    colorize "red" n ++ colorize "green" n2 ++ format' ns
-format' (n : ns) =
-    n ++ format' ns
-
-
--- memoize :: (Context -> NodeId -> NodeId -> (Context, NodeId)) -> Context -> Dd -> Dd -> String -> Int -> Dd
--- memoize
-debug_manipulation :: (Context, NodeId) -> String -> String -> Context -> NodeId -> NodeId -> (Context, NodeId)
--- debug_manipulation f f_key f_name old_c@Context{func_stack = []} a_id b_id =
---     let
---     leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
---                     "\n  ->   " ++ show_dd settings old_c a_id ++
---                     "\n  ->   " ++ show_dd settings old_c b_id ++ "\n"
---     in error $ "empty function stack" ++ leaf_msg ++ f_name
-debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a_id b_id =
-    -- prepare message for before the calling of the function
-    let
-    leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
-                    "\n  ->   " ++ show_dd settings old_c a_id ++
-                    "\n  ->   " ++ show_dd settings old_c b_id ++ "\n"
-    (c,r) = if debug_on settings && debug_open settings &&
-                not ((a_id `elem` [(0,0), (1,0)] || b_id `elem` [(0,0), (1,0)]) && (not $ display_leaf_cases settings))
-                && not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)])
-            then if debug_func_stack settings
-                then trace (show_func_stack old_c) (trace leaf_msg f)
-                else trace leaf_msg f
-            else f
-    in
-
-    -- after calling the function
-    if debug_on settings && debug_close settings && not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)]) then
-        if a_id `elem` [(0,0), (1,0)] || b_id `elem` [(0,0), (1,0)]
-        then if not $ display_leaf_cases settings
-            then (c{func_stack=fs}, r)
-            else trace (show_func_stack old_c) $ trace (colorize "green" (f_name ++ " : ") ++
-                "\n  " ++ show_dd settings c a_id ++
-                " : " ++ show_dd settings c b_id ++
-                " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id r) ++
-                "\n") (c, r)
-        else
-        trace (show_func_stack old_c) $ trace (
-        case Map.lookup f_key nc of
-            Just nc' -> case HashMap.lookup (a_id, b_id) nc' of
-                Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
-                    ++ colorize "green" (f_name ++ " : ") ++
-                    (if not $ debug_shorten_close settings then
-                        "\n  ->   " ++ show_dd settings c a_id ++
-                        "\n  ->   " ++ show_dd settings c b_id
-                     else "") ++
-                    "\n  =>   " ++ show_dd settings c r ++
-                    "\n"
-                Nothing ->
-                    colorize "green" (f_name ++ " : ") ++
-                    (if not $ debug_shorten_close settings then
-                        "\n  ->   " ++ show_dd settings c a_id ++
-                        "\n  ->   " ++ show_dd settings c b_id
-                    else "") ++
-                    "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id r) ++
-                    "\n"
-            Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
-        ) (c{func_stack=fs}, r)
-    else (c{func_stack=fs}, r)
-
-debug_manipulation_old :: (Context, NodeId) -> String -> String -> Context -> NodeId -> NodeId -> (Context, NodeId)
-debug_manipulation_old (c, r) f_key f_name old_c@Context{cache = nc} a_id b_id =
-    if debug_on settings then
-        if a_id `elem` [(0,0), (1,0)] || b_id `elem` [(0,0), (1,0)]
-        then if not $ display_leaf_cases settings
-            then (c, r)
-            else trace (colorize "green" (f_name ++ " : ") ++
-                "\n  " ++ show_dd settings c a_id ++
-                " : " ++ show_dd settings c b_id ++
-                " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id r) ++
-                "\n") (c, r)
-        else
-        trace (
-        case Map.lookup f_key nc of
-            Just nc' -> case HashMap.lookup (a_id, b_id) nc' of
-                Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
-                    ++ colorize "green" (f_name ++ " : ") ++
-                    "\n  ->   " ++ show_dd settings c a_id ++
-                    "\n  ->   " ++ show_dd settings c b_id ++
-                    "\n  =>   " ++ show_dd settings c r ++
-                    "\n"
-                Nothing ->
-                    colorize "green" (f_name ++ " : ") ++
-                    "\n  ->   " ++ show_dd settings c a_id ++
-                    "\n  ->   " ++ show_dd settings c b_id ++
-                    "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id r) ++
-                    "\n"
-            Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
-        ) (c, r)
-    else (c, r)
