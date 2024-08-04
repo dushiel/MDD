@@ -21,6 +21,7 @@ import System.Console.ANSI
 
 import System.Console.ANSI
 import qualified Data.HashMap.Lazy as HashMap
+import Debug.Trace (trace)
 
 indentInit :: [String] -> [String]
 indentInit [] = []
@@ -346,36 +347,55 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a_id 
     start_msg = ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c a_id) ++
                 ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c b_id ++ "\\n")
     (c,r) = if not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)])
-            then myTrace "\"inner\":{" f
+            then myDebugLog "\"inner\":[" f
             else f
     in
     -- debug for after calling the function
 
     if not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)])
-        then myTrace ("\"" ++ colorize "green" f_name ++"\": {\n" ++ "\"func_stack before\": [\"" ++ show_func_stack old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
+        then myDebugLog ("{\"" ++ colorize "green" f_name ++"\": {" ++ "\"func_stack before\": [\"" ++ show_func_stack old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
             case Map.lookup f_key nc of
                 Just nc' -> case HashMap.lookup (a_id, b_id) nc' of
-                    Just rt -> myTrace (colorize "chill blue" "\"found cached result\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
-                        ++ show_dd settings c rt ++ "\\n\",\"close\":\""++ (colorize "dark" "") ++"\"},") (old_c, rt)
+                    Just rt -> myDebugLog ("],\n\"" ++ colorize "chill blue" "found cached result"++"\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
+                        ++ show_dd settings c rt ++ "\\n\"}},") (old_c, rt)
                     Nothing ->
-                        myTrace ("},\"result\": \"\\n" ++ colorize "green" "  =>   " ++ show_dd settings c r ++ " " ++ col Vivid Blue (show_id r)
-                        ++ "\\n\",\"close\":\""++ (colorize "dark" "") ++"\"},") (c{func_stack=fs}, r)
+                        myDebugLog ("],\n\"result\": \"\\n" ++ colorize "green" "  =>   " ++ show_dd settings c r ++ " " ++ col Vivid Blue (show_id r)
+                        ++ "\\n\"}},") (c{func_stack=fs}, r)
                 Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
         else (c{func_stack=fs}, r)
 
+debug_func :: String -> (Context, NodeId) -> (Context, NodeId)
+debug_func f_name f = if save_logs settings
+    then myDebugLog ("{\"" ++ colorize "orange" f_name ++ "\" : [") (myDebugLog ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (fst f) ++ "\"]}\n]},") f)
+    else if debug_on settings
+        then myTrace ("{\"" ++ colorize "orange" f_name ++ "\" : [") (myTrace ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (fst f) ++ "\"]}\n]},") f)
+        else f
+    -- where f' =  myTrace "\"inner\":{" f
+
 jsonwrap :: String -> String -> String
-jsonwrap k v = "{ \""++ k ++"\": \"" ++ v ++ "\" }"
+jsonwrap k v = "{ \""++ k ++    "\": \"" ++ v ++ "\" }"
 
 show_a_b :: Context -> NodeId -> NodeId -> String
 show_a_b c a_id b_id = "\\n  ->   " ++ show_dd settings c a_id ++ "\\n  ->   " ++ show_dd settings c b_id
 
+debug5 :: NodeId -> String -> NodeId
+debug5 f s = if save_logs settings
+    then myDebugLog ("{\"test_nr\" : \"" ++ colorize "red" s ++ "\", \n \"inner\": [")
+            (myDebugLog ("], \"r\":\"" ++ colorize "dim red" (show $ fst f) ++ "\"\n},") (f) )
+    else myTrace (colorize "red" (s ++ "\n\n")) f
 
 myTrace :: String -> a -> a
 myTrace msg x = unsafePerformIO $ do
+    msg `deepseq` return (trace msg x)
+
+myDebugLog :: String -> a -> a
+myDebugLog msg x = unsafePerformIO $ do
     msg `deepseq` withFile "debug.log" AppendMode $ \h -> do
         hPutStrLn h msg
     return x
 
+emptyFile :: IO ()
+emptyFile = writeFile "debug.log" "["
 
 
 settings :: Show_setting
@@ -384,14 +404,14 @@ settings = ShowSetting {
             ,   display_node_id's = False -- show node_id's
             ,   draw_tree = False
             ,   display_context = False
-            ,   display_leaf_cases = True
+            ,   display_leaf_cases = False
             ,   display_end_infs = True
 
             ,   debug_on = True
-            ,   save_logs = True
+            ,   save_logs = False
 
             ,   debug_open = True
             ,   debug_close = True
-            ,   debug_shorten_close = False
-            ,   debug_func_stack = True
+            ,   debug_shorten_close = True
+            ,   debug_func_stack = False
 }

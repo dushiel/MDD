@@ -95,6 +95,11 @@ instance Show Context where
              "\n\t, cache keys = " ++ show (Map.map HashMap.size (cache c)) ++
              "\n\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "}\n"
 
+show_context :: Context -> [Char]
+show_context c = "Context nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
+            --  "\\n\\t, cache keys = " ++ show (Map.map HashMap.size (cache c)) ++
+             "\\n\\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "\\n"
+
 show_func_stack :: Context -> String
 show_func_stack Context{func_stack = fs} = "\\n" ++ show fs
 

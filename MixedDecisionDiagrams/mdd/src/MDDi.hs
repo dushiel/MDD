@@ -34,14 +34,14 @@ infixl 4 -.
 -- infix 2 .*.   -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
 (.*.) c a b =
-    let r = intersectionLocal @Dc c{func_stack = []} a b (getDd c a) (getDd c b)
+    let r = debug_func "INTER" $ intersectionLocal @Dc c{func_stack = []} a b (getDd c a) (getDd c b)
     in applyInfElimRule2 @Dc (fst r) (getDd (fst r) $ snd r)
     -- `MDDmanipulation.debug` "===========" ++
 
 infixl 3 .+.
 (.+.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
 (.+.) c a b =
-    let r = unionLocal @Dc c{func_stack = []} a b (getDd c a) (getDd c b)
+    let r = debug_func "UNION" $ unionLocal @Dc c{func_stack = []} a b (getDd c a) (getDd c b)
     in applyInfElimRule2 @Dc (fst r) (getDd (fst r) $ snd r)
 
 -- ite :: Context -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
@@ -94,6 +94,8 @@ data Form
     | Or Form Form
     | PrpF Level
     | Var (Context, NodeId)
+    | Impl Form Form
+    | ImplR Form Form
     | F Form
 
 ddOf :: Context -> Form -> (Context, NodeId)
@@ -113,6 +115,8 @@ ddOf c (Or a b) =
                     (c1, r1) = ddOf c a
                     (c2, r2) = ddOf c1 b
                 in (.+.) c2 r1 r2
+ddOf c (Impl a b) = ddOf c $ Or (Neg a) b
+ddOf c (ImplR a b) = ddOf c $ Or a (Neg b)
 ddOf c (PrpF l) = makeNode c l
 ddOf c (Var (_, d)) = (c, d)
 ddOf c (F a) =
@@ -195,90 +199,91 @@ nn'1 = path (fst n'_n2)      [(0, Neg1), (0, Neg0)] [1]
 
 test :: IO ()
 test = do
+    emptyFile
     mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
     where
         results =
-            [ (snd $ ddOf t_c $ F $ And (Var p'2) (Var p2)) == (snd $ ddOf t_c Bot) `debug5` ("############# Test nr: 0 \n\n")
-            , (snd $ ddOf t_c $ F $ Or (Var p'2) (Var p2)) == (snd $ ddOf t_c Top)  `debug5` ("############# Test nr: 1 \n\n")
-            , (snd $ ddOf t_c $ F $ Or (Var dc) (Neg $ Var dc)) == (snd $ ddOf t_c Top)  `debug5` ("############# Test nr: 2 \n\n")
-            , (snd $ ddOf t_c $ F $ And (Var dc) (Neg $ Var dc)) == (snd $ ddOf t_c Bot)  `debug5` ("############# Test nr: 3 \n\n")
+            [ (snd $ ddOf t_c $ F $ And (Var p'2) (Var p2)) == (snd $ ddOf t_c Bot) `debug5` ("############# Test nr: 0 ")
+            , (snd $ ddOf t_c $ F $ Or (Var p'2) (Var p2)) == (snd $ ddOf t_c Top)  `debug5` ("############# Test nr: 1 ")
+            , (snd $ ddOf t_c $ F $ Or (Var dc) (Neg $ Var dc)) == (snd $ ddOf t_c Top)  `debug5` ("############# Test nr: 2 ")
+            , (snd $ ddOf t_c $ F $ And (Var dc) (Neg $ Var dc)) == (snd $ ddOf t_c Bot)  `debug5` ("############# Test nr: 3 ")
 
-            , (snd $ ddOf t_c $ F $ And (Or (Var n2) (Var n3)) (Var n3)) == (snd $ ddOf t_c $ Var n3)  `debug5` ("############# Test nr: 4 \n\n")
-            , (snd $ ddOf t_c $ F $ And (Or (Var n2) (Var n3)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  `debug5` ("############# Test nr: 5 \n\n")
+            , (snd $ ddOf t_c $ F $ And (Or (Var n2) (Var n3)) (Var n3)) == (snd $ ddOf t_c $ Var n3)  `debug5` ("############# Test nr: 4 ")
+            , (snd $ ddOf t_c $ F $ And (Or (Var n2) (Var n3)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  `debug5` ("############# Test nr: 5 ")
 
             -- double domain (6)
-            , (snd $ ddOf t_c $ F $ And (Or (Var dc2) (Var dc_2)) (Var dc_2)) == (snd $ ddOf t_c $ Var dc_2)  `debug5` ("############# Test nr: 6 \n\n")
-            , (snd $ ddOf t_c $ F $ And (Or (Var dc2) (Var dc_2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` ("############# Test nr: 7 \n\n")
+            , (snd $ ddOf t_c $ F $ And (Or (Var dc2) (Var dc_2)) (Var dc_2)) == (snd $ ddOf t_c $ Var dc_2)  `debug5` ("############# Test nr: 6 ")
+            , (snd $ ddOf t_c $ F $ And (Or (Var dc2) (Var dc_2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` ("############# Test nr: 7 ")
 
             -- inclusive finite subset dominance and submission (8)
-            , (snd $ ddOf t_c $ F $ And (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Or (Var n2) (Var n23))  `debug5` ("############# Test nr: 8 \n\n")
-            , (snd $ ddOf t_c $ F $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` ("############# Test nr: 9 \n\n")
+            , (snd $ ddOf t_c $ F $ And (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Or (Var n2) (Var n23))  `debug5` ("############# Test nr: 8 ")
+            , (snd $ ddOf t_c $ F $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` ("############# Test nr: 9 ")
             -- exclusive
-            , (snd $ ddOf t_c $ F $ Or (And (Var dc2) (Var n'2)) (Var n'2)) == (snd $ ddOf t_c $ Var n'2)  `debug5` ("############# Test nr: 10 \n\n")
-            , (snd $ ddOf t_c $ F $ Or (And (Var dc2) (Var n'2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` ("############# Test nr: 11 \n\n")
+            , (snd $ ddOf t_c $ F $ Or (And (Var dc2) (Var n'2)) (Var n'2)) == (snd $ ddOf t_c $ Var n'2)  `debug5` ("############# Test nr: 10 ")
+            , (snd $ ddOf t_c $ F $ Or (And (Var dc2) (Var n'2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` ("############# Test nr: 11 ")
 
             --double domain inclusive (12)
-            , (snd $ ddOf t_c $ F $ Or (And (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  `debug5` ("############# Test nr: 12 \n\n")
-            , (snd $ ddOf t_c $ F $ Or (And (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Var n_2)  `debug5` ("############# Test nr: 13 \n\n")
-            , (snd $ ddOf t_c $ F $ And (Or (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  `debug5` ("############# Test nr: 14 \n\n")
-            , (snd $ ddOf t_c $ F $ Or (Or (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Or (Var n2) (Var n_2))  `debug5` ("############# Test nr: 15 \n\n")
-            , (snd $ ddOf t_c $ F $ And (And (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ And (Var n2) (Var n_2))  `debug5` ("############# Test nr: 16 \n\n")
-            , (snd $ ddOf t_c $ F $ Or (And (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Var  n_2)  `debug5` ("############# Test nr: 17 \n\n")
+            , (snd $ ddOf t_c $ F $ Or (And (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  `debug5` ("############# Test nr: 12 ")
+            , (snd $ ddOf t_c $ F $ Or (And (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Var n_2)  `debug5` ("############# Test nr: 13 ")
+            , (snd $ ddOf t_c $ F $ And (Or (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  `debug5` ("############# Test nr: 14 ")
+            , (snd $ ddOf t_c $ F $ Or (Or (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Or (Var n2) (Var n_2))  `debug5` ("############# Test nr: 15 ")
+            , (snd $ ddOf t_c $ F $ And (And (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ And (Var n2) (Var n_2))  `debug5` ("############# Test nr: 16 ")
+            , (snd $ ddOf t_c $ F $ Or (And (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Var  n_2)  `debug5` ("############# Test nr: 17 ")
 
-            -- --double domain exclusive (18)
-            -- , (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) `debug5` ("############# Test nr: 18 \n\n")
-            -- , (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'_2)) == (snd $ ddOf t_c $ ( Var p'_2 )) `debug5` ("############# Test nr: 19 \n\n")
-            -- , (snd $ ddOf t_c $ Or (And (Var p'2) (Var p'_2)) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) `debug5` ("############# Test nr: 20 \n\n")
-            -- , (snd $ ddOf t_c $ And (And (Var p'2) (Var p'_2)) (Var p'_2)) == (snd $ ddOf t_c $ And ( Var p'2) (Var p'_2) ) `debug5` ("############# Test nr: 21 \n\n")
-            -- , (snd $ ddOf t_c $ (p'2 .+. p'_2) .+. p'2) == snd $ ddOf t_c $ ( Var (p'2 .+. p'_2)  `debug5` ("############# Test nr: 22 \n\n")
+            --double domain exclusive (18)
+            , (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) `debug5` ("############# Test nr: 18 ")
+            , (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'_2)) == (snd $ ddOf t_c $ ( Var p'_2 )) `debug5` ("############# Test nr: 19 ")
+            , (snd $ ddOf t_c $ Or (And (Var p'2) (Var p'_2)) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) `debug5` ("############# Test nr: 20 ")
+            , (snd $ ddOf t_c $ And (And (Var p'2) (Var p'_2)) (Var p'_2)) == (snd $ ddOf t_c $ And ( Var p'2) (Var p'_2) ) `debug5` ("############# Test nr: 21 ")
+            , (snd $ ddOf t_c $ Or (Or (Var p'2) (Var p'_2)) (Var p'2)) == (snd $ ddOf t_c $ Or (Var p'2) (Var p'_2))  `debug5` ("############# Test nr: 22 ")
 
---             --double domain inclusive s0 (23)
---             , (snd $ ddOf t_c $ (p2 .*. p_2) .+. p2) == snd $ ddOf t_c $ ( Var p2  `debug5` ("############# Test nr: 23 \n\n")
---             , (snd $ ddOf t_c $ (p2 .*. p_2) .+. p_2) == snd $ ddOf t_c $ ( Var p_2  `debug5` ("############# Test nr: 24 \n\n")
---             , (snd $ ddOf t_c $ (p2 .+. p_2) .*. p2) == snd $ ddOf t_c $ ( Var p2  `debug5` ("############# Test nr: 25 \n\n")
---             , (snd $ ddOf t_c $ (p2 .+. p_2) .+. p_2) == snd $ ddOf t_c $ ( Var (p2 .+. p_2)  `debug5` ("############# Test nr: 26 \n\n")
---             , (snd $ ddOf t_c $ (p2 .*. p_2) .*. p2) == snd $ ddOf t_c $ ( Var (p2 .*. p_2)  `debug5` ("############# Test nr: 27 \n\n")
---             , (snd $ ddOf t_c $ (p2 .*. p_2) .+. p_2) == snd $ ddOf t_c $ ( Var p_2  `debug5` ("############# Test nr: 28 \n\n")
+            --double domain inclusive s0 (23)
+            , (snd $ ddOf t_c $ Or (And (Var p2) (Var p_2)) (Var p2)) == (snd $ ddOf t_c $ ( Var p2 ) )`debug5` ("############# Test nr: 23 ")
+            , (snd $ ddOf t_c $ Or (And (Var p2) (Var p_2)) (Var p_2)) == (snd $ ddOf t_c $ ( Var p_2 )) `debug5` ("############# Test nr: 24 ")
+            , (snd $ ddOf t_c $ And (Or (Var p2) (Var p_2)) (Var p2)) == (snd $ ddOf t_c $ ( Var p2 )) `debug5` ("############# Test nr: 25 ")
+            , (snd $ ddOf t_c $ Or (Or (Var p2) (Var p_2)) (Var p_2)) == (snd $ ddOf t_c $ Or ( Var p2) (Var p_2))  `debug5` ("############# Test nr: 26 ")
+            , (snd $ ddOf t_c $ And (And (Var p2) (Var p_2)) (Var p2)) == (snd $ ddOf t_c $ And ( Var p2) (Var p_2))  `debug5` ("############# Test nr: 27 ")
+            , (snd $ ddOf t_c $ Or (And (Var p2) (Var p_2)) (Var p_2)) == (snd $ ddOf t_c $ ( Var p_2 )) `debug5` ("############# Test nr: 28 ")
 
---             --double domain exclusive s0 (29)
---             , (snd $ ddOf t_c $ (n'2 .*. n'_2) .+. n'2) == snd $ ddOf t_c $ ( Var n'2  `debug5` ("############# Test nr: 29 \n\n")
---             , (snd $ ddOf t_c $ (n'2 .*. n'_2) .+. n'_2) == snd $ ddOf t_c $ ( Var n'_2  `debug5` ("############# Test nr: 30 \n\n")
---             , (snd $ ddOf t_c $ (n'2 .+. n'_2) .*. n'2) == snd $ ddOf t_c $ ( Var n'2  `debug5` ("############# Test nr: 31 \n\n")
---             , (snd $ ddOf t_c $ (n'2 .+. n'_2) .+. n'_2) == snd $ ddOf t_c $ ( Var (n'2 .+. n'_2)  `debug5` ("############# Test nr: 32 \n\n")
---             , (snd $ ddOf t_c $ (n'2 .*. n'_2) .*. n'2) == snd $ ddOf t_c $ ( Var (n'2 .*. n'_2)  `debug5` ("############# Test nr: 33 \n\n")
---             , (snd $ ddOf t_c $ (n'2 .*. n'_2) .+. n'_2) == snd $ ddOf t_c $ ( Var n'_2  `debug5` ("############# Test nr: 34 \n\n")
+            --double domain exclusive s0 (29)
+            , (snd $ ddOf t_c $ Or (And (Var n'2) (Var n'_2)) (Var n'2)) == (snd $ ddOf t_c $ ( Var n'2 )) `debug5` ("############# Test nr: 29 ")
+            , (snd $ ddOf t_c $ Or (And (Var n'2) (Var n'_2)) (Var n'_2)) == (snd $ ddOf t_c $ ( Var n'_2 )) `debug5` ("############# Test nr: 30 ")
+            , (snd $ ddOf t_c $ And (Or (Var n'2) (Var n'_2)) (Var n'2)) == (snd $ ddOf t_c $ ( Var n'2 )) `debug5` ("############# Test nr: 31 ")
+            , (snd $ ddOf t_c $ Or (Or (Var n'2) (Var n'_2)) (Var n'_2)) == (snd $ ddOf t_c $ Or ( Var n'2) (Var n'_2))  `debug5` ("############# Test nr: 32 ")
+            , (snd $ ddOf t_c $ And (And (Var n'2) (Var n'_2)) (Var n'2)) == (snd $ ddOf t_c $ And ( Var n'2) (Var n'_2))  `debug5` ("############# Test nr: 33 ")
+            , (snd $ ddOf t_c $ Or (And (Var n'2) (Var n'_2)) (Var n'_2)) == (snd $ ddOf t_c $ ( Var n'_2 )) `debug5` ("############# Test nr: 34 ")
 
 --             -- some triple domain cases (35)
---             , (snd $ ddOf t_c $ (n'_2 .*. n'__2).+. n'_2) == snd $ ddOf t_c $ ( Var n'_2  `debug5` ("############# Test nr: 35 \n\n")
---             , (snd $ ddOf t_c $ (p'_2 .*. p'__2).+. p'_2) == snd $ ddOf t_c $ ( Var p'_2  `debug5` ("############# Test nr: 36 \n\n")
---             , (snd $ ddOf t_c $ (p_2 .*. p__2).+. p_2) == snd $ ddOf t_c $ ( Var p_2  `debug5` ("############# Test nr: 37 \n\n")
---             , (snd $ ddOf t_c $ ((Var n_2) .*. n__2).+. (Var n_2)) == snd $ ddOf t_c $ ( Var (Var n_2)  `debug5` ("############# Test nr: 38 \n\n")
---             , (snd $ ddOf t_c $ ((n'_2 .*. n'__2) .*. n'3) .+. (n'__2 .*. n'3)) == snd $ ddOf t_c $ ( Var (n'__2 .*. n'3)  `debug5` ("############# Test nr: 39 \n\n")
---             , (snd $ ddOf t_c $ ((p'_2 .*. p'__2) .*. p'3) .+. (p'__2 .*. p'3)) == snd $ ddOf t_c $ ( Var (p'__2 .*. p'3)  `debug5` ("############# Test nr: 40 \n\n")
---             , (snd $ ddOf t_c $ ((p_2 .*. p__2) .*. p3) .+. (p__2 .*. p3)) == snd $ ddOf t_c $ ( Var (p__2 .*. p3)  `debug5` ("############# Test nr: 41 \n\n")
---             , (snd $ ddOf t_c $ (((Var n_2) .*. n__2) .*. (Var n3)) .+. (n__2 .*. (Var n3))) == snd $ ddOf t_c $ ( Var (n__2 .*. (Var n3))  `debug5` ("############# Test nr: 42 \n\n")
+            , (snd $ ddOf t_c $ Or (And (Var n'_2) (Var n'__2)) (Var n'_2)) == (snd $ ddOf t_c $  Var n'_2)  `debug5` ("############# Test nr: 35 ")
+            , (snd $ ddOf t_c $ Or (And (Var p'_2) (Var p'__2)) (Var p'_2)) == (snd $ ddOf t_c $  Var p'_2)  `debug5` ("############# Test nr: 36 ")
+            , (snd $ ddOf t_c $ Or (And (Var p_2) (Var p__2)) (Var p_2)) == (snd $ ddOf t_c $ Var p_2 ) `debug5` ("############# Test nr: 37 ")
+            , (snd $ ddOf t_c $ Or (And (Var n_2) (Var n__2)) (Var n_2)) == (snd $ ddOf t_c $ Var n_2)  `debug5` ("############# Test nr: 38 ")
+            , (snd $ ddOf t_c $ Or (And (And (Var n'_2) (Var n'__2)) (Var n'3)) (And (Var n'__2) (Var n'3))) == (snd $ ddOf t_c $ And (Var n'__2)  (Var n'3))  `debug5` ("############# Test nr: 39 ")
+            , (snd $ ddOf t_c $ Or (And (And (Var p'_2) (Var p'__2)) (Var p'3)) (And (Var p'__2) (Var p'3))) == (snd $ ddOf t_c $ And (Var p'__2)  (Var p'3))  `debug5` ("############# Test nr: 40 ")
+            , (snd $ ddOf t_c $ Or (And (And (Var p_2) (Var p__2)) (Var p3)) (And (Var p__2)  (Var p3))) == (snd $ ddOf t_c $ And ( Var p__2) (Var p3))  `debug5` ("############# Test nr: 41 ")
+            , (snd $ ddOf t_c $ Or (And (And (Var n_2) (Var n__2)) (Var n3)) (And (Var n__2)  (Var n3))) == (snd $ ddOf t_c $ And ( Var n__2) (Var n3))  `debug5` ("############# Test nr: 42 ")
 
---             , (snd $ ddOf t_c $ ((n'_2 .+. n'__2) .+. n'3) .*. (n'__2 .+. n'3)) == snd $ ddOf t_c $ ( Var (n'__2 .+. n'3)  `debug5` ("############# Test nr: 43 \n\n")
---             , (snd $ ddOf t_c $ ((p'_2 .+. p'__2) .+. p'3) .*. (p'__2 .+. p'3)) == snd $ ddOf t_c $ ( Var (p'__2 .+. p'3)  `debug5` ("############# Test nr: 44 \n\n")
---             , (snd $ ddOf t_c $ ((p_2 .+. p__2) .+. p3) .*. (p__2 .+. p3)) == snd $ ddOf t_c $ ( Var (p__2 .+. p3)  `debug5` ("############# Test nr: 45 \n\n")
---             , (snd $ ddOf t_c $ (((Var n_2) .+. n__2) .+. (Var n3)) .*. (n__2 .+. (Var n3))) == snd $ ddOf t_c $ ( Var (n__2 .+. (Var n3))  `debug5` ("############# Test nr: 46 \n\n")
+            , (snd $ ddOf t_c $ And (Or (Or (Var n'_2) (Var n'__2)) (Var n'3)) (Or (Var n'__2) (Var n'3))) == (snd $ ddOf t_c $ Or (Var n'__2) (Var n'3))  `debug5` ("############# Test nr: 43 ")
+            , (snd $ ddOf t_c $ And (Or (Or (Var p'_2) (Var p'__2)) (Var p'3)) (Or (Var p'__2) (Var p'3))) == (snd $ ddOf t_c $ Or (Var p'__2) (Var p'3))  `debug5` ("############# Test nr: 44 ")
+            , (snd $ ddOf t_c $ And (Or (Or (Var p_2) (Var p__2)) (Var p3)) (Or (Var p__2) (Var p3))) == (snd $ ddOf t_c $ Or (Var p__2) (Var p3))  `debug5` ("############# Test nr: 45 ")
+            , (snd $ ddOf t_c $ And (Or (Or (Var n_2) (Var n__2)) (Var n3)) (Or (Var n__2) (Var n3))) == (snd $ ddOf t_c $ Or (Var n__2) (Var n3))  `debug5` ("############# Test nr: 46 ")
 
---             -- mixing all domains (48)
---             , (snd $ ddOf t_c $ ((n'_2 .+. p'__2) .+. p3) .*. (p'__2 .+. p3)) == snd $ ddOf t_c $ ( Var (p'__2 .+. p3)  `debug5` ("############# Test nr: 47 \n\n")
---             , (snd $ ddOf t_c $ ((Var dc2) .*. (dc3 .*. (Var n3))) .+. (((n'_2 .*. p'__2) .+. p3) .*. (p'__2 .+. p3))) == snd $ ddOf t_c $ ( Var (((Var dc2) .*. (dc3 .*. (Var n3))) .+. ((n'_2 .*. p'__2) .+. p3))  `debug5` ("############# Test nr: 48 \n\n")
---             , (snd $ ddOf t_c $ ((Var n2) .*. (p'3 .*. dc3)) .+. (((p__2 .*. p'__2) .+. p3) .*. (n__2 .+. p3))) == snd $ ddOf t_c $ ( Var ((n2 .*. (p'3 .*. dc3)) .+. ((p__2 .*. n__2) .+. p3))  `debug5` ("############# Test nr: 49 \n\n")
+            -- mixing all domains (48)
+            , (snd $ ddOf t_c $ And (Or (Or (Var n'_2) (Var p'__2)) (Var p3)) (Or (Var p'__2) (Var p3))) == (snd $ ddOf t_c $ Or (Var p'__2) (Var p3))  `debug5` ("############# Test nr: 47 ")
+            , (snd $ ddOf t_c $ Or (And (Var dc2) (And (Var dc3) (Var n3))) (And (Or (And (Var n'_2) (Var p'__2)) (Var p3)) (Or (Var p'__2) (Var p3)))) == (snd $ ddOf t_c $ Or (And (Var dc2) (And (Var dc3) (Var n3))) (Or (And (Var n'_2) (Var p'__2)) (Var p3)))  `debug5` ("############# Test nr: 48 ")
+            , (snd $ ddOf t_c $ Or (And (Var n2) (And (Var p'3) (Var dc3))) (And (Or (And (Var p__2) (Var p'__2)) (Var p3)) (Or (Var n__2) (Var p3)))) == (snd $ ddOf t_c $ Or (And (Var n2) (And (Var p'3) (Var dc3))) (Or (And (Var p__2) (Var n__2)) (Var p3)))  `debug5` ("############# Test nr: 49 ")
 
---             -- recursive
---             , (snd $ ddOf t_c $ (dcn1 .->. nn1) .+. (n'n1)) == snd $ ddOf t_c $ Top `debug5` ("############# Test nr: 50 \n\n")
---             , (snd $ ddOf t_c $ dcn1 .<-. nn1) == snd $ ddOf t_c $ Bot `debug5` ("############# Test nr: 51 \n\n")
---             , (snd $ ddOf t_c $ dcn1 .<-. n'n1) == snd $ ddOf t_c $ Top `debug5` ("############# Test nr: 52 \n\n")
---             , (snd $ ddOf t_c $ dcn1 .->. n'n1) == snd $ ddOf t_c $ Bot `debug5` ("############# Test nr: 53 \n\n")
---             , (snd $ ddOf t_c $ nn1 .*. n'n1) == snd $ ddOf t_c $ Bot `debug4` ("############# Test nr: 54 \n\n")
---             , (snd $ ddOf t_c $ nn1 .+. n'n1) == snd $ ddOf t_c $ Top `debug4` ("############# Test nr: 55 \n\n")
+            -- recursive
+            , (snd $ ddOf t_c $ Or (Impl (Var dcn1) (Var nn1)) (Var n'n1)) == (snd $ ddOf t_c Top) `debug5` ("############# Test nr: 50 \n\n")
+            , (snd $ ddOf t_c $ (ImplR (Var dcn1) (Var nn1))) == (snd $ ddOf t_c Bot) `debug5` ("############# Test nr: 51 \n\n")
+            , (snd $ ddOf t_c $ (ImplR (Var dcn1) (Var n'n1))) == (snd $ ddOf t_c Top) `debug5` ("############# Test nr: 52 \n\n")
+            , (snd $ ddOf t_c $ (Impl (Var dcn1) (Var n'n1))) == (snd $ ddOf t_c Bot) `debug5` ("############# Test nr: 53 \n\n")
+            , (snd $ ddOf t_c $ (And (Var nn1) (Var n'n1))) == (snd $ ddOf t_c Bot) `debug4` ("############# Test nr: 54 \n\n")
+            , ((snd $ ddOf t_c $ (Or (Var nn1) (Var n'n1))) == (snd $ ddOf t_c Top) `debug4` ("############# Test nr: 55 \n\n"))
 
---             -- n1/no/p1/p0/dc outer shell and inner shell
+            -- n1/no/p1/p0/dc outer shell and inner shell
 
---             -- tripple time
+            -- tripple time
             ]
 
 -- {-}
