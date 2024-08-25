@@ -407,8 +407,8 @@ settings = ShowSetting {
             ,   display_leaf_cases = False
             ,   display_end_infs = True
 
-            ,   debug_on = True
-            ,   save_logs = False
+            ,   debug_on = False
+            ,   save_logs = True
 
             ,   debug_open = True
             ,   debug_close = True

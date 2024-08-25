@@ -84,7 +84,7 @@ class Combine_rule a b where
     rAnd1_rule ::  String -> Context -> NodeId -> NodeId -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
     rAnd1'_rule :: String -> Context -> NodeId -> NodeId -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
     rOr1_rule ::   String -> Context -> NodeId -> NodeId -> (Context, NodeId)
-    rOr1'_rule ::  String -> Context -> NodeId -> NodeId -> (Context, NodeId)
+    rOr1'_rule ::  String -> Context -> NodeId -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
 
 instance Combine_rule And Neg where
     rAnd1_rule = r1_rule @Neg1 True
@@ -447,12 +447,12 @@ intersectionMain'  c@Context{} !a_id !b_id a@(InfNodes positionA dcA n1A n0A p1A
             -- ++ "\n\t dcB = " ++ show dcB
             -- ++ "\n")
         (c2, n1R') = rAnd1'_rule @And @Neg "" c1 n0R' n1A n1B dcA dcB
-        (c3, n0R') = rOr1'_rule @And @Neg "" c2 n0A n0B -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
+        (c3, n0R') = rOr1'_rule @And @Neg "" c2 n0A n0B dcA dcB -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
         (c4, n1R) = rAnd1_rule @And @Neg "" c3 n0R' dcR n1R' n1A n1B
         (c5, n0R) = rOr1_rule @And @Neg "" c4 n0R' dcR -- keep the holes that fit inside dcR
 
         (c6, p1R') = rAnd1'_rule @And @Pos "" c5 p0R' p1A p1B dcA dcB
-        (c7, p0R') = rOr1'_rule @And @Pos "" c6 p0A p0B -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
+        (c7, p0R') = rOr1'_rule @And @Pos "" c6 p0A p0B dcA dcB -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
         (c8, p1R) = rAnd1_rule @And @Pos "" c7 p0R' dcR p1R' p1A p1B
         (c9, p0R) = rOr1_rule @And @Pos "" c8 p0R' dcR
         -- -- if the local hole fits inside dcR but the consequence of p0R' does not fit inside the consequenc of dcR it should return n0R' -> Leaf false
@@ -613,12 +613,12 @@ unionMain' :: Context -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 unionMain' c a_id b_id a@(InfNodes positionA dcA n1A n0A p1A p0A)  b@(InfNodes positionB dcB n1B n0B p1B p0B)
     | positionA == positionB =  let
         (c1, dcR) = unionLocal @Dc c dcA dcB (getDd c dcA)  (getDd c dcB)
-        (c2, n1R') = rOr1'_rule @Or @Neg "" c1 n1A n1B --`debug` ("n1R' \n" ++ show_dd settings c p1A)
+        (c2, n1R') = rOr1'_rule @Or @Neg "" c1 n1A n1B dcA dcB --`debug` ("n1R' \n" ++ show_dd settings c p1A)
         (c3, n0R') = rAnd1'_rule @Or @Neg "" c2 n1R' n0A n0B dcA dcB -- holes get unioned, because i keep the consequence of holes "uncomplemented" we get local union then intersection.
         (c4, n1R) = rOr1_rule @Or @Neg "" c3 n1R' dcR
         (c5, n0R) = rAnd1_rule @Or @Neg "" c4 n1R' dcR n0R' n0A n0B
 
-        (c6, p1R') = rOr1'_rule @Or @Pos "" c5 p1A p1B --`debug` ("p1R' \n" ++ show_dd settings c p1A)
+        (c6, p1R') = rOr1'_rule @Or @Pos "" c5 p1A p1B dcA dcB --`debug` ("p1R' \n" ++ show_dd settings c p1A)
         (c7, p0R') = rAnd1'_rule @Or @Pos "" c6 p1R' p0A p0B dcA dcB --`debug` "p0R'"
         (c8, p1R) = rOr1_rule @Or @Pos "" c7 p1R' dcR --`debug` "p1R"
         (c9, p0R) = rAnd1_rule @Or @Pos "" c8 p1R' dcR p0R' p0A p0B --`debug` "p0R"
@@ -640,7 +640,7 @@ class Dd1 a where
     r1_rule :: Bool -> String -> Context -> NodeId -> NodeId -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
     r1'_rule :: Bool -> String -> Context -> NodeId -> NodeId -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
     r0_rule :: Bool -> String -> Context -> NodeId -> NodeId -> (Context, NodeId)
-    r0'_rule :: Bool -> String -> Context -> NodeId -> NodeId -> (Context, NodeId)
+    r0'_rule :: Bool -> String -> Context -> NodeId -> NodeId -> NodeId -> NodeId -> (Context, NodeId)
     apply :: FType -> Context -> NodeId -> NodeId -> String -> DdManipulation -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
     apply2 :: FType -> Context -> NodeId -> NodeId -> String -> DdManipulation -> NodeId -> NodeId -> Dd -> Dd -> (Context, NodeId)
 
@@ -682,15 +682,18 @@ instance (DdF4 a) => Dd1 a where
 
     r0_rule b s c _0R' dcR = case s of
         "" -> let
-            (c4, _0R) = absorb @a c41 _0R1 dcR (getDd c41 _0R1) (getDd c dcR)
+            (c4, _0R) = absorb @a c _0R' dcR (getDd c _0R') (getDd c dcR) in (c4, _0R)
                 -- `debug` (col Vivid Green "\n_0R " ++ "\t (_0R' ^ dcR) @ dcR = " ++ show (absorb @a c41 _0R1 dcR (getDd c41 _0R1) (getDd c dcR)))
-            (c41, _0R1) = (if b then mixedIntersection @a else mixedUnion @a) c _0R' dcR (getDd c _0R') (getDd c dcR)
-                -- `debug` (col Vivid Green "\n_0R'' " ++ "\t (_0A ^ _0B) ^ dcR = " ++ show (mixedIntersection @a c42 _0R2 dcR (getDd c42 _0R2) (getDd c dcR)))
-            in (c4, _0R) -- `debug` "r1"
         _ -> error "wrong string in rule"
 
-    r0'_rule b s c _0A _0B = case s of
-        "" -> let (c', r) = (if b then intersectionLocal @a else unionLocal @a) c _0A _0B (getDd c _0A)  (getDd c _0B) in (c', r)
+    -- we can add a speed up: in case of intersection and 1 context we can use dcR instead of 2 calls to dcA and dcB. Ofcourse the dual also works for union and 0
+    -- todo add dcA dcB
+    r0'_rule b s c _0A _0B dcA dcB = case s of
+        "" -> let
+            (c', r) = (if b then intersectionLocal @a else unionLocal @a) c51 _0A _0B (getDd c51 _0R'1)  (getDd c52 _0R'2)
+            (c51, _0R'1) = (if b then mixedUnion @a else mixedIntersection @a) c52 _0A dcB (getDd c _0A) (getDd c dcB)
+            (c52, _0R'2) = (if b then mixedUnion @a else mixedIntersection @a) c _0B dcA (getDd c _0B) (getDd c dcA)
+            in (c', r)
         _ -> error "wrong string in rule"
 
 
