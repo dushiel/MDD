@@ -26,15 +26,16 @@ show_id (k, alt) = "#" ++ show k ++ ":" ++ show alt
 
 type HashedId = Int
 
-data Inf = Dc | Neg1 | Neg0 | Pos1 | Pos0
+data Inf = Dc | Neg | Pos
     deriving (Eq, Show)
 
 
  -- sets the inference type when traversing through the tree depending which literal type is inf. We place them at the top (of each sub path of infinite domain). We can have multiple branches due to the multiple possible contexts.
 data Dd =  Node Int NodeId NodeId               -- left = pos, right = neg
-                | InfNodes Int NodeId NodeId NodeId NodeId NodeId
+                | InfNodes Int NodeId NodeId NodeId
                 | EndInfNode NodeId
                 | Leaf Bool
+                | EndLeaf
     deriving (Eq)
 
 -- type Dd' = (NodeId, Dd)
@@ -52,12 +53,12 @@ instance Hashable Dd where
   hash :: Dd -> HashedId
   hash (Leaf b) = if b then 1 else 0
   hash (Node idx l r) = (idx `hashWithSalt` fst l `hashWithSalt` fst r) --`debug` (" hashing " ++ show (Node idx l r) ++ " -> " ++ show (idx `hashWithSalt` fst l `hashWithSalt` fst r))
-  hash (InfNodes idx dc n1 n0 p1 p0) = idx `hashWithSalt` fst dc `hashWithSalt` fst n1 `hashWithSalt` fst n0 `hashWithSalt` fst p1 `hashWithSalt` fst p0
+  hash (InfNodes idx dc n p) = idx `hashWithSalt` fst dc `hashWithSalt` fst n1 `hashWithSalt` fst n0 `hashWithSalt` fst p1 `hashWithSalt` fst p0
   hash (EndInfNode d) = fst d `hashWithSalt` (2::Int)
   hashWithSalt :: Int -> Dd -> HashedId
   hashWithSalt _ (Leaf b) = if b then 1 else 0
   hashWithSalt s (Node idx l r) = s `hashWithSalt` idx `hashWithSalt` fst l `hashWithSalt` fst r
-  hashWithSalt s (InfNodes idx dc n1 n0 p1 p0) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n1 `hashWithSalt` fst n0 `hashWithSalt` fst p1 `hashWithSalt` fst p0
+  hashWithSalt s (InfNodes idx dc n p) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n1 `hashWithSalt` fst n0 `hashWithSalt` fst p1 `hashWithSalt` fst p0
   hashWithSalt s (EndInfNode d) = s `hashWithSalt` fst d `hashWithSalt` (2::Int)
 
 
@@ -69,10 +70,8 @@ instance Hashable Level where
   hashWithSalt s (L [] i) = s `hashWithSalt` i
   hashWithSalt s (L ((position, inf) :ns) i) = case inf of
       Dc -> h 3
-      Neg1 -> h 4
-      Neg0 -> h 5
-      Pos1 -> h 6
-      Pos0 -> h 7
+      Neg -> h 4
+      Pos -> h 5
       where
         h :: Int -> Int
         h x = position `hashWithSalt` x `hashWithSalt` hashWithSalt s (L ns i)
@@ -225,7 +224,7 @@ recursive c d@(Node _ pos_child neg_child) node_id = withCache_ c node_id $ let
     (c'', _) = recursive c' (getDd c' neg_child) neg_child
     c''' = dereference c'' node_id
     in (c''', node_id)
-recursive c d@(InfNodes _ dc n1 n0 p1 p0) node_id = withCache_ c node_id $ let
+recursive c d@(InfNodes _ dc n p) node_id = withCache_ c node_id $ let
     (c', _) = recursive c (getDd c dc) dc
     (c'', _) = recursive c (getDd c' n0) n0
     (c''', _) = recursive c (getDd c'' n1) n1
