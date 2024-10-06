@@ -298,7 +298,7 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a_id 
                     "\n  ->   " ++ show_dd settings old_c b_id ++ "\n"
     (c,r) = if debug_on settings && debug_open settings &&
                 not ((a_id `elem` [(0,0), (1,0)] || b_id `elem` [(0,0), (1,0)]) && (not $ display_leaf_cases settings))
-                && not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)])
+                && not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)]) -- leaf vs leaf, always skip printing
             then if debug_func_stack settings
                 then myTrace (show_func_stack old_c) (myTrace leaf_msg f)
                 else myTrace leaf_msg f
@@ -404,11 +404,11 @@ settings = ShowSetting {
             ,   display_node_id's = False -- show node_id's
             ,   draw_tree = False
             ,   display_context = False
-            ,   display_leaf_cases = False
+            ,   display_leaf_cases = True
             ,   display_end_infs = True
 
-            ,   debug_on = False
-            ,   save_logs = True
+            ,   debug_on = True
+            ,   save_logs = False
 
             ,   debug_open = True
             ,   debug_close = True
