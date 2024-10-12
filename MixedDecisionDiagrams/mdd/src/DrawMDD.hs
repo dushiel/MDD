@@ -77,7 +77,7 @@ showTree'' a b c = snd $ showTree' a b c
 
 showTree' :: Context -> (Int -> String) -> Dd -> (Context, [String])
 --showTree' (Node n ns) = n : concat (indentChildren (map showTree' ns))
-
+showTree' c _ Unknown = (c, ["[.]"])
 showTree' c _ (Leaf True) = (c, ["[1]"])
 showTree' c _ (Leaf False) = (c, ["[0]"])
 showTree' c f d@(Node a l r) = withCache' c'' (snd $ insert c d) $
@@ -87,131 +87,32 @@ showTree' c f d@(Node a l r) = withCache' c'' (snd $ insert c d) $
         (c', s1) = showTree' c f (getDd c l)
         (c'', s2) = showTree' c' f (getDd c r)
 
-showTree' c f d@(InfNodes a dc (0, 0) (1,0) (0, 0) (1,0)) = withCache' c' (snd $ insert c d) $
+showTree' c f d@(InfNodes a dc (0,0) (0,0)) = withCache' c' (snd $ insert c d) $
     ("<"++ f a ++ "> dc " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
     concat (indentInfChildren [s1])
     where
         (c', s1) = showTree' c f (getDd c dc)
-showTree' c f d@(InfNodes a dc (0, 0) (1,0) (0, 0) p0) = withCache' c'' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, p0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
+showTree' c f d@(InfNodes a dc p (0, 0)) = withCache' c'' (snd $ insert c d) $
+    ("<"++ f a ++ "> dc, p " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
     concat (indentInfChildren [s1, s2])
     where
         (c', s1) = showTree' c f (getDd c dc)
-        (c'', s2) = showTree0' c' f (getDd c p0)
+        (c'', s2) = showTree0' c' f (getDd c p)
 
-showTree' c f d@(InfNodes a dc (0, 0) (1,0) p1 (1,0)) = withCache' c'' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, p1 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
+showTree' c f d@(InfNodes a dc (0, 0) n) = withCache' c'' (snd $ insert c d) $
+    ("<"++ f a ++ "> dc, n " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
     concat (indentInfChildren [s1, r_p1])
     where
         (c', s1) = showTree' c f (getDd c dc)
-        (c'', r_p1) = showTree1' c' f (getDd c p1)
+        (c'', r_p1) = showTree1' c' f (getDd c n)
 
-showTree' c f d@(InfNodes a dc (0, 0) n0 (0, 0) (1,0)) = withCache' c'' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n0])
+showTree' c f d@(InfNodes a dc p n) = withCache' c''' (snd $ insert c d) $
+    ("<"++ f a ++ "> dc, p, n " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
+    concat (indentInfChildren [s1, r_p, r_n])
     where
-        (c', s1) = showTree' c f (getDd c dc)
-        (c'', r_n0) = showTree0' c' f (getDd c n0)
-
-showTree' c f d@(InfNodes a dc n1 (1,0) (0, 0) (1,0)) = withCache' c'' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n1 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n1])
-    where
-        (c', r_n1) = showTree1' c f (getDd c n1)
+        (c', r_p) = showTree0' c f (getDd c p)
         (c'', s1) = showTree' c' f (getDd c dc)
-
-showTree' c f d@(InfNodes a dc (0, 0) (1,0) p1 p0) = withCache' c''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, p1, p0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_p1, r_p0])
-    where
-        (c', r_p0) = showTree0' c f (getDd c p0)
-        (c'', s1) = showTree' c' f (getDd c dc)
-        (c''', r_p1) = showTree1' c'' f (getDd c p1)
-
-showTree' c f d@(InfNodes a dc (0, 0) n0 (0, 0) p0) = withCache' c''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n0, p0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n0, r_p0])
-    where
-        (c', r_p0) = showTree0' c f (getDd c p0)
-        (c'', r_n0) = showTree0' c' f (getDd c n0)
-        (c''', s1) = showTree' c'' f (getDd c dc)
-
-showTree' c f d@(InfNodes a dc (0, 0) n0 p1 (1,0)) = withCache' c''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n0, p1 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n0, r_p1])
-    where
-        (c', r_n0) = showTree0' c f (getDd c n0)
-        (c'', s1) = showTree' c' f (getDd c dc)
-        (c''', r_p1) = showTree1' c'' f (getDd c p1)
-
-showTree' c f d@(InfNodes a dc n1 (1,0) (0, 0) p0) = withCache' c''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n1, p0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n1, r_p0])
-    where
-        (c', r_p0) = showTree0' c f (getDd c p0)
-        (c'', r_n1) = showTree1' c' f (getDd c n1)
-        (c''', s1) = showTree' c'' f (getDd c dc)
-
-showTree' c f d@(InfNodes a dc n1 (1,0) p1 (1,0)) = withCache' c''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n1, p1 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n1, r_p1])
-    where
-        (c', r_n1) = showTree1' c f (getDd c n1)
-        (c'', s1) = showTree' c' f (getDd c dc)
-        (c''', r_p1) = showTree1' c'' f (getDd c p1)
-
-showTree' c f d@(InfNodes a dc n1 n0 (0, 0) (1,0)) = withCache' c''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n1, n0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n1, r_n0])
-    where
-        (c', r_n1) = showTree1' c f (getDd c n1)
-        (c'', r_n0) = showTree0' c' f (getDd c n0)
-        (c''', s1) = showTree' c'' f (getDd c dc)
-
-showTree' c f d@(InfNodes a dc (0, 0) n0 p1 p0) = withCache' c'''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n0, p1, p0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n0, r_p1, r_p0])
-    where
-        (c', r_p0) = showTree0' c f (getDd c p0)
-        (c'', r_n0) = showTree0' c' f (getDd c n0)
-        (c''', s1) = showTree' c'' f (getDd c dc)
-        (c'''', r_p1) = showTree1' c''' f (getDd c p1)
-
-showTree' c f d@(InfNodes a dc n1 (1,0) p1 p0) = withCache' c'''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n1, p1, p0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n1, r_p1, r_p0])
-    where
-        (c', r_p0) = showTree0' c f (getDd c p0)
-        (c'', r_n1) = showTree1' c' f (getDd c n1)
-        (c''', s1) = showTree' c'' f (getDd c dc)
-        (c'''', r_p1) = showTree1' c''' f (getDd c p1)
-showTree' c f d@(InfNodes a dc n1 n0 (0, 0) p0) = withCache' c'''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n1, n0, p0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n1, r_n0, r_p0])
-    where
-        (c', r_p0) = showTree0' c f (getDd c p0)
-        (c'', r_n1) = showTree1' c' f (getDd c n1)
-        (c''', r_n0) = showTree0' c'' f (getDd c n0)
-        (c'''', s1) = showTree' c''' f (getDd c dc)
-showTree' c f d@(InfNodes a dc n1 n0 p1 (0, 0)) = withCache' c'''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n1, n0, p1 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n1, r_n0, r_p1]) `debug` (" draw: " ++  show n0 ++ show n1 ++ show p1)
-    where
-        (c', r_n1) = showTree1' c f (getDd c n1)
-        (c'', r_n0) = showTree0' c' f (getDd c n0)
-        (c''', s1) = showTree' c'' f (getDd c dc)
-        (c'''', r_p1) = showTree1' c''' f (getDd c p1)
-
-
-showTree' c f d@(InfNodes a dc n1 n0 p1 p0) = withCache' c''''' (snd $ insert c d) $
-    ("<"++ f a ++ "> dc, n1, n0, p1, p0 " ++ col Dull Blue (show_id (snd $ insert c d))) : "  ║  " :
-    concat (indentInfChildren [s1, r_n1, r_n0, r_p1, r_p0])
-    where
-        (c', r_p0) = showTree0' c f (getDd c p0)
-        (c'', r_n1) = showTree1' c' f (getDd c n1)
-        (c''', r_n0) = showTree0' c'' f (getDd c n0)
-        (c'''', s1) = showTree' c''' f (getDd c dc)
-        (c''''', r_p1) = showTree1' c'''' f (getDd c p1)
+        (c''', r_n) = showTree1' c'' f (getDd c n)
 
 showTree' c f d@(EndInfNode cons) =
         withCache' c' (snd $ insert c d) $
@@ -274,14 +175,17 @@ show_dd :: Show_setting -> Context -> NodeId -> String
 show_dd s@ShowSetting{display_context=True} c d = show c ++ show_dd s{display_context=False} c d
 show_dd ShowSetting{draw_tree=True} c d = showTree c (getDd c d)
 show_dd s _ (0,0)
+  | color s = "[" ++ colorize "purple" "." ++ "]"
+  | otherwise = "[.]"
+show_dd s _ (1,0)
   | color s = "[" ++ colorize "soft red" "0" ++ "]"
   | otherwise = "[0]"
-show_dd s _ (1,0)
+show_dd s _ (2,0)
   | color s = "[" ++ colorize "soft green" "1" ++ "]"
   | otherwise = "[1]"
 show_dd s c d = case getDd c d of
   Node i rC lC -> show_i i "orange" ++ " (" ++ show_dd s c rC ++ ") (" ++ show_dd s c lC ++ ")"
-  InfNodes i dc n1 n0 p1 p0 -> show_i i "chill blue" ++ " <{dc: " ++ show_dd s c dc ++ "} {n1: " ++ show_dd s c n1 ++ "} {n0: " ++ show_dd s c n0 ++ "} {p1: " ++ show_dd s c p1 ++ "} {p0: " ++ show_dd s c p0 ++ "}>"
+  InfNodes i dc p n -> show_i i "chill blue" ++ " <{dc: " ++ show_dd s c dc ++ "} {p: " ++ show_dd s c p ++ "} {n: " ++ show_dd s c n ++ "}"
   EndInfNode child -> (if color s then colorize "chill blue" "<>" else "<>") ++ show_dd s c child
   _ -> error "should not be possible"
   where
@@ -297,8 +201,8 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a_id 
                     "\n  ->   " ++ show_dd settings old_c a_id ++
                     "\n  ->   " ++ show_dd settings old_c b_id ++ "\n"
     (c,r) = if debug_on settings && debug_open settings &&
-                not ((a_id `elem` [(0,0), (1,0)] || b_id `elem` [(0,0), (1,0)]) && (not $ display_leaf_cases settings))
-                && not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)]) -- leaf vs leaf, always skip printing
+                not ((a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]) && (not $ display_leaf_cases settings))
+                && not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)]) -- leaf vs leaf, always skip printing
             then if debug_func_stack settings
                 then myTrace (show_func_stack old_c) (myTrace leaf_msg f)
                 else myTrace leaf_msg f
@@ -306,8 +210,8 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a_id 
     in
 
     -- after calling the function
-    if debug_on settings && debug_close settings && not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)]) then
-        if a_id `elem` [(0,0), (1,0)] || b_id `elem` [(0,0), (1,0)]
+    if debug_on settings && debug_close settings && not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)]) then
+        if a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]
         then if not $ display_leaf_cases settings
             then (c{func_stack=fs}, r)
             else myTrace (show_func_stack old_c) $ myTrace (colorize "green" (f_name ++ " : ") ++
@@ -346,13 +250,13 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a_id 
     let
     start_msg = ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c a_id) ++
                 ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c b_id ++ "\\n")
-    (c,r) = if not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)])
+    (c,r) = if not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)])
             then myDebugLog "\"inner\":[" f
             else f
     in
     -- debug for after calling the function
 
-    if not (a_id `elem` [(0,0), (1,0)] && b_id `elem` [(0,0), (1,0)])
+    if not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)])
         then myDebugLog ("{\"" ++ colorize "green" f_name ++"\": {" ++ "\"func_stack before\": [\"" ++ show_func_stack old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
             case Map.lookup f_key nc of
                 Just nc' -> case HashMap.lookup (a_id, b_id) nc' of
