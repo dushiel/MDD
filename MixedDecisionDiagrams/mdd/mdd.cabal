@@ -18,10 +18,6 @@ build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
-    src/Internal/Language.hs
-    src/AliceLanguage/Language1.hs
-    src/AliceLanguage/Language2.hs
-    src/Lib.hs
     src/MDDmanipulation.hs
     src/DotMDD.hs
 
@@ -31,23 +27,11 @@ source-repository head
 
 library
   exposed-modules:
-      AliceLanguage.Language1
-      AliceLanguage.Language2
-      DotMDD
       DrawMDD
-      Example
-      Internal.Language
-      Lib
-      Main
       MDD
       MDDi
-      MDDmanipulation
-      MyLib
-      ReadMDD
       SODDmanipulation
-      Symbolic
   other-modules:
-      Paths_mdd
   hs-source-dirs:
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
@@ -88,12 +72,9 @@ executable mdd-exe
 executable my-other-main
   main-is: memo_proto.hs
   other-modules:
-      AliceLanguage.Language1
-      AliceLanguage.Language2
       DotMDD
       DrawMDD
       Example
-      Internal.Language
       Lib
       Main
       MDD
