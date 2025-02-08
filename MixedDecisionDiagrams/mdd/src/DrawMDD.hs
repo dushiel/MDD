@@ -306,6 +306,6 @@ settings = ShowSetting {
 
             ,   debug_open = True
             ,   debug_close = True
-            ,   debug_shorten_close = True
+            ,   debug_shorten_close = False
             ,   debug_func_stack = False
 }

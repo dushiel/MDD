@@ -67,9 +67,9 @@ instance (DdF3 a) => Dd1 a where
 
     intersection' c a@(_, Unknown) b = (c, b) -- build up the resulting cache by inserting all results
     intersection' c a b@(_, Unknown) = (c, a)
-    intersection' c a@(_, Leaf False) b = (c, a) `debug` "LEa Fasle inter" -- no insert needed for Leafs
+    intersection' c a@(_, Leaf False) b = (c, a) -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
     intersection' c a b@(_, Leaf False) = (c, b)
-    intersection' c a@(_, Leaf True) b = (c, b) `debug` "LEa True inter" -- no cache lookup needed
+    intersection' c a@(_, Leaf True) b = (c, b) -- `debug` "LEa True inter" -- no cache lookup needed
     intersection' c a b@(_, Leaf True) = (c, a)
 
     intersection' c a@(a_id, EndInfNode _) b@(b_id, Node{}) = withCache c (a, b, "inter") $ inferNodeA @a (intersection'' @a) c a b
@@ -85,8 +85,8 @@ instance (DdF3 a) => Dd1 a where
                 (c'', (neg_result, _)) = intersection @a c' neg_childA neg_childB
             in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
         -- Mismatch, highest position gets an inferred node at position of the lowest
-        | positionA < positionB = inferNodeB @a (intersection'' @a) c a b
-        | positionA > positionB = inferNodeA @a (intersection'' @a) c a b
+        | positionA < positionB = inferNodeB @a (intersection'' @a) c a b `debug` "intersection-inferNodeB"
+        | positionA > positionB = inferNodeA @a (intersection'' @a) c a b `debug` "intersection-inferNodeA" 
 
     -- -- entering new domains
     intersection' c a@(a_id, InfNodes positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
@@ -269,11 +269,11 @@ instance DdF3 Pos where
 instance DdF3 Neg where
     inferNodeA f c a (b_id, b@(Node positionB _ neg_childB)) =
         let (c', (_, neg_result)) = f c a (getNode c neg_childB)
-        in applyElimRule @Pos c' neg_result
+        in applyElimRule @Neg c' neg_result
     inferNodeA _ c a b = error_display "inferNodeA neg" c a b
     inferNodeB f c (a_id, Node positionA _ neg_childA) b =
         let (c', (_, neg_result)) = f c (getNode c neg_childA) b
-        in applyElimRule @Pos c' neg_result
+        in applyElimRule @Neg c' neg_result
     inferNodeB _ c a b = error_display "infernodeB neg" c a b
 
     applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
