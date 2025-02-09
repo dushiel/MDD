@@ -294,15 +294,21 @@ test = do
 -- (dc .+. a) .*. a == a
 -- -}
 
-test2 :: IO ()
-test2 = do
+test_and :: IO ()
+test_and = do
     mapM_ print ([show $ snd x | x <- zip results2 [(0 :: Int) .. ], not $ fst x])
     where
         results2 =
             [
-                (snd $ ddOf t_c (And (Var n'2) (Var n2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test nr: 2.1 \n\n")
-            ,   (snd $ ddOf t_c (And (Var n3) (Var n2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test nr: 2.2 \n\n")
-            ,   (snd $ ddOf t_c (And (Var p3) (Var p2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test nr: 2.4 \n\n")
+                (snd $ ddOf t_c (And (Var n'2) (Var n2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {n}.1 \n\n")
+            ,   (snd $ ddOf t_c (And (Var n3) (Var n2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {n}.2 \n\n")
+
+            ,   (snd $ ddOf t_c (And (Var p3) (Var p2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {p} 3 \n\n")
+            ,   (snd $ ddOf t_c (And (Var p3) (Var p3))) == (snd $ ddOf t_c (Var p3)) `debug` ("############# Test {p} 4\n\n")
+            ,   (snd $ ddOf t_c (And (Var p'3) (Var p3))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {p} 5\n\n")
+
+            ,   (snd $ ddOf t_c $ And (Var dc3) (Var dc3)) == (snd $ ddOf t_c (Var dc3))  `debug5` ("############# Test {dc} 6 ")
+            ,   (snd $ ddOf t_c $ And (Var dc2) (Negate $ Var dc3)) == (snd $ ddOf t_c Bot)  `debug5` ("############# Test {dc} 7 ")
             -- ,   (snd $ ddOf t_c (Or (Var n'3) (Var n'2))) == (snd $ ddOf t_c Top) `debug` ("############# Test nr: 2.3 \n\n")
             -- ,   (snd $ ddOf t_c (Or (Var p'3) (Var p'2))) == (snd $ ddOf t_c Top) `debug` ("############# Test nr: 2.5 \n\n")
 

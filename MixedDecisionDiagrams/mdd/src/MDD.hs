@@ -32,6 +32,7 @@ type HashedId = Int
 data Inf = Dc | Neg | Pos
     deriving (Eq, Show)
 
+
 data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
     deriving (Eq, Show)
 

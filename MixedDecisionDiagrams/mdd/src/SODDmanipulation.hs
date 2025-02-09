@@ -17,12 +17,11 @@
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE BangPatterns #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 module SODDmanipulation where
 -- todo-future : explore {-# UNPACK #-} !Int
 --SPECIALIZE pragma
-import Data.Hashable
-import qualified Data.HashMap.Strict as HashMap
 import MDD
 import Data.Kind
 
@@ -65,12 +64,22 @@ instance (DdF3 a) => Dd1 a where
         --  `debug` ("intersection: \n" ++ show a ++ " \n; "  ++ show b)
     intersection'' c a b = debug_manipulation  (intersection' @a c a b) "intersection" ("intersection" ++ to_str @a) c a b
 
-    intersection' c a@(_, Unknown) b = (c, b) -- build up the resulting cache by inserting all results
-    intersection' c a b@(_, Unknown) = (c, a)
-    intersection' c a@(_, Leaf False) b = (c, a) -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
-    intersection' c a b@(_, Leaf False) = (c, b)
-    intersection' c a@(_, Leaf True) b = (c, b) -- `debug` "LEa True inter" -- no cache lookup needed
-    intersection' c a b@(_, Leaf True) = (c, a)
+
+    intersection' c a@(_, Leaf False) b = interLeaf @a c a b -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
+    intersection' c a b@(_, Leaf False) = interLeaf @a c a b
+    intersection' c a@(_, Leaf True) b = interLeaf @a c a b -- `debug` "LEa True inter" -- no cache lookup needed
+    intersection' c a b@(_, Leaf True) = interLeaf @a c a b
+    intersection' c a@(_, Unknown) b@(_, Unknown) = (c , a)
+
+    intersection' c a@(_, Unknown) b@(b_id, Node positionB pos_childB neg_childB) = 
+        let (c', (pos_result, _)) = intersection @a c (0,0) pos_childB `debug` "node node"
+            (c'', (neg_result, _)) = intersection @a c' (0,0) neg_childB
+        in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionB pos_result neg_result)
+
+    intersection' c a@(a_id, Node positionA pos_childA neg_childA) b@(_, Unknown) = 
+        let (c', (pos_result, _)) = intersection @a c (0,0) pos_childA `debug` "node node"
+            (c'', (neg_result, _)) = intersection @a c' (0,0) neg_childA
+        in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
 
     intersection' c a@(a_id, EndInfNode _) b@(b_id, Node{}) = withCache c (a, b, "inter") $ inferNodeA @a (intersection'' @a) c a b
     intersection' c a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, "inter") $ inferNodeB @a (intersection'' @a) c a b
@@ -225,6 +234,7 @@ class DdF3 a where
     applyInfA :: Context -> Node -> Node -> (Context, Node)
     applyInfB :: Context -> Node -> Node -> (Context, Node)
     to_str :: String
+    interLeaf :: Context -> Node -> Node -> (Context, Node)
 
 
 instance DdF3 Dc where
@@ -251,6 +261,15 @@ instance DdF3 Dc where
             (c', r) = insert c $ InfNodes positionA b_id (0,0) (0,0)
         in applyInf c' a r
 
+    --  True is stronger than Unknown in dc + intersection context, so unknown comes before true
+    interLeaf c a@(_, Leaf False) b = (c, a) -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
+    interLeaf c a b@(_, Leaf False) = (c, b)
+    interLeaf c a@(_, Unknown) b = (c, b) -- build up the resulting cache by inserting all results
+    interLeaf c a b@(_, Unknown) = (c, a) 
+    interLeaf c a@(_, Leaf True) b = (c, b) -- `debug` "LEa True inter" -- no cache lookup needed
+    interLeaf c a b@(_, Leaf True) = (c, a)
+    interLeaf _ _ _ = error "wrong arguments for inter leaf case"
+
     to_str = "Dc"
 
 instance DdF3 Pos where
@@ -264,12 +283,21 @@ instance DdF3 Pos where
     applyElimRule c d@(Node _ posC (0, 0)) = (c, getNode c posC) `debug` ("eimrule" ++ show posC)
     applyElimRule c d = insert c d
 
+    --  Unknown is stronger than True in finite + intersection context
+    interLeaf c a@(_, Leaf False) b = (c, a) -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
+    interLeaf c a b@(_, Leaf False) = (c, b)
+    interLeaf c a@(_, Leaf True) b = (c, b) -- `debug` "LEa True inter" -- no cache lookup needed
+    interLeaf c a b@(_, Leaf True) = (c, a)
+    interLeaf c a@(_, Unknown) b = (c, b) -- build up the resulting cache by inserting all results
+    interLeaf c a b@(_, Unknown) = (c, a) 
+    interLeaf _ _ _ = error "wrong arguments for inter leaf case"
+
     to_str = "Pos"
 
 instance DdF3 Neg where
     inferNodeA f c a (b_id, b@(Node positionB _ neg_childB)) =
         let (c', (_, neg_result)) = f c a (getNode c neg_childB)
-        in applyElimRule @Neg c' neg_result
+        in applyElimRule @Neg c' neg_result `debug` ("inferNodeA neg : " ++ show neg_result)
     inferNodeA _ c a b = error_display "inferNodeA neg" c a b
     inferNodeB f c (a_id, Node positionA _ neg_childA) b =
         let (c', (_, neg_result)) = f c (getNode c neg_childA) b
@@ -281,6 +309,13 @@ instance DdF3 Neg where
     applyElimRule c d@(Node _ (0, 0) negC) = (c, (negC, getDd c negC))
     applyElimRule c d = insert c d
 
+    interLeaf c a@(_, Leaf False) b = (c, a) -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
+    interLeaf c a b@(_, Leaf False) = (c, b)
+    interLeaf c a@(_, Leaf True) b = (c, b) -- `debug` "LEa True inter" -- no cache lookup needed
+    interLeaf c a b@(_, Leaf True) = (c, a)
+    interLeaf c a@(_, Unknown) b = (c, b) -- build up the resulting cache by inserting all results
+    interLeaf c a b@(_, Unknown) = (c, a) 
+    interLeaf _ _ _ = error "wrong arguments for inter leaf case"
     to_str = "Neg"
 
 class All a where
