@@ -359,9 +359,9 @@ makeNode c (Ll [(i, inf)] nodePosition)
         ins' c d = insert c d
         ins d = insert c d
         -- 0 is for the InfNodes position, vars start from 1
-        loopDc b n = if n >=0 then ins (Node n (leafid b) (leafid $ not b)) else ins (Node (abs n) (leafid $ not b) (leafid b))
-        loopPos b n = if n >=0 then (c, leaf b) else ins (Node (abs n) u (leafid b))
-        loopNeg b n = if n >=0 then ins (Node (abs n) (leafid b) u) else (c, leaf b)
+        loopDc b n = if n >0 then ins (Node n (leafid b) (leafid $ not b)) else ins (Node (abs n) (leafid $ not b) (leafid b))
+        loopPos b n = if n >0 then error "negative number for pos" else ins (Node (abs n) u (leafid b))
+        loopNeg b n = if n >0 then ins (Node (abs n) (leafid b) u) else error "positive number for neg"
         -- close = (!! l) . iterate EndInfNode
 makeNode c (Ll ((i, inf):cs) nodePosition)
     | inf == Dc1 = let (c', (rid, _)) = makeNode c (Ll cs nodePosition) in ins' c' (InfNodes i rid u u)
@@ -408,13 +408,13 @@ makeLocalPath' c [(i, inf)] nodeList
         loopPos c b [] = (c, leaf b)
         loopPos c b (n:ns) = let
           r@(c', (next_iter,_)) = loopPos c b ns in
-            if n >=0  then r
+            if n >=0  then insert c' (Node (abs n) next_iter u )
                       else insert c' (Node (abs n) u next_iter )
         loopNeg c b [] = (c, leaf b)
         loopNeg c b (n:ns) = let
           r@(c', (next_iter,_)) = loopNeg c b ns in
             if n >=0  then insert c' (Node n next_iter u)
-                      else r
+                      else insert c' (Node n u next_iter)
 
 makeLocalPath' c ((i, inf):ns) nodeList
     | inf == Dc1 || inf == Dc0 = let ( c',(rid,_)) = makeLocalPath' c ns nodeList in insert c' (InfNodes i rid u u)

@@ -180,7 +180,7 @@ instance (DdF3 a) => Dd1 a where
     --         where
     --             f b' = apply @a Absorb c "absorb" (t_and_rInferA b') a dc
 
-    absorb' c a b = error $ "absorb , " ++ "a = " ++ show a ++ "b = " ++ show b
+    absorb' c a b = error $ "absorb , " ++ "a = " ++ show a ++ "  \n  b = " ++ show b
 
 applyInf :: Context -> Node -> Node -> (Context, Node)
 applyInf c a b = debug_manipulation (applyInf' c a b) "intersection" "applyInf" c a b
@@ -273,9 +273,17 @@ instance DdF3 Dc where
     to_str = "Dc"
 
 instance DdF3 Pos where
-    inferNodeA f c a (b_id, b@(Node positionB pos_childB _)) = f c a (getNode c pos_childB) -- applyElimRule @Pos?
+    inferNodeA f c a@(a_id, _) b@(b_id, Node positionB pos_childB neg_childB) = 
+        let 
+            (c', r) = insert c (Node positionB a_id (0,0))
+            (c'', r'@(r_id, r_dd)) = f c' r b
+        in applyElimRule @Pos c'' r_dd `debug` ("inferNodeA neg : " ++ show r')
     inferNodeA _ c a b = error_display "inferNodeA pos" c a b
-    inferNodeB f c (a_id, Node positionA pos_childA _) b = f c (getNode c pos_childA) b -- applyElimRule @Pos?
+    inferNodeB f c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, _) =
+        let 
+            (c', r) = insert c (Node positionA b_id (0,0))
+            (c'', r'@(r_id, r_dd)) = f c' r a
+        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeB neg : " ++ show r')
     inferNodeB _ c a b = error_display "infernodeB pos" c a b
 
     applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
@@ -295,13 +303,17 @@ instance DdF3 Pos where
     to_str = "Pos"
 
 instance DdF3 Neg where
-    inferNodeA f c a (b_id, b@(Node positionB _ neg_childB)) =
-        let (c', (_, neg_result)) = f c a (getNode c neg_childB)
-        in applyElimRule @Neg c' neg_result `debug` ("inferNodeA neg : " ++ show neg_result)
+    inferNodeA f c a@(a_id, _) b@(b_id, Node positionB pos_childB neg_childB) =
+        let 
+            (c', r) = insert c (Node positionB (0,0) a_id)
+            (c'', r'@(r_id, r_dd)) = f c' r b
+        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeA neg : " ++ show r')
     inferNodeA _ c a b = error_display "inferNodeA neg" c a b
-    inferNodeB f c (a_id, Node positionA _ neg_childA) b =
-        let (c', (_, neg_result)) = f c (getNode c neg_childA) b
-        in applyElimRule @Neg c' neg_result
+    inferNodeB f c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, _) =
+        let 
+            (c', r) = insert c (Node positionA (0,0) b_id)
+            (c'', r'@(r_id, r_dd)) = f c' r a
+        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeB neg : " ++ show r')
     inferNodeB _ c a b = error_display "infernodeB neg" c a b
 
     applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))

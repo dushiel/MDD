@@ -18,11 +18,6 @@ import Data.Foldable (foldl', Foldable (fold))
 import qualified Data.Map as Map
 
 
--- todo sophisticated test suite,
--- have arbitrary formulas, then
--- restrict should be equal replacing with Top / Bot (for Dc at least or any local type)
--- negate formula and read all n1 as n0 and p1 as p0 to check symmetries
---
 
 -- |======================================== Dd Manipulation operators ==============================================
 
@@ -60,6 +55,24 @@ infixl 4 -.
 -- (.<->.) :: Context -> NodeId -> NodeId -> (Context, NodeId)
 -- (.<->.) c a b = (a .*. b) .+. ((-.) a .*. (-.) b)
 
+-- write a parser :: String -> Form
+-- "[dc:5, n1:3, 4]" -> Pr L [(5, Dc), (3, Neg1)] 4
+-- "([dc:1, 2] + [p0:2, 1]) * Top" ->  And (Or (Pr L [(1, Dc) 2) (Pr L [(2, Pos0)] 1)) Top
+-- which we can then use with ddOf
+
+
+-- {-}
+-- dc = (path (Order [0]) [2] Dc) .*. (path (Order [1]) [2] Dc)
+-- b = path (Order [1]) [2] Neg1
+
+-- (dc .*. a) .+. dc == dc
+-- (dc .+. a) .*. dc == dc
+
+-- (dc .*. a) .+. a == a
+-- (dc .+. a) .*. a == a
+-- -}
+
+
 ------------------------------------ Test
 c = Context{
     nodelookup = defaultNodeMap,
@@ -70,21 +83,12 @@ c = Context{
     cache' = HashMap.empty
     }
 
-
-
-
 take_c :: (Context, Node) -> (Context -> Node -> Node -> (Context, Node)) -> (Context, Node) -> (Context, Node) -> (Context, Node)
 take_c (c, _) f (_,a) (_,b) = f c a b
 take_c_ :: (Context, Node) -> (Context -> Node -> (Context, Node)) -> (Context, Node) -> (Context, Node)
 take_c_ (c, _) f (_,a) = f c a
 take_c__ :: (Context, Node) -> (Context -> LevelL -> (Context, Node)) -> LevelL -> (Context, Node)
 take_c__ (c, _) f = f c
-
-
--- write a parser :: String -> Form
--- "[dc:5, n1:3, 4]" -> Pr L [(5, Dc), (3, Neg1)] 4
--- "([dc:1, 2] + [p0:2, 1]) * Top" ->  And (Or (Pr L [(1, Dc) 2) (Pr L [(2, Pos0)] 1)) Top
--- which we can then use with ddOf
 
 data Form
     = Top
@@ -123,77 +127,55 @@ ddOf c (Var (_, d)) = (c, d)
 
 
 
--- data Level = L [(Int, Inf)] Int deriving (Eq, Show)
--- data Inf = Dc | Neg1 | Neg0 | Pos1 | Pos0
---     deriving (Eq, Show)
+-- create DD's containing a single path for testing, 
+-- well-defined w.r.t. to logic statements
 
-
-x =                     makeNode c (Ll [(0, Dc1)] 2)
-xx = take_c__ x         makeNode (Ll [(0, Dc1)] (-2))
-x' = take_c_ xx         (-.) x
-h = take_c__ x'         makeNode (Ll [(0, Dc1)] 3)
-j = take_c__ h          makeNode (Ll [(0, Dc1)] (-1))
-jj = take_c__ j         makeNode (Ll [(0, Dc1)] (1))
--- 1    , neg1
--- neg2 , 2
--- 3
-
-m = ddOf (fst jj) $ And (Var h) (Var x)
-mm = ddOf (fst m) $ And (Var h) (Var xx)
-
-n = ddOf (fst mm) $ And (Var j) (Var m)
-nn = ddOf (fst n) $ And (Var jj) (Var mm)
-
--- ok = ddOf (fst nn) $ Or (Var n) (Var nn)
-
-dc2 = path (c)         [(0, Dc1)] [2]
+dc2 = path (c)              [(0, Dc1)] [2]
 dc3 = path (fst dc2)        [(0, Dc1)] [3]
 dc_2 = path (fst dc3)       [(1, Dc1)] [2]
-dc__2 = path (fst dc_2)     [(2,Dc1)] [2]
+dc__2 = path (fst dc_2)     [(2, Dc1)] [2]
 dc = ddOf (fst dc__2) $     And (Var dc2) (Var dc3)
+
 n2 = path (fst dc)          [(0, Neg1)] [2]
 n3 = path (fst n2)          [(0, Neg1)] [3]
 n23 = path (fst n3)         [(0, Neg1)] [2,3]
 n_2 = path (fst n23)        [(1, Neg1)] [2]
 n__2 = path (fst n_2)       [(3, Neg1)] [2]
--- b = ddOf (fst n__2) $       Or (Var n2) (Var n3)
-p'2 = path (fst n__2)          [(0, Pos0)] [2]
-p'3 = path (fst p'2)        [(0, Pos0)] [3]
-p'_2 = path (fst p'3)       [(1, Pos0)] [2]
-p'__2 = path (fst p'_2)     [(3, Pos0)] [2]
-_c = ddOf (fst p'__2) $     And (Var p'2) (Var p'3)
-p2 = path (fst _c)          [(0, Pos1)] [2]
-p3 = path (fst p2)          [(0, Pos1)] [3]
-p_2 = path (fst p3)         [(1,Pos1)] [2]
-p__2 = path (fst p_2)       [(3, Pos1)] [2]
 
-n'2 = path (fst p__2)       [(0, Neg0)] [2]
+n'2 = path (fst n__2)       [(0, Neg0)] [2]
 n'3 = path (fst n'2)        [(0, Neg0)] [3]
-n'_2 = path (fst n'3)       [(1,Neg0)] [2]
+n'23 = path (fst n'3)       [(0, Neg0)] [2,3]
+n'_2 = path (fst n'23)      [(1, Neg0)] [2]
 n'__2 = path (fst n'_2)     [(3, Neg0)] [2]
 
-dcn1 = path (fst n'__2)     [(0, Dc1), (0, Neg1)] [1]
-dcn'1 = path (fst dcn1)     [(0, Dc1), (0, Neg0)] [1]
+p2 = path (fst n'__2)       [(0, Pos1)] [-2]
+p3 = path (fst p2)          [(0, Pos1)] [-3]
+p_2 = path (fst p3)         [(1, Pos1)] [-2]
+p__2 = path (fst p_2)       [(3, Pos1)] [-2]
 
-nn1 = path (fst dcn'1)      [(0, Neg1), (0, Neg1)] [1]
-nn2 = path (fst nn1)        [(0, Neg1), (0, Neg1)] [2]
-n_n1 = path (fst nn2)       [(0, Neg1), (1, Neg1)] [1]
-n_n2 = path (fst n_n1)      [(0, Neg1), (1, Neg1)] [2]
-n'n'1 = path (fst n_n2)     [(0, Neg0), (0, Neg0)] [1]
-n'n1 = path (fst n'n'1)     [(0, Neg0), (0, Neg1)] [1]
-n'n2 = path (fst n'n1)      [(0, Neg0), (0, Neg1)] [2]
-n'_n1 = path (fst n'n2)     [(0, Neg0), (1, Neg1)] [1]
-n'_n2 = path (fst n'_n1)    [(0, Neg0), (1, Neg1)] [2]
+p'2 = path (fst p__2)       [(0, Pos0)] [-2]
+p'3 = path (fst p'2)        [(0, Pos0)] [-3]
+p'_2 = path (fst p'3)       [(1, Pos0)] [-2]
+p'__2 = path (fst p'_2)     [(3, Pos0)] [-2]
 
-nn'1 = path (fst n'_n2)      [(0, Neg1), (0, Neg0)] [1]
-(t_c, _) = nn'1
--- -- <[0,0]> -> ([0,1]) -> <[0,2,0]> -> ([0,2,1]) -> [1]
--- --dcZ =  (path (Order [0]) [1] Dc .->. path (Order [0,2]) [1] Dc) .*. path (Order [0]) [1] Dc
--- --neg1Z =  (path (Order [0]) [1] Neg1 .*. path (Order [0,2]) [1] Neg1) .*. path (Order [0]) [3] Neg1
+dcn1 = path (fst p'__2)     [(0, Dc1), (0, Neg1)] [1]
+dcn'1 = path (fst dcn1)     [(0, Dc1), (0, Neg0)] [-1]
+
+-- nn1 = path (fst dcn'1)      [(0, Neg1), (0, Neg1)] [1]
+-- nn2 = path (fst nn1)        [(0, Neg1), (0, Neg1)] [2]
+-- n_n1 = path (fst nn2)       [(0, Neg1), (1, Neg1)] [1]
+-- n_n2 = path (fst n_n1)      [(0, Neg1), (1, Neg1)] [2]
+-- n'n'1 = path (fst n_n2)     [(0, Neg1), (0, Neg1)] [1]
+-- n'n1 = path (fst n'n'1)     [(0, Neg1), (0, Neg1)] [-1]
+-- n'n2 = path (fst n'n1)      [(0, Neg0), (0, Neg1)] [2]
+-- n'_n1 = path (fst n'n2)     [(0, Neg0), (1, Neg1)] [1]
+-- n'_n2 = path (fst n'_n1)    [(0, Neg0), (1, Neg1)] [2]
+
+-- nn'1 = path (fst n'_n2)      [(0, Neg1), (0, Neg0)] [1]
+(t_c, _) = dcn'1
 
 
-
-
+-- first test covers more ground
 test :: IO ()
 test = do
     emptyFile
@@ -283,32 +265,36 @@ test = do
             -- tripple time
             ]
 
--- {-}
--- dc = (path (Order [0]) [2] Dc) .*. (path (Order [1]) [2] Dc)
--- b = path (Order [1]) [2] Neg1
 
--- (dc .*. a) .+. dc == dc
--- (dc .+. a) .*. dc == dc
-
--- (dc .*. a) .+. a == a
--- (dc .+. a) .*. a == a
--- -}
-
+-- second test goes more in depth
 test_and :: IO ()
 test_and = do
     mapM_ print ([show $ snd x | x <- zip results2 [(0 :: Int) .. ], not $ fst x])
     where
         results2 =
             [
-                (snd $ ddOf t_c (And (Var n'2) (Var n2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {n}.1 \n\n")
-            ,   (snd $ ddOf t_c (And (Var n3) (Var n2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {n}.2 \n\n")
+                (snd $ ddOf t_c (And (Var n'2) (Var n2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {n}.0 \n\n")
+            ,   (snd $ ddOf t_c (And (Var n3) (Var n2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {n}.1 \n\n")
+            ,   (snd $ ddOf t_c (And (Var n2) (Var n3))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {n}.2 \n\n")
+            -- ,   (snd $ ddOf t_c (And (Var n'2) (Var n'3))) == (snd $ ddOf t_c (Var n'23)) `debug` ("############# Test {n}.3 \n\n")
 
-            ,   (snd $ ddOf t_c (And (Var p3) (Var p2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {p} 3 \n\n")
-            ,   (snd $ ddOf t_c (And (Var p3) (Var p3))) == (snd $ ddOf t_c (Var p3)) `debug` ("############# Test {p} 4\n\n")
-            ,   (snd $ ddOf t_c (And (Var p'3) (Var p3))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {p} 5\n\n")
+            ,   (snd $ ddOf t_c (And (Var p3) (Var p2))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {p} 4 \n\n")
+            ,   (snd $ ddOf t_c (And (Var p3) (Var p3))) == (snd $ ddOf t_c (Var p3)) `debug` ("############# Test {p} 5\n\n")
+            ,   (snd $ ddOf t_c (And (Var p'3) (Var p3))) == (snd $ ddOf t_c Bot) `debug` ("############# Test {p} 6\n\n")
 
-            ,   (snd $ ddOf t_c $ And (Var dc3) (Var dc3)) == (snd $ ddOf t_c (Var dc3))  `debug5` ("############# Test {dc} 6 ")
-            ,   (snd $ ddOf t_c $ And (Var dc2) (Negate $ Var dc3)) == (snd $ ddOf t_c Bot)  `debug5` ("############# Test {dc} 7 ")
+            ,   (snd $ ddOf t_c $ And (Var dc3) (Var dc3)) == (snd $ ddOf t_c (Var dc3))  `debug5` ("############# Test {dc} 7 ")
+            ,   (snd $ ddOf t_c $ And (Var dc2) (Negate $ Var dc2)) == (snd $ ddOf t_c Bot)  `debug5` ("############# Test {dc} 8 ")
+            ,   (snd $ ddOf t_c $ And (Var dc2) (Var dc3)) == (snd $ ddOf t_c $ And (Var dc3) (Var dc2))  `debug5` ("############# Test {dc} 9 ")
+
+            ,   (snd $ ddOf t_c $ And (And (Var n_2) (Var n__2)) (Var n_2)) == (snd $ ddOf t_c $ And (Var n_2) (Var n__2)) `debug5` ("############# Test {n inf} 10 ")
+            -- ,   (snd $ ddOf t_c $ And (And (Var n'_2) (Var n__2)) (Var n_2)) == (snd $ ddOf t_c $ Bot) `debug5` ("############# Test {n inf} 11 ")
+            -- ,   (snd $ ddOf t_c $ And (And (Var n'_2) (Var n__2)) (Var n'_2)) == (snd $ ddOf t_c $ And (Var n'_2) (Var n__2)) `debug5` ("############# Test {n inf} 12 ")
+            
+            ,   (snd $ ddOf t_c $ And (And (Var p_2) (Var p__2)) (Var p_2)) == (snd $ ddOf t_c $ And (Var p_2) (Var p__2)) `debug5` ("############# Test {n inf} 13 ")
+            ,   (snd $ ddOf t_c $ And (And (Var p_2) (Var p__2)) (Var p_2)) == (snd $ ddOf t_c $ And (Var p_2) (Var p__2)) `debug5` ("############# Test {n inf} 14 ")
+            
+            ,   (snd $ ddOf t_c $ And (And (Var dc_2) (Var dc__2)) (Var dc_2)) == (snd $ ddOf t_c $ And (Var dc_2) (Var dc__2)) `debug5` ("############# Test {n inf} 15 ")
+            ,   (snd $ ddOf t_c $ And (And (Var dc_2) (Var dc__2)) (Var dc_2)) == (snd $ ddOf t_c $ And (Var dc_2) (Var dc__2)) `debug5` ("############# Test {n inf} 16 ")
             -- ,   (snd $ ddOf t_c (Or (Var n'3) (Var n'2))) == (snd $ ddOf t_c Top) `debug` ("############# Test nr: 2.3 \n\n")
             -- ,   (snd $ ddOf t_c (Or (Var p'3) (Var p'2))) == (snd $ ddOf t_c Top) `debug` ("############# Test nr: 2.5 \n\n")
 
