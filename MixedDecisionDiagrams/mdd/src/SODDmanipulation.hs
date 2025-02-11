@@ -62,24 +62,25 @@ instance (DdF3 a) => Dd1 a where
 
     intersection c a b = debug_manipulation  (intersection' @a c (getNode c a) (getNode c b)) "intersection" ("intersection" ++ to_str @a) c (getNode c a) (getNode c b)
         --  `debug` ("intersection: \n" ++ show a ++ " \n; "  ++ show b)
-    intersection'' c a b = debug_manipulation  (intersection' @a c a b) "intersection" ("intersection" ++ to_str @a) c a b
-
+    intersection'' c a b = debug_manipulation  (intersection' @a c a b) "intersection" ("intersection====================================" ++ to_str @a) c a b
 
     intersection' c a@(_, Leaf False) b = interLeaf @a c a b -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
     intersection' c a b@(_, Leaf False) = interLeaf @a c a b
     intersection' c a@(_, Leaf True) b = interLeaf @a c a b -- `debug` "LEa True inter" -- no cache lookup needed
     intersection' c a b@(_, Leaf True) = interLeaf @a c a b
     intersection' c a@(_, Unknown) b@(_, Unknown) = (c , a)
+    intersection' c a b@(_, Unknown) = interLeaf @a c a b
+    intersection' c a@(_, Unknown) b = interLeaf @a c a b
 
-    intersection' c a@(_, Unknown) b@(b_id, Node positionB pos_childB neg_childB) = 
-        let (c', (pos_result, _)) = intersection @a c (0,0) pos_childB `debug` "node node"
-            (c'', (neg_result, _)) = intersection @a c' (0,0) neg_childB
-        in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionB pos_result neg_result)
+    -- intersection' c a@(_, Unknown) b@(b_id, Node positionB pos_childB neg_childB) = 
+    --     let (c', (pos_result, _)) = intersection @a c (0,0) pos_childB `debug` "node node"
+    --         (c'', (neg_result, _)) = intersection @a c' (0,0) neg_childB
+    --     in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionB pos_result neg_result)
 
-    intersection' c a@(a_id, Node positionA pos_childA neg_childA) b@(_, Unknown) = 
-        let (c', (pos_result, _)) = intersection @a c (0,0) pos_childA `debug` "node node"
-            (c'', (neg_result, _)) = intersection @a c' (0,0) neg_childA
-        in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+    -- intersection' c a@(a_id, Node positionA pos_childA neg_childA) b@(_, Unknown) = 
+    --     let (c', (pos_result, _)) = intersection @a c (0,0) pos_childA `debug` "node node"
+    --         (c'', (neg_result, _)) = intersection @a c' (0,0) neg_childA
+    --     in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
 
     intersection' c a@(a_id, EndInfNode _) b@(b_id, Node{}) = withCache c (a, b, "inter") $ inferNodeA @a (intersection'' @a) c a b
     intersection' c a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, "inter") $ inferNodeB @a (intersection'' @a) c a b
@@ -189,9 +190,9 @@ applyInf c a b = debug_manipulation (applyInf' c a b) "intersection" "applyInf" 
 
 applyInf' :: Context -> Node -> Node -> (Context, Node)
 applyInf' c a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
-    | positionA == positionB = -- if b then
+    | positionA == positionB = -- todo! check which Inf type needs to be passed to func_stack, of current call or of upcoming (probably upcoming) 
         let
-            (c1, dcR) = intersection @Dc c dcA dcB
+            (c1, dcR) = intersection @Dc c{func_stack = (Dc, (getNode c dcA, getNode c dcB)) : func_stack c } dcA dcB
             (c2, nR) =
                 let (c2', r2') = intersection @Neg c1 nA nB
                 in absorb'' @Neg c2' r2' dcR
@@ -199,10 +200,11 @@ applyInf' c a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB d
                 let (c3', r3') = intersection @Pos c2 pA pB
                 in absorb'' @Pos c3' r3' dcR
 
-            apply_elimRule (InfNodes _ (1,0) (0,0) (0,0)) = (c3, ((1,0), Leaf True))
-            apply_elimRule (InfNodes _ (2,0) (0,0) (0,0)) = (c3, ((2,0), Leaf False))
-            apply_elimRule (InfNodes _ (0,0) (0,0) (0,0)) = (c3, ((0,0), Unknown))
-            apply_elimRule d = insert c3 d
+            c4 = c3{func_stack = tail $ func_stack c3} --remove the func_stack layer, recursion has been resolved
+            apply_elimRule (InfNodes _ (1,0) (0,0) (0,0)) = (c4, ((1,0), Leaf True))
+            apply_elimRule (InfNodes _ (2,0) (0,0) (0,0)) = (c4, ((2,0), Leaf False))
+            apply_elimRule (InfNodes _ (0,0) (0,0) (0,0)) = (c4, ((0,0), Unknown))
+            apply_elimRule d = insert c4 d
         in apply_elimRule $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
         -- else let
             -- (c1, dcR) = union @Dc c dcA dcB
@@ -277,27 +279,32 @@ instance DdF3 Pos where
         let 
             (c', r) = insert c (Node positionB a_id (0,0))
             (c'', r'@(r_id, r_dd)) = f c' r b
-        in applyElimRule @Pos c'' r_dd `debug` ("inferNodeA neg : " ++ show r')
+        in applyElimRule @Pos c'' r_dd `debug` ("inferNodeA pos : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeA _ c a b = error_display "inferNodeA pos" c a b
     inferNodeB f c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, _) =
         let 
             (c', r) = insert c (Node positionA b_id (0,0))
-            (c'', r'@(r_id, r_dd)) = f c' r a
-        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeB neg : " ++ show r')
+            (c'', r'@(r_id, r_dd)) = f c' a r
+        in applyElimRule @Pos c'' r_dd `debug` ("inferNodeB pos : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeB _ c a b = error_display "infernodeB pos" c a b
 
     applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
     applyElimRule c (EndInfNode (2,0)) = (c, ((2,0), Leaf False))
-    applyElimRule c d@(Node _ posC (0, 0)) = (c, getNode c posC) `debug` ("eimrule" ++ show posC)
+    applyElimRule c d@(Node _ posC (0, 0)) = (c, getNode c posC) --`debug` ("eimrule" ++ show posC)
     applyElimRule c d = insert c d
 
     --  Unknown is stronger than True in finite + intersection context
-    interLeaf c a@(_, Leaf False) b = (c, a) -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
+    -- if the result is 
+    interLeaf c a@(_, Leaf False) b = (c, a) -- False might be absorbed, then return Unknown
     interLeaf c a b@(_, Leaf False) = (c, b)
-    interLeaf c a@(_, Leaf True) b = (c, b) -- `debug` "LEa True inter" -- no cache lookup needed
+    interLeaf c a@(_, Leaf True) b = (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
     interLeaf c a b@(_, Leaf True) = (c, a)
-    interLeaf c a@(_, Unknown) b = (c, b) -- build up the resulting cache by inserting all results
-    interLeaf c a b@(_, Unknown) = (c, a) 
+    interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
+        let (_, (dcA, _)) = head $ func_stack c
+        in intersection'' @Pos c dcA b  `debug` ("using dcA in interLeaf pos: " ++ show dcA)  
+    interLeaf c a b@(_, Unknown) = 
+        let (_, (_, dcB)) = head $ func_stack c
+        in intersection'' @Pos c a dcB `debug` ("using dcB in interLeaf pos: " ++ show dcB)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
 
     to_str = "Pos"
@@ -307,13 +314,13 @@ instance DdF3 Neg where
         let 
             (c', r) = insert c (Node positionB (0,0) a_id)
             (c'', r'@(r_id, r_dd)) = f c' r b
-        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeA neg : " ++ show r')
+        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeA neg : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeA _ c a b = error_display "inferNodeA neg" c a b
     inferNodeB f c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, _) =
         let 
             (c', r) = insert c (Node positionA (0,0) b_id)
-            (c'', r'@(r_id, r_dd)) = f c' r a
-        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeB neg : " ++ show r')
+            (c'', r'@(r_id, r_dd)) = f c' a r
+        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeB neg : " ++ show r'++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeB _ c a b = error_display "infernodeB neg" c a b
 
     applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
@@ -321,12 +328,16 @@ instance DdF3 Neg where
     applyElimRule c d@(Node _ (0, 0) negC) = (c, (negC, getDd c negC))
     applyElimRule c d = insert c d
 
-    interLeaf c a@(_, Leaf False) b = (c, a) -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
+    interLeaf c a@(_, Leaf False) b = (c, a) -- (future if i want to remove absorb) False might be absorbed, then return Unknown
     interLeaf c a b@(_, Leaf False) = (c, b)
-    interLeaf c a@(_, Leaf True) b = (c, b) -- `debug` "LEa True inter" -- no cache lookup needed
+    interLeaf c a@(_, Leaf True) b = (c, b) -- (future if i want to remove absorb) check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
     interLeaf c a b@(_, Leaf True) = (c, a)
-    interLeaf c a@(_, Unknown) b = (c, b) -- build up the resulting cache by inserting all results
-    interLeaf c a b@(_, Unknown) = (c, a) 
+    interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
+        let (_, (dcA, _)) = head $ func_stack c
+        in intersection'' @Neg c dcA b  `debug` ("using dcA in interLeaf neg: " ++ show dcA)
+    interLeaf c a b@(_, Unknown) = 
+        let (_, (_, dcB)) = head $ func_stack c
+        in intersection'' @Neg c a dcB  `debug` ("using dcB in interLeaf neg: " ++ show dcB)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
     to_str = "Neg"
 
@@ -335,3 +346,11 @@ class All a where
     error_display s c (a_id, a) (b_id, b) = error (show s ++ " : " ++ show c ++ ", " ++ show a ++ ", " ++ show b)
 
 instance All (Context, Node)
+
+
+-- traverse :: Context -> String -> Context
+-- traverse c instruction = case instruction of 
+--     "pos child" -> c{func_stack = (pos_childA, pos_childB)  : tail $ func_stack c }
+--     "neg child" -> c{func_stack = (pos_childA, neg_childB)  : tail $ func_stack c }
+--     where 
+--         dcA@(Node pos_childA neg_childB), dcB(Node pos_childB neg_childB) = head $ func_stack c 

@@ -72,7 +72,7 @@ showTree' c _ (_, Leaf True) = (c, ["[1]"])
 showTree' c _ (_, Leaf False) = (c, ["[0]"])
 showTree' c f d@(id, Node a l r) = withCache' c'' d $
     ("("++ f a ++") " ++ col Dull Blue (show_id id)) :
-    concat (indentChildren [s1, s2])
+    concat (indentChildren [s1, s2]) 
     where
         (c', s1) = showTree' c f (l, getDd c l)
         (c'', s2) = showTree' c' f (r, getDd c r)
@@ -94,7 +94,7 @@ showTree' c f d@(id, InfNodes a dc (0, 0) n) = withCache' c'' d $
     concat (indentInfChildren [s1, r_p1])
     where
         (c', s1) = showTree' c f (dc, getDd c dc)
-        (c'', r_p1) = showTree' c' f (dc, getDd c n)
+        (c'', r_p1) = showTree' c' f (n, getDd c n) 
 
 showTree' c f d@(id, InfNodes a dc p n) = withCache' c''' d $
     ("<"++ f a ++ "> dc, p, n " ++ col Dull Blue (show_id id)) : "  ║  " :
