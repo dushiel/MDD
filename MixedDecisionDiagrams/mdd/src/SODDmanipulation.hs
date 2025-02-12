@@ -30,7 +30,6 @@ import Data.Kind
 
 import DrawMDD (debug_manipulation)
 import Data.Bimap ()
-import Data.GraphViz.Parsing (Commitment)
 
 type DdManipulation = Context -> Node -> Node -> (Context, Node)
 
@@ -70,7 +69,6 @@ class Dd1 a where
 instance (DdF3 a) => Dd1 a where
 
     intersection c a b = debug_manipulation  (intersection' @a c (getNode c a) (getNode c b)) "intersection" ("intersection" ++ to_str @a) c (getNode c a) (getNode c b)
-        --  `debug` ("intersection: \n" ++ show a ++ " \n; "  ++ show b)
     intersection'' c a b = debug_manipulation  (intersection' @a c a b) "intersection" ("intersection==" ++ to_str @a) c a b
 
     intersection' c a@(_, Leaf False) b = interLeaf @a c a b
@@ -196,20 +194,21 @@ instance (DdF3 a) => Dd1 a where
                             where c' = catchupA @a c idx
 
     -- a has reached the end, it should always be ahead of a node, so do traversal until dc has reached its end
-    -- afterwards apply move
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } a@(_, Leaf _) = c --todo
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } a@(_, EndInfNode{}) = c --todo
+    -- afterwards apply move?
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } a@(_, Leaf _) = catchupA @a c (-1)
+    traverse_dcA s c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } a@(_, EndInfNode{}) = 
+        traverse_dcA @a s c' a
+        where c' = catchupA @a c (-1)  
 
     -- both have reached the end - so prepare the next 
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, EndInfNode{}) = c -- todo
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, Leaf{}) = c -- todo
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf{}), b))  : fs } (_, Leaf{}) = c -- todo
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf{}), b))  : fs } (_, EndInfNode{}) = c -- todo
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, EndInfNode{}) = moveA c "remove endinf" (to_str @a)
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, Leaf{}) = c -- should be handled outside this function
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf{}), b))  : fs } (_, Leaf{}) = c -- should be handled outside this function
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf{}), b))  : fs } (_, EndInfNode{}) = c -- leaf stays the same for dc after exiting current realm
 
     -- dc has reached the end, if a is a node it should always be behind 
     traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, Node idx _ _) = c
     traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf _), b))  : fs } (_, Node idx _ _) = c
-
 
 
 
@@ -228,25 +227,40 @@ instance (DdF3 a) => Dd1 a where
 
 
 
-
-
-
-
-
-
-
-
-
-
     traverse_dcB s c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } (_, Node idx _ _)
         | positionB > idx = c
         | positionB == idx = moveB c s (to_str @a)
         | positionB < idx = moveB c' s (to_str @a)
                             where c' = catchupB @a c idx
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, EndInfNode{})))  : fs } b = c
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Leaf _)))  : fs } b = c
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, InfNodes{})))  : fs } b = c
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Unknown)))  : fs } b = c
+
+    -- b has reached the end, it should always be ahead of a node, so do traversal until dc has reached its end
+    -- afterwards apply move?
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } b@(_, Leaf _) = catchupB @a c (-1)
+    traverse_dcB s c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } b@(_, EndInfNode{}) = 
+        traverse_dcB @a s c' b
+        where c' = catchupB @a c (-1)  
+
+    -- both have reached the end - so prepare the next 
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, EndInfNode{})))  : fs } (_, EndInfNode{}) = moveB c "remove endinf" (to_str @a)
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, EndInfNode{})))  : fs } (_, Leaf{}) = c -- should be handled outside this function
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Leaf{})))  : fs } (_, Leaf{}) = c -- should be handled outside this function
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Leaf{})))  : fs } (_, EndInfNode{}) = c -- leaf stays the same for dc after exiting current realm
+
+    -- dc has reached the end, if b is a node it should always be behind 
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, EndInfNode{})))  : fs } (_, Node idx _ _) = c
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Leaf _)))  : fs } (_, Node idx _ _) = c
+
+
+
+    -- dc / b is at a recursive point, should have passed a endinfnode if serial 
+    traverse_dcB _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } a@(_, Node idx _ _) = undefined
+    traverse_dcB _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, InfNodes idx dc p n) = undefined
+    traverse_dcB _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } (_, InfNodes idx dc p n) = undefined
+    traverse_dcB _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } (_, Leaf{}) = undefined
+    -- etc
+
+    traverse_dcB _ c@Context{func_stack = (inf, ((_, Unknown), b))  : fs } a = error "dc should not have unknowns.. yet"
+    traverse_dcB s c a = error $ "traverse_dcB. a= " ++ show a ++ "  c= " ++ show (func_stack c)
 
 
 
@@ -473,16 +487,16 @@ func_tail c@Context{func_stack = _ : fs } = c{func_stack = fs}
 
 moveA :: Context -> String -> String -> Context
 moveA c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } m t =
-    if m == "pos child" then c{func_stack = (inf, (getNode c pos_childA, b))  : fs }
-    else if m == "neg child" then c{func_stack = (inf, (getNode c neg_childA, b))  : fs }
+    if m == "pos child" then c{func_stack = (inf, (getNode c pos_childA, b))  : fs } `debug` ("updated pos dcA to " ++ show (getDd c pos_childA))
+    else if m == "neg child" then c{func_stack = (inf, (getNode c neg_childA, b))  : fs } `debug` ("updated neg dcA to " ++ show (getDd c neg_childA))
     -- else if to_str @a ++ m == "neginf" then c{func_stack = (inf, (getNode c neg_childA, b)) : (tail $ func_stack c)}
     -- else if to_str @a ++ m == "posinf" then c{func_stack = (inf, (getNode c pos_childA, b)) : (tail $ func_stack c)}
     else error $ "undefined update string in traverse dcA: " ++ show m
 
 moveB :: Context -> String -> String -> Context
 moveB c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } m t =
-    if m == "pos child" then c{func_stack = (inf, (a, getNode c pos_childB))  : fs }
-    else if m == "neg child" then c{func_stack = (inf, (a, getNode c neg_childB))  : fs }
+    if m == "pos child" then c{func_stack = (inf, (a, getNode c pos_childB))  : fs } `debug` ("updated pos dcB to " ++ show (getDd c pos_childB))
+    else if m == "neg child" then c{func_stack = (inf, (a, getNode c neg_childB))  : fs } `debug` ("updated neg dcB to " ++ show (getDd c neg_childB))
     -- else if to_str @a ++ m == "neginf" then c{func_stack = (inf, (a, getNode c neg_childB)) : (tail $ func_stack c)}
     -- else if to_str @a ++ m == "posinf" then c{func_stack = (inf, (a, getNode c pos_childB)) : (tail $ func_stack c)}
     else error $ "undefined update string in traverse dcB: " ++ show m

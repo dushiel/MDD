@@ -121,6 +121,7 @@ ddOf c (Var (_, d)) = (c, d)
 
 
 -- create DD's containing a single path for testing, 
+-- place them in the context for availability during test cases
 -- well-defined w.r.t. to logic statements
 
 dc2 = path (c)              [(0, Dc1)] [2]
