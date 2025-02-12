@@ -18,6 +18,9 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-# HLINT ignore "Eta reduce" #-}
+{-# HLINT ignore "Move brackets to avoid $" #-}
+{-# HLINT ignore "Use guards" #-}
 
 module SODDmanipulation where
 -- todo-future : explore {-# UNPACK #-} !Int
@@ -27,6 +30,7 @@ import Data.Kind
 
 import DrawMDD (debug_manipulation)
 import Data.Bimap ()
+import Data.GraphViz.Parsing (Commitment)
 
 type DdManipulation = Context -> Node -> Node -> (Context, Node)
 
@@ -49,6 +53,8 @@ negation' c d@(node_id, EndInfNode a) = withCache_ c  d $ let
 negation' c (_, Leaf b) = (c, leaf $ not b) --`debug` ("returning : " ++ show (c, leaf $ not b))
 negation' c u@(_, Unknown) = (c, u)
 
+
+
 class Dd1 a where
     intersection :: Context -> NodeId -> NodeId -> (Context, Node)
     intersection' :: Context -> Node -> Node -> (Context, Node)
@@ -56,47 +62,43 @@ class Dd1 a where
     absorb :: Context -> NodeId -> NodeId -> (Context, Node)
     absorb' :: Context -> Node -> Node -> (Context, Node)
     absorb'' :: Context -> Node -> Node -> (Context, Node)
+    traverse_dcA :: String -> Context -> Node -> Context
+    traverse_dcB :: String -> Context -> Node -> Context
+    traverse_dc :: String -> Context -> NodeId -> NodeId -> Context
 
 
 instance (DdF3 a) => Dd1 a where
 
     intersection c a b = debug_manipulation  (intersection' @a c (getNode c a) (getNode c b)) "intersection" ("intersection" ++ to_str @a) c (getNode c a) (getNode c b)
         --  `debug` ("intersection: \n" ++ show a ++ " \n; "  ++ show b)
-    intersection'' c a b = debug_manipulation  (intersection' @a c a b) "intersection" ("intersection====================================" ++ to_str @a) c a b
+    intersection'' c a b = debug_manipulation  (intersection' @a c a b) "intersection" ("intersection==" ++ to_str @a) c a b
 
-    intersection' c a@(_, Leaf False) b = interLeaf @a c a b -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
+    intersection' c a@(_, Leaf False) b = interLeaf @a c a b
     intersection' c a b@(_, Leaf False) = interLeaf @a c a b
-    intersection' c a@(_, Leaf True) b = interLeaf @a c a b -- `debug` "LEa True inter" -- no cache lookup needed
+    intersection' c a@(_, Leaf True) b = interLeaf @a c a b
     intersection' c a b@(_, Leaf True) = interLeaf @a c a b
     intersection' c a@(_, Unknown) b@(_, Unknown) = (c , a)
     intersection' c a b@(_, Unknown) = interLeaf @a c a b
     intersection' c a@(_, Unknown) b = interLeaf @a c a b
 
-    -- intersection' c a@(_, Unknown) b@(b_id, Node positionB pos_childB neg_childB) = 
-    --     let (c', (pos_result, _)) = intersection @a c (0,0) pos_childB `debug` "node node"
-    --         (c'', (neg_result, _)) = intersection @a c' (0,0) neg_childB
-    --     in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionB pos_result neg_result)
-
-    -- intersection' c a@(a_id, Node positionA pos_childA neg_childA) b@(_, Unknown) = 
-    --     let (c', (pos_result, _)) = intersection @a c (0,0) pos_childA `debug` "node node"
-    --         (c'', (neg_result, _)) = intersection @a c' (0,0) neg_childA
-    --     in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
-
-    intersection' c a@(a_id, EndInfNode _) b@(b_id, Node{}) = withCache c (a, b, "inter") $ inferNodeA @a (intersection'' @a) c a b
+    intersection' c a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, "inter") $ inferNodeA @a (intersection'' @a) c a b
     intersection' c a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, "inter") $ inferNodeB @a (intersection'' @a) c a b
-    intersection' c a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, "inter") $
+    intersection' c a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, "inter") $ -- todo add traversal
         let (c', (r, _)) = intersection @a c ac bc
         in insert c' $ EndInfNode r
 
     intersection' c a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         -- Match
         | positionA == positionB =
-            let (c', (pos_result, _)) = intersection @a c pos_childA pos_childB `debug` "node node"
-                (c'', (neg_result, _)) = intersection @a c' neg_childA neg_childB
+            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
+                (c', (pos_result, _)) = intersection @a c_ pos_childA pos_childB
+
+                c_' = traverse_dc @a "neg child" (func_tail c') neg_childA neg_childB
+                (c'', (neg_result, _)) = intersection @a c_' neg_childA neg_childB -- todo add traversal
             in withCache c (a, b, "inter") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
         -- Mismatch, highest position gets an inferred node at position of the lowest
-        | positionA < positionB = inferNodeB @a (intersection'' @a) c a b `debug` "intersection-inferNodeB"
-        | positionA > positionB = inferNodeA @a (intersection'' @a) c a b `debug` "intersection-inferNodeA" 
+        | positionA < positionB = inferNodeB @a (intersection'' @a) c a b
+        | positionA > positionB = inferNodeA @a (intersection'' @a) c a b
 
     -- -- entering new domains
     intersection' c a@(a_id, InfNodes positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
@@ -117,6 +119,7 @@ instance (DdF3 a) => Dd1 a where
         | positionA > positionB = applyInfA @a c a b
     intersection' c a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, "inter") $ applyInfA @a c a b
     intersection' c a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, "inter") $ applyInfB @a c a b
+
 
     --todo add endinfnode (0,0) /(1,0) removal on leaf cases
     absorb c a b = debug_manipulation  (absorb' @a c (getNode c a) (getNode c b)) "absorb" ("absorb" ++ to_str @a) c (getNode c a) (getNode c b)
@@ -183,29 +186,95 @@ instance (DdF3 a) => Dd1 a where
 
     absorb' c a b = error $ "absorb , " ++ "a = " ++ show a ++ "  \n  b = " ++ show b
 
+    traverse_dc s c a b = traverse_dcB @a s (traverse_dcA @a s c (getNode c a)) (getNode c b)
+
+    -- now follow the cases where dc likely has to be traversed
+    traverse_dcA s c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs }  (_, Node idx _ _)
+        | positionA > idx = c
+        | positionA == idx = moveA c s (to_str @a)
+        | positionA < idx = moveA c' s (to_str @a)
+                            where c' = catchupA @a c idx
+
+    -- a has reached the end, it should always be ahead of a node, so do traversal until dc has reached its end
+    -- afterwards apply move
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } a@(_, Leaf _) = c --todo
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } a@(_, EndInfNode{}) = c --todo
+
+    -- both have reached the end - so prepare the next 
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, EndInfNode{}) = c -- todo
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, Leaf{}) = c -- todo
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf{}), b))  : fs } (_, Leaf{}) = c -- todo
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf{}), b))  : fs } (_, EndInfNode{}) = c -- todo
+
+    -- dc has reached the end, if a is a node it should always be behind 
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, Node idx _ _) = c
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf _), b))  : fs } (_, Node idx _ _) = c
+
+
+
+
+    -- dc / a is at a recursive point, should have passed a endinfnode if serial 
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } a@(_, Node idx _ _) = undefined
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, InfNodes idx dc p n) = undefined
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } (_, InfNodes idx dc p n) = undefined
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } (_, Leaf{}) = undefined
+    -- etc
+
+    traverse_dcA _ c@Context{func_stack = (inf, ((_, Unknown), b))  : fs } a = error "dc should not have unknowns.. yet"
+    traverse_dcA s c a = error $ "traverse_dcA. a= " ++ show a ++ "  c= " ++ show (func_stack c)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    traverse_dcB s c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } (_, Node idx _ _)
+        | positionB > idx = c
+        | positionB == idx = moveB c s (to_str @a)
+        | positionB < idx = moveB c' s (to_str @a)
+                            where c' = catchupB @a c idx
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, EndInfNode{})))  : fs } b = c
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Leaf _)))  : fs } b = c
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, InfNodes{})))  : fs } b = c
+    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Unknown)))  : fs } b = c
+
+
+
+
+
+
+-- apply traversal
 applyInf :: Context -> Node -> Node -> (Context, Node)
 applyInf c a b = debug_manipulation (applyInf' c a b) "intersection" "applyInf" c a b
-
-
 
 applyInf' :: Context -> Node -> Node -> (Context, Node)
 applyInf' c a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
     | positionA == positionB = -- todo! check which Inf type needs to be passed to func_stack, of current call or of upcoming (probably upcoming) 
         let
-            (c1, dcR) = intersection @Dc c{func_stack = (Dc, (getNode c dcA, getNode c dcB)) : func_stack c } dcA dcB
+            c1_ = traverse_dc @Dc "inf" c dcA dcB
+            (c1, dcR) = intersection @Dc c1_ dcA dcB
+            c2_ = traverse_dc @Neg "inf" (func_tail c1) nA nB
             (c2, nR) =
-                let (c2', r2') = intersection @Neg c1 nA nB
+                let (c2', r2') = intersection @Neg c2_ nA nB
                 in absorb'' @Neg c2' r2' dcR
+            c3_ = traverse_dc @Pos "inf" (func_tail c2) pA pB
             (c3, pR) =
-                let (c3', r3') = intersection @Pos c2 pA pB
+                let (c3', r3') = intersection @Pos c3_ pA pB
                 in absorb'' @Pos c3' r3' dcR
+            c4 = func_tail c3 --remove the func_stack layer, recursion has been resolved
 
-            c4 = c3{func_stack = tail $ func_stack c3} --remove the func_stack layer, recursion has been resolved
-            apply_elimRule (InfNodes _ (1,0) (0,0) (0,0)) = (c4, ((1,0), Leaf True))
-            apply_elimRule (InfNodes _ (2,0) (0,0) (0,0)) = (c4, ((2,0), Leaf False))
-            apply_elimRule (InfNodes _ (0,0) (0,0) (0,0)) = (c4, ((0,0), Unknown))
-            apply_elimRule d = insert c4 d
-        in apply_elimRule $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
+        in apply_elimRule c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
+
         -- else let
             -- (c1, dcR) = union @Dc c dcA dcB
             -- (c2, nR) =
@@ -214,15 +283,15 @@ applyInf' c a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB d
             -- (c3, pR) =
             --     let (c3', r') = union @Pos c3 pA pB
             --     in absorb @Pos c3' r' cR
-
-        --     apply_elimRule (InfNodes _ (1,0) (0,0) (0,0)) = (c1, ((1,0), Leaf True))
-        --     apply_elimRule (InfNodes _ (2,0) (0,0) (0,0)) = (c1, ((2,0), Leaf False))
-        --     apply_elimRule (InfNodes _ (0,0) (0,0) (0,0)) = (c1, ((0,0), Unknown))
-        --     apply_elimRule d = insert c1 d
         -- in apply_elimRule $ InfNodes positionA dcR nR pR
 
     | positionA > positionB = applyInfA @Dc c a b
     | positionA < positionB = applyInfB @Dc c a b
+    where
+        apply_elimRule c' (InfNodes _ (1,0) (0,0) (0,0)) = (c', ((1,0), Leaf True))
+        apply_elimRule c' (InfNodes _ (2,0) (0,0) (0,0)) = (c', ((2,0), Leaf False))
+        apply_elimRule c' (InfNodes _ (0,0) (0,0) (0,0)) = (c', ((0,0), Unknown))
+        apply_elimRule c' d = insert c' d
 applyInf' c a b = error_display "apply inf" c a b
 
 
@@ -237,6 +306,8 @@ class DdF3 a where
     applyInfB :: Context -> Node -> Node -> (Context, Node)
     to_str :: String
     interLeaf :: Context -> Node -> Node -> (Context, Node)
+    catchupA :: Context -> Int -> Context
+    catchupB :: Context -> Int -> Context
 
 
 instance DdF3 Dc where
@@ -267,7 +338,7 @@ instance DdF3 Dc where
     interLeaf c a@(_, Leaf False) b = (c, a) -- `debug` "LEa Fasle inter" -- no insert needed for Leafs
     interLeaf c a b@(_, Leaf False) = (c, b)
     interLeaf c a@(_, Unknown) b = (c, b) -- build up the resulting cache by inserting all results
-    interLeaf c a b@(_, Unknown) = (c, a) 
+    interLeaf c a b@(_, Unknown) = (c, a)
     interLeaf c a@(_, Leaf True) b = (c, b) -- `debug` "LEa True inter" -- no cache lookup needed
     interLeaf c a b@(_, Leaf True) = (c, a)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
@@ -275,14 +346,14 @@ instance DdF3 Dc where
     to_str = "Dc"
 
 instance DdF3 Pos where
-    inferNodeA f c a@(a_id, _) b@(b_id, Node positionB pos_childB neg_childB) = 
-        let 
+    inferNodeA f c a@(a_id, _) b@(b_id, Node positionB pos_childB neg_childB) =
+        let
             (c', r) = insert c (Node positionB a_id (0,0))
             (c'', r'@(r_id, r_dd)) = f c' r b
         in applyElimRule @Pos c'' r_dd `debug` ("inferNodeA pos : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeA _ c a b = error_display "inferNodeA pos" c a b
     inferNodeB f c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, _) =
-        let 
+        let
             (c', r) = insert c (Node positionA b_id (0,0))
             (c'', r'@(r_id, r_dd)) = f c' a r
         in applyElimRule @Pos c'' r_dd `debug` ("inferNodeB pos : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
@@ -301,23 +372,48 @@ instance DdF3 Pos where
     interLeaf c a b@(_, Leaf True) = (c, a)
     interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         let (_, (dcA, _)) = head $ func_stack c
-        in intersection'' @Pos c dcA b  `debug` ("using dcA in interLeaf pos: " ++ show dcA)  
-    interLeaf c a b@(_, Unknown) = 
+        in intersection'' @Pos c dcA b  `debug` ("using dcA in interLeaf pos: " ++ show dcA)
+    interLeaf c a b@(_, Unknown) =
         let (_, (_, dcB)) = head $ func_stack c
         in intersection'' @Pos c a dcB `debug` ("using dcB in interLeaf pos: " ++ show dcB)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
+
+    catchupA c@Context{func_stack = (inf, ((_, Node positionA pos_childA _), b))  : fs } idx
+        -- special case to go until the end
+        | idx == -1 = catchupA @Pos (moveA c "pos child" "pos") idx
+        -- catchup
+        | idx > positionA = catchupA @Pos (moveA c "pos child" "pos") idx
+        -- ending criteria
+        | idx < positionA = c
+        | idx == positionA = c
+    -- todo case infnode
+    -- in case of leaf, endinfnode  
+    catchupA c@Context{func_stack = _  : fs } idx = c
+    -- unknown should not be possible
+
+    catchupB c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB _ )))  : fs } idx
+        | idx == -1 = catchupB @Pos (moveB c "pos child" "pos") idx
+        -- catchup
+        | idx > positionB = catchupB @Pos (moveB c "pos child" "pos") idx
+        -- ending criteria
+        | idx < positionB = c
+        | idx == positionB = c
+    -- todo case infnode
+    -- in case of leaf, endinfnode  
+    catchupB c@Context{func_stack = _  : fs } idx = c
+    -- unknown should not be possible
 
     to_str = "Pos"
 
 instance DdF3 Neg where
     inferNodeA f c a@(a_id, _) b@(b_id, Node positionB pos_childB neg_childB) =
-        let 
+        let
             (c', r) = insert c (Node positionB (0,0) a_id)
             (c'', r'@(r_id, r_dd)) = f c' r b
         in applyElimRule @Neg c'' r_dd `debug` ("inferNodeA neg : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeA _ c a b = error_display "inferNodeA neg" c a b
     inferNodeB f c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, _) =
-        let 
+        let
             (c', r) = insert c (Node positionA (0,0) b_id)
             (c'', r'@(r_id, r_dd)) = f c' a r
         in applyElimRule @Neg c'' r_dd `debug` ("inferNodeB neg : " ++ show r'++ "\n" ++ show a ++ "\n" ++ show b)
@@ -335,10 +431,35 @@ instance DdF3 Neg where
     interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         let (_, (dcA, _)) = head $ func_stack c
         in intersection'' @Neg c dcA b  `debug` ("using dcA in interLeaf neg: " ++ show dcA)
-    interLeaf c a b@(_, Unknown) = 
+    interLeaf c a b@(_, Unknown) =
         let (_, (_, dcB)) = head $ func_stack c
         in intersection'' @Neg c a dcB  `debug` ("using dcB in interLeaf neg: " ++ show dcB)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
+
+    catchupA c@Context{func_stack = (inf, ((_, Node positionA _ neg_childA), b))  : fs } idx
+        | idx == -1 = catchupA @Neg (moveA c "neg child" "neg") idx
+        -- catchup
+        | idx > positionA = catchupA @Neg (moveA c "neg child" "neg") idx
+        -- ending criteria
+        | idx < positionA = c
+        | idx == positionA = c
+    -- todo case infnode
+    -- in case of leaf, endinfnode  
+    catchupA c@Context{func_stack = _  : fs } idx = c
+    -- unknown should not be possible
+
+    catchupB c@Context{func_stack = (inf, (a, (_, Node positionB _ neg_childB)))  : fs } idx
+        | idx == -1 = catchupB @Neg (moveB c "neg child" "neg") idx
+        -- catchup
+        | idx > positionB = catchupB @Neg (moveB c "neg child" "neg") idx
+        -- ending criteria
+        | idx < positionB = c
+        | idx == positionB = c
+    -- todo case infnode
+    -- in case of leaf, endinfnode  
+    catchupB c@Context{func_stack = _  : fs } idx = c
+    -- unknown should not be possible
+
     to_str = "Neg"
 
 class All a where
@@ -347,10 +468,34 @@ class All a where
 
 instance All (Context, Node)
 
+func_tail :: Context -> Context
+func_tail c@Context{func_stack = _ : fs } = c{func_stack = fs}
 
--- traverse :: Context -> String -> Context
--- traverse c instruction = case instruction of 
---     "pos child" -> c{func_stack = (pos_childA, pos_childB)  : tail $ func_stack c }
---     "neg child" -> c{func_stack = (pos_childA, neg_childB)  : tail $ func_stack c }
---     where 
---         dcA@(Node pos_childA neg_childB), dcB(Node pos_childB neg_childB) = head $ func_stack c 
+moveA :: Context -> String -> String -> Context
+moveA c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } m t =
+    if m == "pos child" then c{func_stack = (inf, (getNode c pos_childA, b))  : fs }
+    else if m == "neg child" then c{func_stack = (inf, (getNode c neg_childA, b))  : fs }
+    -- else if to_str @a ++ m == "neginf" then c{func_stack = (inf, (getNode c neg_childA, b)) : (tail $ func_stack c)}
+    -- else if to_str @a ++ m == "posinf" then c{func_stack = (inf, (getNode c pos_childA, b)) : (tail $ func_stack c)}
+    else error $ "undefined update string in traverse dcA: " ++ show m
+
+moveB :: Context -> String -> String -> Context
+moveB c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } m t =
+    if m == "pos child" then c{func_stack = (inf, (a, getNode c pos_childB))  : fs }
+    else if m == "neg child" then c{func_stack = (inf, (a, getNode c neg_childB))  : fs }
+    -- else if to_str @a ++ m == "neginf" then c{func_stack = (inf, (a, getNode c neg_childB)) : (tail $ func_stack c)}
+    -- else if to_str @a ++ m == "posinf" then c{func_stack = (inf, (a, getNode c pos_childB)) : (tail $ func_stack c)}
+    else error $ "undefined update string in traverse dcB: " ++ show m
+
+-- moveB :: Context -> NodeId -> Context
+-- moveB c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } childB = c{func_stack = (inf, (a, getNode c childB))  : fs }
+
+
+-- update_func_stack :: String -> Int -> Context -> Context
+-- update_func_stack s idx c@Context{func_stack = fl} = traverse_dcB s idx (traverse_dcA s idx c)
+-- todo map over full func_stack
+
+
+
+
+

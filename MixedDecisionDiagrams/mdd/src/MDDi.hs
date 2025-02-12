@@ -10,11 +10,9 @@
 {-# LANGUAGE TupleSections #-}
 module MDDi where
 import MDD
-import SODDmanipulation hiding (Neg, Or, And)
+import SODDmanipulation 
 import DrawMDD
 import qualified Data.HashMap.Lazy as HashMap
-import Data.GraphViz.Attributes.Complete (OutputMode(NodesFirst))
-import Data.Foldable (foldl', Foldable (fold))
 import qualified Data.Map as Map
 
 
@@ -85,10 +83,6 @@ c = Context{
 
 take_c :: (Context, Node) -> (Context -> Node -> Node -> (Context, Node)) -> (Context, Node) -> (Context, Node) -> (Context, Node)
 take_c (c, _) f (_,a) (_,b) = f c a b
-take_c_ :: (Context, Node) -> (Context -> Node -> (Context, Node)) -> (Context, Node) -> (Context, Node)
-take_c_ (c, _) f (_,a) = f c a
-take_c__ :: (Context, Node) -> (Context -> LevelL -> (Context, Node)) -> LevelL -> (Context, Node)
-take_c__ (c, _) f = f c
 
 data Form
     = Top
@@ -123,7 +117,6 @@ ddOf c (Impl a b) = ddOf c $ Or (Negate a) b
 ddOf c (ImplR a b) = ddOf c $ Or a (Negate b)
 ddOf c (PrpF l) = makeNode c l
 ddOf c (Var (_, d)) = (c, d)
-
 
 
 
