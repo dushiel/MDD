@@ -9,7 +9,6 @@ module MDD where
 import Debug.Trace ( trace )
 import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
-import Data.Foldable
 import qualified Data.Map as Map
 import System.Console.ANSI
 

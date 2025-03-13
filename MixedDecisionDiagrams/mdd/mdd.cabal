@@ -18,8 +18,6 @@ build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
-    src/MDDmanipulation.hs
-    src/DotMDD.hs
 
 source-repository head
   type: git
@@ -46,57 +44,9 @@ library
     , hashable
     , text
     , unordered-containers
+    , mtl
+    , tasty
+    , tasty-hunit
   default-language: Haskell2010
 
-executable mdd-exe
-  main-is: Main.hs
-  other-modules:
-      Paths_mdd
-  hs-source-dirs:
-      app
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      ansi-terminal
-    , base >=4.7 && <5
-    , bimap
-    , containers
-    , deepseq >=1.4.4.0
-    , fmt
-    , graphviz
-    , hashable
-    , mdd
-    , text
-    , unordered-containers
-  default-language: Haskell2010
 
-executable my-other-main
-  main-is: memo_proto.hs
-  other-modules:
-      DotMDD
-      DrawMDD
-      Example
-      Lib
-      Main
-      MDD
-      MDDi
-      MDDmanipulation
-      MyLib
-      ReadMDD
-      SODDmanipulation
-      Symbolic
-      Paths_mdd
-  hs-source-dirs:
-      src
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
-  build-depends:
-      ansi-terminal
-    , base >=4.7 && <5
-    , bimap
-    , containers
-    , deepseq >=1.4.4.0
-    , fmt
-    , graphviz
-    , hashable
-    , text
-    , unordered-containers
-  default-language: Haskell2010

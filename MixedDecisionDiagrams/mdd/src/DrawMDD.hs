@@ -301,7 +301,7 @@ settings = ShowSetting {
             ,   display_leaf_cases = True
             ,   display_end_infs = True
 
-            ,   debug_on = True
+            ,   debug_on = False
             ,   save_logs = False
 
             ,   debug_open = True
