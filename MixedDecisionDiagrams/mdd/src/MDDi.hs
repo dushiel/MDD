@@ -206,105 +206,105 @@ test = do
 -- combining simple boolean DD's
 
     -- intersection dc
-                (snd $ ddOf t_c $ And (Var dc2) (Negate $ Var dc2)) == (snd $ ddOf t_c Bot)  `debug5` "######## test nr 0"
-            ,   (snd $ ddOf t_c $ And (Var dc3) (Var dc3)) == (snd $ ddOf t_c (Var dc3)) `debug5` "######## test nr 1"
-            ,   (snd $ ddOf t_c $ And (Var dc2) (Negate $ Var dc2)) == (snd $ ddOf t_c Bot)  `debug5` "######## test nr 2"
-            ,   (snd $ ddOf t_c $ And (Var dc2) (Var dc3)) == (snd $ ddOf t_c $ And (Var dc3) (Var dc2))  `debug5` "######## test nr 3"
+    --             (snd $ ddOf t_c $ And (Var dc2) (Negate $ Var dc2)) == (snd $ ddOf t_c Bot)  `debug5` "######## test nr 0"
+    --         ,   (snd $ ddOf t_c $ And (Var dc3) (Var dc3)) == (snd $ ddOf t_c (Var dc3)) `debug5` "######## test nr 1"
+    --         ,   (snd $ ddOf t_c $ And (Var dc2) (Negate $ Var dc2)) == (snd $ ddOf t_c Bot)  `debug5` "######## test nr 2"
+    --         ,   (snd $ ddOf t_c $ And (Var dc2) (Var dc3)) == (snd $ ddOf t_c $ And (Var dc3) (Var dc2))  `debug5` "######## test nr 3"
     
-    -- intersection neg
-            ,   (snd $ ddOf t_c (And (Var n'2) (Var n2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 4"
-            ,   (snd $ ddOf t_c (And (Var n3) (Var n2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 5"
-            ,   (snd $ ddOf t_c (And (Var n2) (Var n3))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 6"
-            ,   (snd $ ddOf t_c (And (Var n'2) (Var n'3))) == (snd $ ddOf t_c (Var n'23)) `debug5` "######## test nr 7"
+    -- -- intersection neg
+    --         ,   (snd $ ddOf t_c (And (Var n'2) (Var n2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 4"
+    --         ,   (snd $ ddOf t_c (And (Var n3) (Var n2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 5"
+    --         ,   (snd $ ddOf t_c (And (Var n2) (Var n3))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 6"
+    --         ,   (snd $ ddOf t_c (And (Var n'2) (Var n'3))) == (snd $ ddOf t_c (Var n'23)) `debug5` "######## test nr 7"
 
-    -- intersection pos
-            ,   (snd $ ddOf t_c (And (Var p3) (Var p2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 8"
-            ,   (snd $ ddOf t_c (And (Var p3) (Var p3))) == (snd $ ddOf t_c (Var p3)) `debug5` "######## test nr 9"
-            ,   (snd $ ddOf t_c (And (Var p'3) (Var p3))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 10"
-            ,   (snd $ ddOf t_c $ And (Var p'2) (Var p2)) == (snd $ ddOf t_c Bot)`debug5` "######## test nr 11"
+    -- -- intersection pos
+    --         ,   (snd $ ddOf t_c (And (Var p3) (Var p2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 8"
+    --         ,   (snd $ ddOf t_c (And (Var p3) (Var p3))) == (snd $ ddOf t_c (Var p3)) `debug5` "######## test nr 9"
+    --         ,   (snd $ ddOf t_c (And (Var p'3) (Var p3))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 10"
+    --         ,   (snd $ ddOf t_c $ And (Var p'2) (Var p2)) == (snd $ ddOf t_c Bot)`debug5` "######## test nr 11"
 
-    -- intersection mixed 
-            -- Dc with neg
-            -- , (snd $ ddOf t_c $ And (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Or (Var n2) (Var n23))  `debug5` "######## test nr "
-            -- , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr "
-            -- -- Dc with neg
-            -- , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var n'2)) == (snd $ ddOf t_c $ Var n'2)  `debug5` "######## test nr "
-            -- , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr "
-            -- etc
+    -- -- intersection mixed 
+    --         -- Dc with neg
+    --         , (snd $ ddOf t_c $ And (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Or (Var n2) (Var n23))  `debug5` "######## test nr "
+    --         , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr "
+    --         -- Dc with neg
+    --         , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var n'2)) == (snd $ ddOf t_c $ Var n'2)  `debug5` "######## test nr "
+    --         , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr "
+    --         -- etc
 
 
---     -- union dc
---             ,   (snd $ ddOf t_c $ Or (Var dc2) (Negate $ Var dc2)) == (snd $ ddOf t_c Top)  
---     -- union neg
---             ,   (snd $ ddOf t_c (Or (Var n'3) (Var n'2))) == (snd $ ddOf t_c Top) 
---     -- union pos
---             ,   (snd $ ddOf t_c (Or (Var p'3) (Var p'2))) == (snd $ ddOf t_c Top) 
---             ,   (snd $ ddOf t_c $ Or (Var p'2) (Var p2)) == (snd $ ddOf t_c Top)  
+    -- -- union dc
+               (snd $ ddOf t_c $ Or (Var dc2) (Negate $ Var dc2)) == (snd $ ddOf t_c Top)  `debug5` "######## test nr union base"
+    -- union neg
+            ,   (snd $ ddOf t_c (Or (Var n'3) (Var n'2))) == (snd $ ddOf t_c Top) `debug5` "######## test nr union base"
+    -- union pos
+            ,   (snd $ ddOf t_c (Or (Var p'3) (Var p'2))) == (snd $ ddOf t_c Top) `debug5` "######## test nr union base"
+            ,   (snd $ ddOf t_c $ Or (Var p'2) (Var p2)) == (snd $ ddOf t_c Top)  `debug5` "######## test nr union base"
 --     -- union mixed 
 
 
---     -- union and intersection dc
---             ,   (snd $ ddOf t_c (Or (And (Var dc2) (Var dc3)) (Var dc3))) == (snd $ ddOf t_c $ Var dc3)  
---             ,   (snd $ ddOf t_c (Or (And (Var dc2) (Var dc3)) (Var dc2))) == (snd $ ddOf t_c $ Var dc2)  
---             ,   (snd $ ddOf t_c (And (Or (Var dc2) (Var dc3))  (Var dc3))) == (snd $ ddOf t_c $ Var dc3)  
---             ,   (snd $ ddOf t_c (And (Or (Var dc2) (Var dc3))  (Var dc2))) == (snd $ ddOf t_c $ Var dc2)  
---     -- union and intersection neg
---             ,   (snd $ ddOf t_c $ And (Or (Var n2) (Var n3)) (Var n3)) == (snd $ ddOf t_c $ Var n3)  
---             ,   (snd $ ddOf t_c $ And (Or (Var n2) (Var n3)) (Var n2)) == (snd $ ddOf t_c $ Var n2)
---             ,   (snd $ ddOf t_c (Or (And (Var n2) (Var n3)) (Var n3))) == (snd $ ddOf t_c (Var n3))  
---             ,   (snd $ ddOf t_c (Or (And (Var n2) (Var n3)) (Var n2))) == (snd $ ddOf t_c $ Var n2)    
---     -- union and intersection pos
---     -- union and intersection mixed
+    -- union and intersection dc
+    --         ,   (snd $ ddOf t_c (Or (And (Var dc2) (Var dc3)) (Var dc3))) == (snd $ ddOf t_c $ Var dc3)  `debug5` "######## test nr union containing"
+    --         ,   (snd $ ddOf t_c (Or (And (Var dc2) (Var dc3)) (Var dc2))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr union containing"
+    --         ,   (snd $ ddOf t_c (And (Or (Var dc2) (Var dc3))  (Var dc3))) == (snd $ ddOf t_c $ Var dc3)  `debug5` "######## test nr union containing"
+    --         ,   (snd $ ddOf t_c (And (Or (Var dc2) (Var dc3))  (Var dc2))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr union containing"
+    -- -- union and intersection neg
+    --         ,   (snd $ ddOf t_c $ And (Or (Var n2) (Var n3)) (Var n3)) == (snd $ ddOf t_c $ Var n3)  `debug5` "######## test nr union containing"
+    --         ,   (snd $ ddOf t_c $ And (Or (Var n2) (Var n3)) (Var n2)) == (snd $ ddOf t_c $ Var n2)`debug5` "######## test nr union containing"
+    --         ,   (snd $ ddOf t_c (Or (And (Var n2) (Var n3)) (Var n3))) == (snd $ ddOf t_c (Var n3))  `debug5` "######## test nr union containing"
+    --         ,   (snd $ ddOf t_c (Or (And (Var n2) (Var n3)) (Var n2))) == (snd $ ddOf t_c $ Var n2)   `debug5` "######## test nr union containing" 
+    -- union and intersection pos
+    -- union and intersection mixed
 
 
 -- -- combining DD's spread over 2 levels of inf domains
 
 --     -- Dc only
---             ,   (snd $ ddOf t_c $ And (Or (Var dc2) (Var dc_2)) (Var dc_2)) == (snd $ ddOf t_c $ Var dc_2)  
---             ,   (snd $ ddOf t_c $ And (Or (Var dc2) (Var dc_2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  
-            ,   (snd $ ddOf t_c $ And (And (Var dc_2) (Var dc__2)) (Var dc_2)) == (snd $ ddOf t_c $ And (Var dc_2) (Var dc__2)) `debug5` "#### test "
-            ,   (snd $ ddOf t_c $ And (And (Var dc_2) (Var dc__2)) (Var dc_2)) == (snd $ ddOf t_c $ And (Var dc_2) (Var dc__2)) `debug5` "#### test "
+            ,   (snd $ ddOf t_c $ And (Or (Var dc2) (Var dc_2)) (Var dc_2)) == (snd $ ddOf t_c $ Var dc_2)  `debug5` "######## test nr union containing"
+            ,   (snd $ ddOf t_c $ And (Or (Var dc2) (Var dc_2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr union containing"
+            -- ,   (snd $ ddOf t_c $ And (And (Var dc_2) (Var dc__2)) (Var dc_2)) == (snd $ ddOf t_c $ And (Var dc_2) (Var dc__2)) `debug5` "#### test "
+            -- ,   (snd $ ddOf t_c $ And (And (Var dc_2) (Var dc__2)) (Var dc_2)) == (snd $ ddOf t_c $ And (Var dc_2) (Var dc__2)) `debug5` "#### test "
 
 --     -- neg1 only
---             ,   (snd $ ddOf t_c $ Or (And (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  
---             ,   (snd $ ddOf t_c $ Or (And (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Var n_2)  
---             ,   (snd $ ddOf t_c $ And (Or (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  
---             ,   (snd $ ddOf t_c $ Or (Or (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Or (Var n2) (Var n_2))  
-            ,   (snd $ ddOf t_c $ And (And (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ And (Var n2) (Var n_2))  `debug5` "#### test -"
---             ,   (snd $ ddOf t_c $ Or (And (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Var  n_2)  
-            ,   (snd $ ddOf t_c $ And (And (Var n_2) (Var n__2)) (Var n_2)) == (snd $ ddOf t_c $ And (Var n_2) (Var n__2)) `debug5` "#### test --"
-            ,   (snd $ ddOf t_c $ And (Var n_2) (And (Var n_2) (Var n__2))) == (snd $ ddOf t_c $ And (Var n_2) (Var n__2)) `debug5` "#### test ---"
+--             ,   (snd $ ddOf t_c $ Or (And (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ Or (And (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Var n_2)  `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ And (Or (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ Var n2)  `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ Or (Or (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Or (Var n2) (Var n_2))  `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ And (And (Var n2) (Var n_2)) (Var n2)) == (snd $ ddOf t_c $ And (Var n2) (Var n_2))  `debug5` "#### test -"
+--             ,   (snd $ ddOf t_c $ Or (And (Var n2) (Var n_2)) (Var n_2)) == (snd $ ddOf t_c $ Var  n_2)  `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ And (And (Var n_2) (Var n__2)) (Var n_2)) == (snd $ ddOf t_c $ And (Var n_2) (Var n__2)) `debug5` "#### test --"
+--             ,   (snd $ ddOf t_c $ And (Var n_2) (And (Var n_2) (Var n__2))) == (snd $ ddOf t_c $ And (Var n_2) (Var n__2)) `debug5` "#### test ---"
 
---     -- neg0 only
---             ,   (snd $ ddOf t_c $ Or (And (Var n'2) (Var n'_2)) (Var n'2)) == (snd $ ddOf t_c $ ( Var n'2 )) 
---             ,   (snd $ ddOf t_c $ Or (And (Var n'2) (Var n'_2)) (Var n'_2)) == (snd $ ddOf t_c $ ( Var n'_2 )) 
---             ,   (snd $ ddOf t_c $ And (Or (Var n'2) (Var n'_2)) (Var n'2)) == (snd $ ddOf t_c $ ( Var n'2 )) 
---             ,   (snd $ ddOf t_c $ Or (Or (Var n'2) (Var n'_2)) (Var n'_2)) == (snd $ ddOf t_c $ Or ( Var n'2) (Var n'_2))  
-            ,   (snd $ ddOf t_c $ And (And (Var n'2) (Var n'_2)) (Var n'2)) == (snd $ ddOf t_c $ And ( Var n'2) (Var n'_2))  `debug5` "#### test ----"
---             ,   (snd $ ddOf t_c $ Or (And (Var n'2) (Var n'_2)) (Var n'_2)) == (snd $ ddOf t_c $ ( Var n'_2 )) 
-
-
---     -- pos1 only
-            ,   (snd $ ddOf t_c $ And (And (Var p_2) (Var p__2)) (Var p_2)) == (snd $ ddOf t_c $ And (Var p_2) (Var p__2)) `debug5` "#### test -----"
-            ,   (snd $ ddOf t_c $ And (Var p_2) (And (Var p__2) (Var p_2))) == (snd $ ddOf t_c $ And (Var p_2) (Var p__2)) `debug5` "#### test ----="
---             ,   (snd $ ddOf t_c $ Or (And (Var p2) (Var p_2)) (Var p2)) == (snd $ ddOf t_c $ ( Var p2 ) )
---             ,   (snd $ ddOf t_c $ Or (And (Var p2) (Var p_2)) (Var p_2)) == (snd $ ddOf t_c $ ( Var p_2 )) 
---             ,   (snd $ ddOf t_c $ And (Or (Var p2) (Var p_2)) (Var p2)) == (snd $ ddOf t_c $ ( Var p2 )) 
---             ,   (snd $ ddOf t_c $ Or (Or (Var p2) (Var p_2)) (Var p_2)) == (snd $ ddOf t_c $ Or ( Var p2) (Var p_2))  
-            ,   (snd $ ddOf t_c $ And (And (Var p2) (Var p_2)) (Var p2)) == (snd $ ddOf t_c $ And ( Var p2) (Var p_2)) `debug5` "#### test =" 
---             ,   (snd $ ddOf t_c $ Or (And (Var p2) (Var p_2)) (Var p_2)) == (snd $ ddOf t_c $ ( Var p_2 )) 
+-- --     -- neg0 only
+--             ,   (snd $ ddOf t_c $ Or (And (Var n'2) (Var n'_2)) (Var n'2)) == (snd $ ddOf t_c $ ( Var n'2 )) `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ Or (And (Var n'2) (Var n'_2)) (Var n'_2)) == (snd $ ddOf t_c $ ( Var n'_2 )) `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ And (Or (Var n'2) (Var n'_2)) (Var n'2)) == (snd $ ddOf t_c $ ( Var n'2 )) `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ Or (Or (Var n'2) (Var n'_2)) (Var n'_2)) == (snd $ ddOf t_c $ Or ( Var n'2) (Var n'_2)) `debug5` "######## test nr union containing" 
+--             ,   (snd $ ddOf t_c $ And (And (Var n'2) (Var n'_2)) (Var n'2)) == (snd $ ddOf t_c $ And ( Var n'2) (Var n'_2))  `debug5` "#### test ----"
+--             ,   (snd $ ddOf t_c $ Or (And (Var n'2) (Var n'_2)) (Var n'_2)) == (snd $ ddOf t_c $ ( Var n'_2 )) `debug5` "######## test nr union containing"
 
 
---     -- pos0 only
---             ,   (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) 
---             ,   (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'_2)) == (snd $ ddOf t_c $ ( Var p'_2 )) 
---             ,   (snd $ ddOf t_c $ Or (And (Var p'2) (Var p'_2)) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) 
-            ,   (snd $ ddOf t_c $ And (And (Var p'2) (Var p'_2)) (Var p'_2)) == (snd $ ddOf t_c $ And ( Var p'2) (Var p'_2) ) `debug5` "#### test =="
---             ,   (snd $ ddOf t_c $ Or (Or (Var p'2) (Var p'_2)) (Var p'2)) == (snd $ ddOf t_c $ Or (Var p'2) (Var p'_2))  
+-- --     -- pos1 only
+--             ,   (snd $ ddOf t_c $ And (And (Var p_2) (Var p__2)) (Var p_2)) == (snd $ ddOf t_c $ And (Var p_2) (Var p__2)) `debug5` "#### test -----"
+--             ,   (snd $ ddOf t_c $ And (Var p_2) (And (Var p__2) (Var p_2))) == (snd $ ddOf t_c $ And (Var p_2) (Var p__2)) `debug5` "#### test ----="
+--             ,   (snd $ ddOf t_c $ Or (And (Var p2) (Var p_2)) (Var p2)) == (snd $ ddOf t_c $ ( Var p2 ) )`debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ Or (And (Var p2) (Var p_2)) (Var p_2)) == (snd $ ddOf t_c $ ( Var p_2 )) `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ And (Or (Var p2) (Var p_2)) (Var p2)) == (snd $ ddOf t_c $ ( Var p2 )) `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ Or (Or (Var p2) (Var p_2)) (Var p_2)) == (snd $ ddOf t_c $ Or ( Var p2) (Var p_2))  `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ And (And (Var p2) (Var p_2)) (Var p2)) == (snd $ ddOf t_c $ And ( Var p2) (Var p_2)) `debug5` "#### test =" 
+--             ,   (snd $ ddOf t_c $ Or (And (Var p2) (Var p_2)) (Var p_2)) == (snd $ ddOf t_c $ ( Var p_2 )) `debug5` "######## test nr union containing"
 
---     -- mixing all cases?
-            ,   (snd $ ddOf t_c $ And (And (Var n'_2) (Var n__2)) (Var n_2)) == (snd $ ddOf t_c $ Bot) 
-            ,   (snd $ ddOf t_c $ And (And (Var n'_2) (Var n__2)) (Var n'_2)) == (snd $ ddOf t_c $ And (Var n'_2) (Var n__2)) `debug5` "#### test ==="
+
+-- --     -- pos0 only
+--             ,   (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ And (Or (Var p'2) (Var p'_2) ) (Var p'_2)) == (snd $ ddOf t_c $ ( Var p'_2 )) `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ Or (And (Var p'2) (Var p'_2)) (Var p'2)) == (snd $ ddOf t_c $ ( Var p'2 )) `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ And (And (Var p'2) (Var p'_2)) (Var p'_2)) == (snd $ ddOf t_c $ And ( Var p'2) (Var p'_2) ) `debug5` "#### test =="
+--             ,   (snd $ ddOf t_c $ Or (Or (Var p'2) (Var p'_2)) (Var p'2)) == (snd $ ddOf t_c $ Or (Var p'2) (Var p'_2))  `debug5` "######## test nr union containing"
+
+-- --     -- mixing all cases?
+--             ,   (snd $ ddOf t_c $ And (And (Var n'_2) (Var n__2)) (Var n_2)) == (snd $ ddOf t_c $ Bot) `debug5` "######## test nr union containing"
+--             ,   (snd $ ddOf t_c $ And (And (Var n'_2) (Var n__2)) (Var n'_2)) == (snd $ ddOf t_c $ And (Var n'_2) (Var n__2)) `debug5` "#### test ==="
             
 
 

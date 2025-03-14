@@ -184,14 +184,14 @@ insert_id k v nm = case HashMap.lookup k nm of
        Just result -> case match_alternative v result of -- there is something inserted at this key
          Just (nr, t_entry) -> -- increment the reference countshow_dd settings c b_id
               ((k, nr) :: NodeId, HashMap.insert k (Map.insert nr (Entry{dd = v, reference_count=reference_count t_entry + 1}) result) nm)
-              `debug` (colorize "green" "insert: " ++ show k ++ " increment reference count : " ++ show (reference_count t_entry + 1))  -- it is the same Dd object, thus increment its reference count and return the NodeId with its map
+              -- `debug` (colorize "green" "insert: " ++ show k ++ " increment reference count : " ++ show (reference_count t_entry + 1))  -- it is the same Dd object, thus increment its reference count and return the NodeId with its map
          Nothing ->  -- it is not the same Dd object, get unused key in map
               let k' = getFreeKey result in
               ((k, k') :: NodeId, HashMap.insert k (Map.insert k' (Entry{dd = v, reference_count=1}) result) nm)
-              `debug` (colorize "green" "insert: " ++ show k ++ " as alt with freekey: " ++ show k')
+              -- `debug` (colorize "green" "insert: " ++ show k ++ " as alt with freekey: " ++ show k')
        Nothing -> -- key not found, insert current key with new alternatives map, and set its key 0 to value
         ((k, 0) :: NodeId, HashMap.insert k (Map.insert 0 Entry{dd = v, reference_count=1} Map.empty) nm)
-        `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
+        -- `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
 
 -- show_dd :: NodeLookup -> NodeId -> String
 -- -- show_dd c d = show c ++ show_dd s{display_context=False} c d
