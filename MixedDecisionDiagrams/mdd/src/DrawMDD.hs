@@ -12,6 +12,12 @@ import Control.DeepSeq (deepseq)
 import System.Console.ANSI
 import qualified Data.HashMap.Lazy as HashMap
 import Debug.Trace (trace)
+import System.Process (readProcessWithExitCode)
+import System.Exit (ExitCode(..))
+import System.FilePath ((</>))  -- Import for path manipulation
+import System.Directory (getCurrentDirectory)
+import Control.Monad (when) 
+import Data.List (intercalate)
 
 indentInit :: [String] -> [String]
 indentInit [] = []
@@ -41,27 +47,7 @@ indentInfChildren ns = map indentInfInit (init ns) ++ [indentInfLast (last ns)]
 appLast :: [String] -> String -> [String]
 appLast ss s = init ss ++ [last ss ++ s]
 
--- showTree0' :: Context -> (Int -> String) -> Node -> (Context, [String])
--- showTree0' c _ (_, Leaf True) = (c, ["   "])
--- showTree0' c _ (_, Leaf False) = (c, ["[0]"])
--- showTree0' c f d@(id, Node a l r) = withCache' c'' d $ (("("++ f a ++")") ++ col Dull Blue (show_id id)) : concat (indentChildren [s1, s2])
---     where
---     (c', s1) = showTree0' c f (l, getDd c l)
---     (c'',s2) = showTree0' c' f (r, getDd c r)
--- showTree0' c f x = showTree' c f x
 
--- showTree1' :: Context -> (Int -> String) -> Node -> (Context, [String])
--- showTree1' c _ (_, Leaf True) = (c, ["[1]"])
--- showTree1' c _ (_, Leaf False) = (c, ["   "])
--- showTree1' c f d@(id, Node a l r) = withCache' c'' d $ (("("++ f a ++")") ++ col Dull Blue (show_id id)) : concat (indentChildren [s1, s2])
---     where
---     (c', s1) = showTree1' c f (l, getDd c l)
---     (c'',s2) = showTree1' c' f (r, getDd c r)
--- showTree1' c f x = showTree' c f x
-
-
--- take_c_show :: (Context, [String]) -> (Context -> NodeId -> (Context, [String])) -> (Context, NodeId) -> (Context, [String])
--- take_c_show (c, _) f (_,a) = f c a
 showTree'' :: Context -> (Int -> String) -> Node -> [String]
 showTree'' a b c = snd $ showTree' a b c
 
@@ -146,17 +132,17 @@ data Show_setting = ShowSetting {
 }
 
 
-format :: String -> String
-format s = format' $ words s
+-- format :: String -> String
+-- format s = format' $ words s
 
-format' :: [String] -> String
-format' [] = "" -- Base case: return an empty string for an empty list
-format' (n : n2 : n3 : ns) =
-    colorize "red" n ++ colorize "green" n2 ++ colorize "" n3 ++ format' ns
-format' (n : n2 : ns) =
-    colorize "red" n ++ colorize "green" n2 ++ format' ns
-format' (n : ns) =
-    n ++ format' ns
+-- format' :: [String] -> String
+-- format' [] = "" -- Base case: return an empty string for an empty list
+-- format' (n : n2 : n3 : ns) =
+--     colorize "red" n ++ colorize "green" n2 ++ colorize "" n3 ++ format' ns
+-- format' (n : n2 : ns) =
+--     colorize "red" n ++ colorize "green" n2 ++ format' ns
+-- format' (n : ns) =
+--     n ++ format' ns
 
 
 show_dd :: Show_setting -> Context -> Node -> String
@@ -309,3 +295,104 @@ settings = ShowSetting {
             ,   debug_shorten_close = False
             ,   debug_func_stack = False
 }
+
+
+
+-- |====================================== Dot stuff
+
+-- write_to_dot :: (Context, Node) -> IO()
+-- write_to_dot (c, rootNode) = do 
+--     let dotGraphString = createDotGraph c rootNode
+--     writeFile "mygraph.dot" dotGraphString
+--     putStrLn "DOT graph written to mygraph.dot"
+--     system "dot -Tpng mygraph.dot -o mygraph.png"
+--     -- dot -Tsvg mygraph.dot -o mygraph.svg
+
+
+generateGraphImage :: Context -> Node -> IO (Bool, String, FilePath)
+generateGraphImage context rootNode = do
+    let dotFileName = "graph.dot"
+    let imageFileName = "graph.png"
+    currentDir <- getCurrentDirectory
+    let dotFilePath = currentDir </> dotFileName
+    let imageFilePath = currentDir </> imageFileName
+
+    let dotGraphString = createDotGraph context rootNode
+    writeFile dotFilePath dotGraphString
+
+    (exitCode, stdout, stderr) <- readProcessWithExitCode "dot" ["-Tpng", "-o", imageFileName, dotFileName] ""
+
+    case exitCode of
+        ExitSuccess -> return (True, "Image generated successfully.", imageFilePath)
+        ExitFailure _ -> return (False, "Error generating image: " ++ stderr, "")
+
+-- | Generates a PNG image and prints the result. Convenient for GHCi.
+generateAndShow :: (Context, Node) -> IO ()
+generateAndShow (context, rootNode) = do
+    (success, message, imageFilePath) <- generateGraphImage context rootNode
+    putStrLn message
+    when success $ putStrLn $ "Image file: " ++ imageFilePath
+
+
+
+-- Function to create the .dot graph
+createDotGraph :: Context -> Node -> String
+createDotGraph context startNode =
+  "digraph G {\n" ++
+  "  node [shape=box];\n" ++  -- Optional: Set a default node shape
+  intercalate "\n" (nodeDefs ++ edgeDefs) ++ "\n}\n"
+  where
+    (nodeDefs, edgeDefs, _) = createDotGraph' context startNode Map.empty
+
+createDotGraph' :: Context -> Node -> Map.Map NodeId String -> ([String], [String], Map.Map NodeId String)
+createDotGraph' context node@(nodeId, nodeData) visited =
+    case Map.lookup nodeId visited of
+        Just existingLabel -> ([], [], visited)  -- Node already visited
+        Nothing ->
+            let (nodeLabel, nodeShape) = case nodeData of
+                  Leaf True  -> ("1", "square")
+                  Leaf False -> ("0", "square")
+                  Unknown    -> ("?", "square")
+                  Node a _ _ -> (show a, "circle")
+                  InfNodes a _ _ _ -> ("{" ++ show a ++ "}", "trapezium")
+                  EndInfNode _ -> ("", "diamond")
+
+                nodeIdStr = "node" ++ show (abs (fst nodeId)) ++ "_" ++ show (snd nodeId)
+                nodeAttributes = case nodeData of
+                    EndInfNode _ -> " [label=\"" ++ nodeLabel ++ "\", shape=" ++ nodeShape ++ ", fontsize=8, margin=\"0.08,0.08\", width=0.35, height=0.35];"
+                    _            -> " [label=\"" ++ nodeLabel ++ "\", shape=" ++ nodeShape ++ ", width=0.5, height=0.25, margin=\"0.05,0.001\"];"
+                newNodeDefs = [nodeIdStr ++ nodeAttributes]
+                updatedVisited = Map.insert nodeId nodeIdStr visited
+
+                (childNodeDefs, childEdgeDefs, finalVisited) = case nodeData of
+                    Node _ l r ->
+                        let (lDefs, lEdges, v1) = createDotGraph' context (getNode context l) updatedVisited
+                            (rDefs, rEdges, v2) = createDotGraph' context (getNode context r) v1
+                            newEdges = [nodeIdStr ++ " -> " ++ (v2 Map.! l) ++ " [style=\"solid\", arrowsize=0.75,  headlabel=\"\"];",
+                                         nodeIdStr ++ " -> " ++ (v2 Map.! r) ++ " [style=\"dashed\", arrowsize=0.75, headlabel=\"\"];"]
+                        in (lDefs ++ rDefs, lEdges ++ rEdges ++ newEdges, v2)
+
+                    InfNodes _ dc n p ->
+                        let (dcDefs, dcEdges, v1) = createDotGraph' context (getNode context dc) updatedVisited
+                            (pDefs, pEdges, v2) = if p /= (0,0) then createDotGraph' context (getNode context p) v1 else ([], [], v1)
+                            (nDefs, nEdges, v3) = if n /= (0,0) then createDotGraph' context (getNode context n) v2 else ([], [], v2)
+                            -- labeldistance and labelangle
+                            newEdges = if dc /= (0,0) then
+                                         [nodeIdStr ++ " -> " ++ (v3 Map.! dc) ++ " [style=\"dotted\", tailport=\"sw\", taillabel=\"Dc\", labeldistance=2, fontsize=12, arrowsize=0.75];"]
+                                         else []
+                            newEdges2 = if p /= (0,0)
+                                        then [nodeIdStr ++ " -> " ++ (v3 Map.! p) ++ " [style=\"dotted\", tailport=\"se\", taillabel=\"Pos\", labeldistance=2, fontsize=12, arrowsize=0.75];"]
+                                        else []
+
+                            newEdges3 =  if n /= (0,0)
+                                         then [nodeIdStr ++ " -> " ++ (v3 Map.! n) ++ " [style=\"dotted\", taillabel=\"Neg\", labeldistance=2, fontsize=12, arrowsize=0.75];"]
+                                         else []
+                        in (dcDefs ++ pDefs ++ nDefs, dcEdges ++ pEdges ++ nEdges ++ newEdges ++ newEdges2 ++newEdges3, v3)
+
+                    EndInfNode cons ->
+                        let (consDefs, consEdges, v1) = createDotGraph' context (getNode context cons) updatedVisited
+                            newEdges = [nodeIdStr ++ " -> " ++ (v1 Map.! cons) ++ " [style=\"dotted\", arrowsize=0.75, headlabel=\"\"];"]
+                        in (consDefs, consEdges ++ newEdges, v1)
+                    _ -> ([], [], updatedVisited)
+
+            in (newNodeDefs ++ childNodeDefs, childEdgeDefs, finalVisited)

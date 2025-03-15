@@ -47,6 +47,9 @@ library
     , mtl
     , tasty
     , tasty-hunit
+    , process >= 1.6.18.0
+    , filepath >= 1.4.2.2
+    , directory >= 1.3.7.1
   default-language: Haskell2010
 
 
