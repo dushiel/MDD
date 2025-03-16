@@ -17,7 +17,9 @@ import System.Exit (ExitCode(..))
 import System.FilePath ((</>))  -- Import for path manipulation
 import System.Directory (getCurrentDirectory)
 import Control.Monad (when) 
-import Data.List (intercalate)
+import Data.List (intercalate, sortBy, groupBy)
+import Data.Function (on)
+import Data.Ord (comparing)
 
 indentInit :: [String] -> [String]
 indentInit [] = []
@@ -312,15 +314,17 @@ settings = ShowSetting {
 generateGraphImage :: Context -> Node -> Bool -> IO (Bool, String, FilePath)
 generateGraphImage context rootNode color = do
     let dotFileName = "graph.dot"
-    let imageFileName = "graph.png"
+    let pngFileName = "graph.png"
+    let svgFileName = "graph.svg"
     currentDir <- getCurrentDirectory
     let dotFilePath = currentDir </> dotFileName
-    let imageFilePath = currentDir </> imageFileName
+    let imageFilePath = currentDir </> pngFileName
 
     let dotGraphString = createDotGraph context rootNode color
     writeFile dotFilePath dotGraphString 
 
-    (exitCode, stdout, stderr) <- readProcessWithExitCode "dot" ["-Tpng", "-o", imageFileName, dotFileName] ""
+    (exitCode, stdout, stderr) <- readProcessWithExitCode "dot" ["-Tpng", "-o", pngFileName, dotFileName] ""
+    (exitCode, stdout, stderr) <- readProcessWithExitCode "dot" ["-Tsvg", "-o", svgFileName, dotFileName] ""
 
     case exitCode of
         ExitSuccess -> return (True, "Image generated successfully.", imageFilePath)
@@ -340,15 +344,6 @@ generateAndShow_c (context, rootNode) = do
     when success $ putStrLn $ "Image file: " ++ imageFilePath
 
 -- Function to create the .dot graph
-createDotGraph :: Context -> Node -> Bool -> String
-createDotGraph context startNode colorized =
-  "digraph G {\n" ++
-  "  node [shape=box];\n" ++
-  (if colorized then "  graph [bgcolor=white];\n" else "") ++
-  intercalate "\n" (nodeDefs ++ edgeDefs) ++ "\n}\n"
-  where
-    (nodeDefs, edgeDefs, _) = createDotGraph' context startNode Map.empty colorized
-
 
 createDotGraph' :: Context -> Node -> Map.Map NodeId String -> Bool -> ([String], [String], Map.Map NodeId String)
 createDotGraph' context node@(nodeId, nodeData) visited colorized =
@@ -359,14 +354,14 @@ createDotGraph' context node@(nodeId, nodeData) visited colorized =
                   Leaf True  -> ("1", "square", if colorized then "forestgreen" else "")
                   Leaf False -> ("0", "square", if colorized then "red" else "")
                   Unknown    -> ("?", "square", if colorized then "DarkOrange" else "")
-                  Node a _ _ -> (show a, "circle", "")
-                  InfNodes a _ _ _ -> ("{" ++ show a ++ "}", "trapezium", if colorized then "SteelBlue" else "") -- Dark purple
+                  Node position _ _ -> (show position, "circle", "")
+                  InfNodes position _ _ _ -> ("{" ++ show position ++ "}", "trapezium", if colorized then "SteelBlue" else "")
                   EndInfNode _ -> ("", "diamond", "")
 
                 nodeIdStr = "node" ++ show (abs (fst nodeId)) ++ "_" ++ show (snd nodeId)
                 nodeAttributes = case nodeData of
-                    EndInfNode _ -> " [label=\"" ++ nodeLabel ++ "\", shape=" ++ nodeShape ++ ", fontsize=8, margin=\"0.08,0.08\", width=0.35, height=0.35" ++ (if null fontColor then "" else ", fontcolor=" ++ fontColor) ++ "];"
-                    _            -> " [label=\"" ++ nodeLabel ++ "\", shape=" ++ nodeShape ++ ", width=0.5, height=0.25, margin=\"0.05,0.001\"" ++ (if null fontColor then "" else ", fontcolor=" ++ fontColor) ++ "];"
+                    EndInfNode _ -> " [label=\"" ++ nodeLabel ++ "\", shape=" ++ nodeShape ++ ", fontsize=8, margin=\"0.08,0.08\", width=0.3, height=0.3" ++ (if null fontColor then "" else ", fontcolor=" ++ fontColor) ++ "];"
+                    _            -> " [label=\"" ++ nodeLabel ++ "\", shape=" ++ nodeShape ++ ", width=0.5, height=0.25, margin=\"0.025,0.001\"" ++ (if null fontColor then "" else ", fontcolor=" ++ fontColor) ++ "];"
                 newNodeDefs = [nodeIdStr ++ nodeAttributes]
                 updatedVisited = Map.insert nodeId nodeIdStr visited
 
@@ -387,14 +382,14 @@ createDotGraph' context node@(nodeId, nodeData) visited colorized =
                             edgeColorStart = if colorized then "[fontcolor=dimgray, " else "["
                             edgeColorEnd = "]"
                             newEdges = if dc /= (0,0) then
-                                         [nodeIdStr ++ " -> " ++ (v3 Map.! dc) ++ " " ++ edgeColorStart ++ "style=\"dotted\", tailport=\"sw\", taillabel=\"Dc\", labeldistance=2, fontsize=12, arrowsize=0.75" ++ edgeColorEnd]
+                                         [nodeIdStr ++ " -> " ++ (v3 Map.! dc) ++ " " ++ edgeColorStart ++ "style=\"dotted\", taillabel=\"Dc\", labeldistance=2, fontsize=12, arrowsize=0.75" ++ edgeColorEnd]
                                          else []
                             newEdges2 = if p /= (0,0)
-                                        then [nodeIdStr ++ " -> " ++ (v3 Map.! p) ++ " " ++ edgeColorStart ++ "style=\"dotted\", tailport=\"se\", taillabel=\"Pos\", labeldistance=2, fontsize=12, arrowsize=0.75" ++ edgeColorEnd]
+                                        then [nodeIdStr ++ " -> " ++ (v3 Map.! p) ++ " " ++ edgeColorStart ++ "style=\"dotted\", taillabel=\"Pos\", labeldistance=2, fontsize=12, arrowsize=0.75" ++ edgeColorEnd]
                                         else []
 
                             newEdges3 =  if n /= (0,0)
-                                         then [nodeIdStr ++ " -> " ++ (v3 Map.! n) ++ " " ++ edgeColorStart ++ "style=\"dotted\", taillabel=\"Neg\", labeldistance=2, fontsize=12, arrowsize=0.75" ++ edgeColorEnd]
+                                         then [nodeIdStr ++ " -> " ++ (v3 Map.! n) ++ " " ++ edgeColorStart ++ "style=\"dotted\", labeldistance=2, fontsize=12, arrowsize=0.75" ++ edgeColorEnd]
                                          else []
                         in (dcDefs ++ pDefs ++ nDefs, dcEdges ++ pEdges ++ nEdges ++ newEdges ++ newEdges2 ++newEdges3, v3)
 
@@ -404,5 +399,79 @@ createDotGraph' context node@(nodeId, nodeData) visited colorized =
                             newEdges = [nodeIdStr ++ " -> " ++ (v1 Map.! cons) ++ " [style=\"dotted\", arrowsize=0.75, " ++ edgeColor ++ ", headlabel=\"\"];"]
                         in (consDefs, consEdges ++ newEdges, v1)
                     _ -> ([], [], updatedVisited)
-
             in (newNodeDefs ++ childNodeDefs, childEdgeDefs, finalVisited)
+
+
+createDotGraph :: Context -> Node -> Bool -> String
+createDotGraph context startNode colorized =
+  "digraph G {\n" ++
+  "  node [shape=box];\n" ++
+  (if colorized then "  graph [bgcolor=white];\n" else "") ++
+  "  edge [style=\"mydotted\"];\n" ++
+  "  \"mydotted\"[style=\"invis\", height=0.0,width=0.0, fixedsize=true, label=\"\", peripheries=0];\n" ++
+  "{\n" ++
+  "    rank=sink;\n" ++
+  "    " ++ intercalate ";\n    " (leafAndUnknownNodes context startNode) ++ ";\n" ++
+  "  }\n" ++
+  (createInfNodesSubgraphs context startNode) ++  -- Add InfNodes subgraphs
+  intercalate "\n" (nodeDefs ++ edgeDefs) ++ "\n}\n"
+  where
+    (nodeDefs, edgeDefs, _) = createDotGraph' context startNode Map.empty colorized
+
+-- Helper function to collect leaf and unknown nodes
+leafAndUnknownNodes :: Context -> Node -> [String]
+leafAndUnknownNodes context startNode = collectNodes startNode []
+  where
+    collectNodes :: Node -> [String] -> [String]
+    collectNodes (nodeId, nodeData) acc =
+      case nodeData of
+        Leaf _    -> nodeStr : acc
+        Unknown   -> nodeStr : acc
+        Node _ l r -> collectNodes (getNode context r) (collectNodes (getNode context l) acc)
+        InfNodes _ dc n p ->
+          let acc1 = if dc /= (0,0) then collectNodes (getNode context dc) acc else acc
+              acc2 = if p /= (0,0) then collectNodes (getNode context p) acc1 else acc1
+              acc3 = if n /= (0,0) then collectNodes (getNode context n) acc2 else acc2
+          in acc3
+        EndInfNode cons -> collectNodes (getNode context cons) acc
+        _ -> acc
+      where
+        nodeStr = "node" ++ show (abs (fst nodeId)) ++ "_" ++ show (snd nodeId)
+
+-- Function to create subgraphs for InfNodes (Corrected Accumulator Logic)
+createInfNodesSubgraphs :: Context -> Node -> String
+createInfNodesSubgraphs context startNode = intercalate "\n" $ map subgraphString (groupByPosition $ collectInfNodes startNode [])
+    where
+      subgraphString :: [(NodeId, Int)] -> String
+      subgraphString nodesWithIds =
+        "{\n" ++
+        "    rank=same;\n" ++
+        "    " ++ intercalate ";\n    " (map (\(nodeId,_) -> "node" ++ show (abs (fst nodeId)) ++ "_" ++ show (snd nodeId)) nodesWithIds) ++ ";\n" ++
+        "  }" `debug` 
+        ("{\n" ++
+        "    rank=same;\n" ++
+        "    " ++ intercalate ";\n    " (map (\(nodeId,_) -> "node" ++ show (abs (fst nodeId)) ++ "_" ++ show (snd nodeId)) nodesWithIds) ++ ";\n" ++
+        "  }")
+
+      groupByPosition :: [(NodeId, Int)] -> [[(NodeId, Int)]]
+      groupByPosition l = groupByNonConsecutive snd l 
+
+      collectInfNodes :: Node -> [(NodeId, Int)] -> [(NodeId, Int)]
+      collectInfNodes (nodeId, nodeData) acc =
+        case nodeData of
+          Node _ l r     -> collectInfNodes (getNode context r) (collectInfNodes (getNode context l) acc) 
+          InfNodes pos dc n p ->
+            let acc0 = (nodeId, pos) : acc
+                acc1 = collectInfNodes (getNode context dc) acc0 
+                acc2 = collectInfNodes (getNode context p) acc1 
+                acc3 = collectInfNodes (getNode context n) acc2 
+            in acc3
+          EndInfNode cons -> collectInfNodes (getNode context cons) acc  
+          _              -> acc
+
+
+groupByNonConsecutive :: (Eq b, Ord b) => (a -> b) -> [a] -> [[a]]
+groupByNonConsecutive f xs = 
+  let sorted = sortBy (comparing f) xs
+  in groupBy ((==) `on` f) sorted
+

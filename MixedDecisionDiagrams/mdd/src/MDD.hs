@@ -38,7 +38,7 @@ data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
 
  -- sets the inference type when traversing through the tree depending which literal type is inf. We place them at the top (of each sub path of infinite domain). We can have multiple branches due to the multiple possible contexts.
 data Dd =  Node Int NodeId NodeId               -- left = pos (solid line in graph), right = neg (dotted line in graph)
-                | InfNodes Int NodeId NodeId NodeId -- in order of types Dc, Neg, Pos (how can we indicate this in the dot graph?)
+                | InfNodes Int NodeId NodeId NodeId -- in order of types Dc, Neg, Pos
                 | EndInfNode NodeId
                 | Leaf Bool
                 | Unknown
