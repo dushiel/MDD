@@ -182,6 +182,7 @@ instance (DdF3 a) => Dd1 a where
     absorb c a b = debug_manipulation  (absorb' @a c (getNode c a) (getNode c b)) "absorb" ("absorb" ++ to_str @a) c (getNode c a) (getNode c b)
     absorb'' c a b = debug_manipulation  (absorb' @a c a b) "absorb" ("absorb" ++ to_str @a) c a b
     absorb' :: Context -> Node -> Node -> (Context, Node)
+    -- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")   
     absorb' c a dc@(_, Unknown) = (c, a)
     absorb' c a@(_, Unknown) dc = (c, ((0,0), Unknown))
     absorb' c a@(_, Leaf _) dc = if a == dc then (c, ((0,0), Unknown)) else (c, a)
@@ -628,37 +629,78 @@ func_alt s c@Context{func_stack = _ : fs } alt_head =
 func_alt s c@Context{func_stack = [] } alt_head = 
     if s == "Dc" then c else c{func_stack = [alt_head]} `debug` "applying func_alt"
 
-moveA :: Context -> String -> String -> Context
-moveA c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } m t =
-    if m == "pos child" then c{func_stack = (inf, (getNode c pos_childA, b))  : fs } `debug` ("updated pos dcA to " ++ show (getDd c pos_childA))
-    else if m == "neg child" then c{func_stack = (inf, (getNode c neg_childA, b))  : fs } `debug` ("updated neg dcA to " ++ show (getDd c neg_childA))
-    -- else if to_str @a ++ m == "neginf" then c{func_stack = (inf, (getNode c neg_childA, b)) : (tail $ func_stack c)}
-    -- else if to_str @a ++ m == "posinf" then c{func_stack = (inf, (getNode c pos_childA, b)) : (tail $ func_stack c)}
-    else error $ "undefined update string in traverse dcA for node pattern: " ++ show m
-moveA c@Context{func_stack = (inf, ((_, EndInfNode childA), b))  : fs } m t =
-    if m == "endinf" then c{func_stack = (inf, (getNode c childA, b))  : fs } `debug` ("updated endinf dcA to " ++ show (getDd c childA))
-    else error $ "undefined update string in traverse dcA for node pattern: " ++ show m
-moveA c@Context{func_stack = (inf, ((_, InfNodes positionA dcA pA nA), b))  : fs } m t =
-    if m == "inf pos" then c{func_stack = (inf, (getNode c pA, b))  : fs } `debug` ("updated inf dcA to pA " ++ show (getDd c pA))
-    else if m == "inf ned" then c{func_stack = (inf, (getNode c nA, b))  : fs } `debug` ("updated pos dcA to nA " ++ show (getDd c nA))
-    else if m == "inf dc" then c{func_stack = (inf, (getNode c dcA, b))  : fs } `debug` ("updated inf dcA to dcA " ++ show (getDd c dcA))
-    else error $ "undefined update string in traverse dcA for node pattern: " ++ show m
+processStackElementA :: Context -> String -> String -> (Inf, (Node, Node)) -> (Inf, (Node, Node))
+processStackElementA c m t element@(inf, (a, b)) =
+    case a of -- Pattern match on the Node part
+        (_, Node positionA pos_childA neg_childA) ->
+            let new_a = if m == "pos child" then getNode c pos_childA
+                        else if m == "neg child" then getNode c neg_childA
+                        -- Add conditions for "neginf", "posinf" if needed, potentially involving 'inf'
+                        else error $ "moveA: undefined update string '" ++ m ++ "' for Node pattern on element: " ++ show element
+            in (inf, (new_a, b))
 
+        (_, EndInfNode childA) ->
+            let new_a = if m == "endinf" then getNode c childA
+                        else error $ "moveA: undefined update string '" ++ m ++ "' for EndInfNode pattern on element: " ++ show element
+            in (inf, (new_a, b))
+
+        (_, InfNodes positionA dcA pA nA) ->
+            let new_a = if m == "inf pos" then getNode c pA
+                        else if m == "inf ned" then getNode c nA
+                        else if m == "inf dc" then getNode c dcA
+                        else error $ "moveA: undefined update string '" ++ m ++ "' for InfNodes pattern on element: " ++ show element
+            in (inf, (new_a, b))
+
+        -- Add cases for any other constructors of Node if they exist
+        _ -> error $ "moveA: Unhandled Node pattern in processStackElementA: " ++ show a
+
+
+-- Modified moveA applying the logic to all stack elements
+moveA :: Context -> String -> String -> Context
+moveA c m t
+  | null (func_stack c) = c -- Nothing to do if the stack is empty
+  | otherwise =
+      let processFn = processStackElementA c m t -- Partially apply the helper
+          new_func_stack = map processFn (func_stack c)
+      -- You could add tracing here if needed, e.g.:
+      -- trace ("moveA processed stack with '" ++ m ++ "'. New head: " ++ show (head new_func_stack)) $
+      in c { func_stack = new_func_stack }
+
+-- Helper function to process a single stack element for moveB logic
+processStackElementB :: Context -> String -> String -> (Inf, (Node, Node)) -> (Inf, (Node, Node))
+processStackElementB c m t element@(inf, (a, b)) =
+    case b of -- Pattern match on the Node part
+        (_, Node positionB pos_childB neg_childB) ->
+            let new_b = if m == "pos child" then getNode c pos_childB
+                        else if m == "neg child" then getNode c neg_childB
+                        -- Add conditions for "neginf", "posinf" if needed, potentially involving 'inf'
+                        else error $ "moveB: undefined update string '" ++ m ++ "' for Node pattern on element: " ++ show element
+            in (inf, (a, new_b))
+
+        (_, EndInfNode childB) ->
+            let new_b = if m == "endinf" then getNode c childB
+                        else error $ "moveB: undefined update string '" ++ m ++ "' for EndInfNode pattern on element: " ++ show element
+            in (inf, (a, new_b))
+
+        (_, InfNodes positionB dcB pB nB) ->
+            let new_b = if m == "inf pos" then getNode c pB
+                        else if m == "inf ned" then getNode c nB
+                        else if m == "inf dc" then getNode c dcB
+                        else error $ "moveB: undefined update string '" ++ m ++ "' for InfNodes pattern on element: " ++ show element
+            in (inf, (a, new_b))
+
+        -- Add cases for any other constructors of Node if they exist
+        _ -> error $ "moveB: Unhandled Node pattern in processStackElementB: " ++ show b
+
+-- Modified moveB applying the logic to all stack elements
 moveB :: Context -> String -> String -> Context
-moveB c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } m t =
-    if m == "pos child" then c{func_stack = (inf, (a, getNode c pos_childB))  : fs } `debug` ("updated pos dcB to " ++ show (getDd c pos_childB))
-    else if m == "neg child" then c{func_stack = (inf, (a, getNode c neg_childB))  : fs } `debug` ("updated neg dcB to " ++ show (getDd c neg_childB))
-    -- else if to_str @a ++ m == "neginf" then c{func_stack = (inf, (a, getNode c neg_childB)) : (tail $ func_stack c)}
-    -- else if to_str @a ++ m == "posinf" then c{func_stack = (inf, (a, getNode c pos_childB)) : (tail $ func_stack c)}
-    else error $ "undefined update string in traverse dcB: " ++ show m
-moveB c@Context{func_stack = (inf, (a, (_, EndInfNode childB)))  : fs } m t =
-    if m == "endinf" then c{func_stack = (inf, (a, getNode c childB))  : fs } `debug` ("updated endinf dcB to " ++ show (getDd c childB))
-    else error $ "undefined update string in traverse dcB for node pattern: " ++ show m
-moveB c@Context{func_stack = (inf, (a, (_, InfNodes positionB dcB pB nB)))  : fs } m t =
-    if m == "inf pos" then c{func_stack = (inf, (a, getNode c pB))  : fs } `debug` ("updated inf dcB to pB " ++ show (getDd c pB))
-    else if m == "inf ned" then c{func_stack = (inf, (a, getNode c nB))  : fs } `debug` ("updated pos dcB to nB " ++ show (getDd c nB))
-    else if m == "inf dc" then c{func_stack = (inf, (a, getNode c dcB))  : fs } `debug` ("updated inf dcB to dcB " ++ show (getDd c dcB))
-    else error $ "undefined update string in traverse dcB for node pattern: " ++ show m
+moveB c m t
+  | null (func_stack c) = c -- Nothing to do if the stack is empty
+  | otherwise =
+      let processFn = processStackElementB c m t -- Partially apply the helper
+          new_func_stack = map processFn (func_stack c)
+      -- You could add tracing here if needed
+      in c { func_stack = new_func_stack }
 
 -- update_func_stack :: String -> Int -> Context -> Context
 -- update_func_stack s idx c@Context{func_stack = fl} = traverse_dcB s idx (traverse_dcA s idx c)
