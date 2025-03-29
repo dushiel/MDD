@@ -128,10 +128,10 @@ instance (DdF3 a) => Dd1 a where
     intersection c a b = debug_manipulation  (intersection' @a c (getNode c a) (getNode c b)) "intersection" ("intersection" ++ to_str @a) c (getNode c a) (getNode c b)
     intersection'' c a b = debug_manipulation  (intersection' @a c a b) "intersection" ("intersection==" ++ to_str @a) c a b
 
-    intersection' c a@(_, Leaf False) b = interLeaf @a c a b `debug` "inter False @a"
-    intersection' c a b@(_, Leaf False) = interLeaf @a c a b `debug` "inter False @b"
-    intersection' c a@(_, Leaf True) b = interLeaf @a c a b `debug` "inter True @a"
-    intersection' c a b@(_, Leaf True) = interLeaf @a c a b `debug` "inter True @b"
+    intersection' c a@(_, Leaf False) b = interLeaf @a c a b -- `debug` "inter False @a"
+    intersection' c a b@(_, Leaf False) = interLeaf @a c a b -- `debug` "inter False @b"
+    intersection' c a@(_, Leaf True) b = interLeaf @a c a b -- `debug` "inter True @a"
+    intersection' c a b@(_, Leaf True) = interLeaf @a c a b -- `debug` "inter True @b"
     intersection' c a@(_, Unknown) b@(_, Unknown) = (c , a)
     intersection' c a b@(_, Unknown) = interLeaf @a c a b
     intersection' c a@(_, Unknown) b = interLeaf @a c a b
@@ -197,7 +197,7 @@ instance (DdF3 a) => Dd1 a where
     absorb' c a@(_, Node positionA pos_childA neg_childA) dc@(dc_id, Leaf _) =
         let (c', (pos_result, _)) = absorb @a c pos_childA dc_id
             (c'', (neg_result, _)) = absorb @a c' neg_childA dc_id
-        in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result) `debug` ("absorb " ++ to_str @a ++ show (Node positionA pos_result neg_result))
+        in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result) -- `debug` ("absorb " ++ to_str @a ++ show (Node positionA pos_result neg_result))
 
     absorb' c a@(_, Node positionA pos_childA neg_childA)  dc@(dc_id, Node positionD pos_childD neg_childD)
         -- No mismatch
@@ -471,13 +471,13 @@ instance DdF3 Pos where
         let
             (c', r) = insert c (Node positionB a_id (0,0))
             (c'', r'@(r_id, r_dd)) = f c' r b
-        in applyElimRule @Pos c'' r_dd `debug` ("inferNodeA pos : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
+        in applyElimRule @Pos c'' r_dd --`debug` ("inferNodeA pos : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeA _ c a b = error_display "inferNodeA pos" c a b
     inferNodeB f c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, _) =
         let
             (c', r) = insert c (Node positionA b_id (0,0))
             (c'', r'@(r_id, r_dd)) = f c' a r
-        in applyElimRule @Pos c'' r_dd `debug` ("inferNodeB pos : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
+        in applyElimRule @Pos c'' r_dd --`debug` ("inferNodeB pos : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeB _ c a b = error_display "infernodeB pos" c a b
 
     applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
@@ -494,10 +494,10 @@ instance DdF3 Pos where
     interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos intersection 
         let (_, (dcA, _)) = head $ func_stack c
-        in intersection'' @Pos c dcA b  `debug` ("using dcA in interLeaf pos: " ++ show dcA)
+        in intersection'' @Pos c dcA b  --`debug` ("using dcA in interLeaf pos: " ++ show dcA)
     interLeaf c a b@(_, Unknown) =
         let (_, (_, dcB)) = head $ func_stack c
-        in intersection'' @Pos c a dcB `debug` ("using dcB in interLeaf pos: " ++ show dcB)
+        in intersection'' @Pos c a dcB --`debug` ("using dcB in interLeaf pos: " ++ show dcB)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
 
     --  Unknown is stronger than True in finite + union context
@@ -509,10 +509,10 @@ instance DdF3 Pos where
     unionLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos union 
         let (_, (dcA, _)) = head $ func_stack c
-        in union'' @Pos c dcA b  `debug` ("using dcA in unionLeaf pos: " ++ show dcA)
+        in union'' @Pos c dcA b  --`debug` ("using dcA in unionLeaf pos: " ++ show dcA)
     unionLeaf c a b@(_, Unknown) =
         let (_, (_, dcB)) = head $ func_stack c
-        in union'' @Pos c a dcB `debug` ("using dcB in unionLeaf pos: " ++ show dcB)
+        in union'' @Pos c a dcB --`debug` ("using dcB in unionLeaf pos: " ++ show dcB)
     unionLeaf _ _ _ = error "wrong arguments for union leaf case"
 
     catchupA c@Context{func_stack = (inf, ((_, Node positionA pos_childA _), b))  : fs } idx
@@ -547,13 +547,13 @@ instance DdF3 Neg where
         let
             (c', r) = insert c (Node positionB (0,0) a_id)
             (c'', r'@(r_id, r_dd)) = f c' r b
-        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeA neg : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
+        in applyElimRule @Neg c'' r_dd --`debug` ("inferNodeA neg : " ++ show r' ++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeA _ c a b = error_display "inferNodeA neg" c a b
     inferNodeB f c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, _) =
         let
             (c', r) = insert c (Node positionA (0,0) b_id)
             (c'', r'@(r_id, r_dd)) = f c' a r
-        in applyElimRule @Neg c'' r_dd `debug` ("inferNodeB neg : " ++ show r'++ "\n" ++ show a ++ "\n" ++ show b)
+        in applyElimRule @Neg c'' r_dd --`debug` ("inferNodeB neg : " ++ show r'++ "\n" ++ show a ++ "\n" ++ show b)
     inferNodeB _ c a b = error_display "infernodeB neg" c a b
 
     applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
@@ -567,10 +567,10 @@ instance DdF3 Neg where
     interLeaf c a b@(_, Leaf True) = (c, a)
     interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         let (_, (dcA, _)) = head $ func_stack c
-        in intersection'' @Neg c dcA b  `debug` ("using dcA in interLeaf neg: " ++ show dcA)
+        in intersection'' @Neg c dcA b  --`debug` ("using dcA in interLeaf neg: " ++ show dcA)
     interLeaf c a b@(_, Unknown) =
         let (_, (_, dcB)) = head $ func_stack c
-        in intersection'' @Neg c a dcB  `debug` ("using dcB in interLeaf neg: " ++ show dcB)
+        in intersection'' @Neg c a dcB  --`debug` ("using dcB in interLeaf neg: " ++ show dcB)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
 
     unionLeaf c a@(_, Leaf True) b = (c, a) -- (future if i want to remove absorb) True might be absorbed, then return Unknown
@@ -579,10 +579,10 @@ instance DdF3 Neg where
     unionLeaf c a b@(_, Leaf False) = (c, a)
     unionLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a False or True or a dd, then do the above or continue with the dd 
         let (_, (dcA, _)) = head $ func_stack c
-        in union'' @Neg c dcA b  `debug` ("using dcA in unionLeaf neg: " ++ show dcA)
+        in union'' @Neg c dcA b  --`debug` ("using dcA in unionLeaf neg: " ++ show dcA)
     unionLeaf c a b@(_, Unknown) =
         let (_, (_, dcB)) = head $ func_stack c
-        in union'' @Neg c a dcB  `debug` ("using dcB in unionLeaf neg: " ++ show dcB)
+        in union'' @Neg c a dcB  --`debug` ("using dcB in unionLeaf neg: " ++ show dcB)
     unionLeaf _ _ _ = error "wrong arguments for union leaf case"
 
     catchupA c@Context{func_stack = (inf, ((_, Node positionA _ neg_childA), b))  : fs } idx
@@ -619,15 +619,15 @@ instance All (Context, Node)
 
 func_tail :: String -> Context -> Context
 func_tail s c@Context{func_stack = _ : fs } =
-    if s == "Dc" then c else c{func_stack = fs} `debug` "applying func_tail"
+    if s == "Dc" then c else c{func_stack = fs} --`debug` "applying func_tail"
 func_tail s c@Context{func_stack = [] } = 
     if s == "Dc" then c else error "func_tail should not be called on an empty func_stack"
 
 func_alt :: String -> Context -> (Inf, (Node,Node)) -> Context
 func_alt s c@Context{func_stack = _ : fs } alt_head =
-    if s == "Dc" then c else c{func_stack = alt_head : fs} `debug` "applying func_alt"
+    if s == "Dc" then c else c{func_stack = alt_head : fs} --`debug` "applying func_alt"
 func_alt s c@Context{func_stack = [] } alt_head = 
-    if s == "Dc" then c else c{func_stack = [alt_head]} `debug` "applying func_alt"
+    if s == "Dc" then c else c{func_stack = [alt_head]} --`debug` "applying func_alt"
 
 processStackElementA :: Context -> String -> String -> (Inf, (Node, Node)) -> (Inf, (Node, Node))
 processStackElementA c m t element@(inf, (a, b)) =
