@@ -21,6 +21,7 @@
 {-# HLINT ignore "Eta reduce" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
 {-# HLINT ignore "Use guards" #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module SODDmanipulation where
 -- todo-future : explore {-# UNPACK #-} !Int
@@ -64,11 +65,8 @@ class Dd1 a where
     absorb :: Context -> NodeId -> NodeId -> (Context, Node)
     absorb' :: Context -> Node -> Node -> (Context, Node)
     absorb'' :: Context -> Node -> Node -> (Context, Node)
-    traverse_dcA :: String -> Context -> Node -> Context
-    traverse_dcB :: String -> Context -> Node -> Context
-    traverse_dc :: String -> Context -> NodeId -> NodeId -> Context
-    applyInf :: Context -> String -> Node -> Node -> (Context, Node)
-    applyInf' :: Context -> String -> Node -> Node -> (Context, Node)
+
+
 
 
 
@@ -243,157 +241,6 @@ instance (DdF3 a) => Dd1 a where
     --             f b' = apply @a Absorb c "absorb" (t_and_rInferA b') a dc
     absorb' c a b = error $ "absorb , " ++ "a = " ++ show a ++ "  \n  b = " ++ show b
 
-    -- apply traversal
-    applyInf :: Context -> String ->  Node -> Node -> (Context, Node)
-    applyInf c s a b = debug_manipulation (applyInf' @a c s a b) s "applyInf" c a b
-
-    applyInf' :: Context -> String -> Node -> Node -> (Context, Node)
-    applyInf' c s a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
-        | positionA == positionB =  if s == "intersection" then
-            let
-                -- if there is an above layer
-                -- update func stack so its dc's are on the same level as a and b (if not in dc context) 
-                c_ = if func_stack c == [] then c else 
-                    traverse_dc @a "inf" c a_id b_id
-                
-                (c1, dcR) = intersection @Dc c_ dcA dcB
-
-                -- to remeber the dcA and dcB specifically for this neg intersection call, we place them on the func stack
-                -- whenever, in this call, encountering (endinfnode) it should be taken off the func stack
-                c2_ = c1{func_stack = (Neg, (getNode c1 dcA, getNode c1 dcB)) : func_stack c1}  
-                (c2, nR) =
-                    let (c2', r2') = intersection @Neg c2_ nA nB
-                    in absorb'' @Neg c2' r2' dcR
-
-                -- todo ugly type specification from func_tail here, inside intersection we wan to skip on Dc.. 
-                c3_ = c2{func_stack = (Pos, (getNode c1 dcA, getNode c1 dcB)) : func_stack (func_tail "" c2)}
-                (c3, pR) =
-                    let (c3', r3') = intersection @Pos c3_ pA pB
-                    in absorb'' @Pos c3' r3' dcR
-
-                c4 = func_tail (to_str @a) c3 --remove the func_stack layer
-            in apply_elimRule c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
-
-            else let
-                -- if there is an above layer
-                -- update func stack so its dc's are on the same level as a and b (if not in dc context) 
-                c_ = if func_stack c == [] then c else 
-                    traverse_dc @a "inf" c a_id b_id
-                
-                (c1, dcR) = union @Dc c_ dcA dcB
-
-                -- to remeber the dcA and dcB specifically for this neg union call, we place them on the func stack
-                -- whenever, in this call, encountering (endinfnode) it should be taken off the func stack
-                c2_ = c1{func_stack = (Neg, (getNode c1 dcA, getNode c1 dcB)) : func_stack c1}  
-                (c2, nR) =
-                    let (c2', r2') = union @Neg c2_ nA nB
-                    in absorb'' @Neg c2' r2' dcR
-
-                -- todo ugly type specification from func_tail here, inside union we wan to skip on Dc.. 
-                c3_ = c2{func_stack = (Pos, (getNode c1 dcA, getNode c1 dcB)) : func_stack (func_tail "" c2)}
-                (c3, pR) =
-                    let (c3', r3') = union @Pos c3_ pA pB
-                    in absorb'' @Pos c3' r3' dcR
-
-                c4 = func_tail (to_str @a) c3 --remove the func_stack layer
-            in apply_elimRule c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
-
-        | positionA > positionB = applyInfA @a c s a b
-        | positionA < positionB = applyInfB @a c s a b
-        where
-            apply_elimRule c' (InfNodes _ (1,0) (0,0) (0,0)) = (c', ((1,0), Leaf True))
-            apply_elimRule c' (InfNodes _ (2,0) (0,0) (0,0)) = (c', ((2,0), Leaf False))
-            apply_elimRule c' (InfNodes _ (0,0) (0,0) (0,0)) = (c', ((0,0), Unknown))
-            apply_elimRule c' d@(InfNodes _ consq (0,0) (0,0)) = case getDd c' consq of 
-                EndInfNode d' -> (c', getNode c' d')
-                _ -> insert c' d
-            apply_elimRule c' d = insert c' d
-    applyInf' c s a b = error_display "apply inf" c a b
-
-    traverse_dc s c a b = if to_str @a == "Dc" then c else traverse_dcB @a s (traverse_dcA @a s c (getNode c a)) (getNode c b)
-
-    -- now follow the cases where dc likely has to be traversed
-    traverse_dcA s c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs }  (_, Node idx _ _)
-        | positionA > idx = c
-        | positionA == idx = moveA c s (to_str @a)
-        | positionA < idx = moveA c' s (to_str @a)
-                            where c' = catchupA @a c idx
-
-    -- a has reached the end, it should always be ahead of a node, so do traversal until dc has reached its end
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } a@(_, Leaf _) = catchupA @a c (-1)
-    traverse_dcA s c@Context{func_stack = (inf, ((_, Node positionA pos_childA neg_childA), b))  : fs } a@(_, EndInfNode{}) = 
-        traverse_dcA @a s c' a
-        where c' = catchupA @a c (-1)  
-
-    -- both have reached the end - so prepare the next 
-    traverse_dcA "endinf" c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, EndInfNode{}) = moveA c "endinf" (to_str @a)
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, EndInfNode{}) = c
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, Leaf{}) = c -- should be handled outside this function
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf{}), b))  : fs } (_, Leaf{}) = c -- should be handled outside this function
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf{}), b))  : fs } (_, EndInfNode{}) = c -- leaf stays the same for dc after exiting current realm
-    traverse_dcA _ c@Context{} (_, Unknown) = c -- should be handled outside this function
-
-
-    -- dc has reached the end, if a is a node it should always be behind 
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, Node idx _ _) = c
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, Leaf _), b))  : fs } (_, Node idx _ _) = c
-
-
-
-    -- dc / a is at a recursive point, should have passed a endinfnode if serial 
-        -- if dc is behind, take the path of inferred nodes (pos, ned) (dc is undefined.. but also should not be possible? we will see..)
-        -- if dc is ahead, add empty infnodes
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } (_, InfNodes idx dc p n) = undefined
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } a@(_, Node idx _ _) = undefined
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, InfNodes idx dc p n) = undefined
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } (_, Leaf{}) = undefined
-    -- etc
-
-    traverse_dcA _ c@Context{func_stack = (inf, ((_, Unknown), b))  : fs } a = error "dc should not have unknowns.. yet"
-    traverse_dcA s c a = error $ "traverse_dcA. a= " ++ show a ++ "  c= " ++ show (func_stack c)
- 
-
-
-
-
-
-    traverse_dcB s c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } (_, Node idx _ _)
-        | positionB > idx = c
-        | positionB == idx = moveB c s (to_str @a)
-        | positionB < idx = moveB c' s (to_str @a)
-                            where c' = catchupB @a c idx
-
-    -- b has reached the end, it should always be ahead of a node, so do traversal until dc has reached its end
-    -- afterwards apply move?
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } b@(_, Leaf _) = catchupB @a c (-1)
-    traverse_dcB s c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB neg_childB)))  : fs } b@(_, EndInfNode{}) = 
-        traverse_dcB @a s c' b
-        where c' = catchupB @a c (-1)  
-
-    -- both have reached the end - so prepare the next 
-    traverse_dcB "endinf" c@Context{func_stack = (inf, (a, (_, EndInfNode{})))  : fs } (_, EndInfNode{}) = moveB c "endinf" (to_str @a)
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, EndInfNode{})))  : fs } (_, EndInfNode{}) = c
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, EndInfNode{})))  : fs } (_, Leaf{}) = c -- should be handled outside this function
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Leaf{})))  : fs } (_, Leaf{}) = c -- should be handled outside this function
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Leaf{})))  : fs } (_, EndInfNode{}) = c -- leaf stays the same for dc after exiting current realm
-    traverse_dcB _ c@Context{} (_, Unknown) = c -- should be handled outside this function
-
-    -- dc has reached the end, if b is a node it should always be behind 
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, EndInfNode{})))  : fs } (_, Node idx _ _) = c
-    traverse_dcB _ c@Context{func_stack = (inf, (a, (_, Leaf _)))  : fs } (_, Node idx _ _) = c
-
-
-
-    -- dc / b is at a recursive point, should have passed a endinfnode if serial 
-    traverse_dcB _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } a@(_, Node idx _ _) = undefined
-    traverse_dcB _ c@Context{func_stack = (inf, ((_, EndInfNode{}), b))  : fs } (_, InfNodes idx dc p n) = undefined
-    traverse_dcB _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } (_, InfNodes idx dc p n) = undefined
-    traverse_dcB _ c@Context{func_stack = (inf, ((_, InfNodes{}), b))  : fs } (_, Leaf{}) = undefined
-    -- etc
-
-    traverse_dcB _ c@Context{func_stack = (inf, ((_, Unknown), b))  : fs } a = error "dc should not have unknowns.. yet"
-    traverse_dcB s c b = error $ "traverse_dcB. b= " ++ show b ++ " \n c= " ++ show (func_stack c) ++ "\n s = " ++ s
-
 
 
 
@@ -414,6 +261,7 @@ class DdF3 a where
     unionLeaf :: Context -> Node -> Node -> (Context, Node)
     catchupA :: Context -> Int -> Context
     catchupB :: Context -> Int -> Context
+    catchupR :: Context -> Int -> Context
 
 
 instance DdF3 Dc where
@@ -462,7 +310,8 @@ instance DdF3 Dc where
 
     -- i think we can implement a "do nothing" version of catchup for Dc
     catchupA c _ = c
-    catchupB c _ = c 
+    catchupB c _ = c
+    catchupR c _ = c 
 
     to_str = "Dc"
 
@@ -493,10 +342,10 @@ instance DdF3 Pos where
     interLeaf c a b@(_, Leaf True) = (c, a)
     interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos intersection 
-        let (_, (dcA, _)) = head $ func_stack c
+        let (_, (dcA, _, _)) = head $ func_stack c
         in intersection'' @Pos c dcA b  --`debug` ("using dcA in interLeaf pos: " ++ show dcA)
     interLeaf c a b@(_, Unknown) =
-        let (_, (_, dcB)) = head $ func_stack c
+        let (_, (_, dcB, _)) = head $ func_stack c
         in intersection'' @Pos c a dcB --`debug` ("using dcB in interLeaf pos: " ++ show dcB)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
 
@@ -508,14 +357,14 @@ instance DdF3 Pos where
     unionLeaf c a b@(_, Leaf False) = (c, a)
     unionLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos union 
-        let (_, (dcA, _)) = head $ func_stack c
+        let (_, (dcA, _, _)) = head $ func_stack c
         in union'' @Pos c dcA b  --`debug` ("using dcA in unionLeaf pos: " ++ show dcA)
     unionLeaf c a b@(_, Unknown) =
-        let (_, (_, dcB)) = head $ func_stack c
+        let (_, (_, dcB, _)) = head $ func_stack c
         in union'' @Pos c a dcB --`debug` ("using dcB in unionLeaf pos: " ++ show dcB)
     unionLeaf _ _ _ = error "wrong arguments for union leaf case"
 
-    catchupA c@Context{func_stack = (inf, ((_, Node positionA pos_childA _), b))  : fs } idx
+    catchupA c@Context{func_stack = (inf, ((_, Node positionA pos_childA _), b, dcR))  : fs } idx
         -- special case to go until the end
         | idx == -1 = catchupA @Pos (moveA c "pos child" "pos") idx
         -- catchup
@@ -528,7 +377,7 @@ instance DdF3 Pos where
     catchupA c@Context{func_stack = _  : fs } idx = c
     -- unknown should not be possible
 
-    catchupB c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB _ )))  : fs } idx
+    catchupB c@Context{func_stack = (inf, (a, (_, Node positionB pos_childB _ ), dcR))  : fs } idx
         | idx == -1 = catchupB @Pos (moveB c "pos child" "pos") idx
         -- catchup
         | idx > positionB = catchupB @Pos (moveB c "pos child" "pos") idx
@@ -538,6 +387,18 @@ instance DdF3 Pos where
     -- todo case infnode
     -- in case of leaf, endinfnode  
     catchupB c@Context{func_stack = _  : fs } idx = c
+    -- unknown should not be possible
+
+    catchupR c@Context{func_stack = (inf, (a, (_, Node positionR pos_childR _ ), dcR))  : fs } idx
+        | idx == -1 = catchupR @Pos (moveR c "pos child" "pos") idx
+        -- catchup
+        | idx > positionR = catchupR @Pos (moveR c "pos child" "pos") idx
+        -- ending criteria
+        | idx < positionR = c
+        | idx == positionR = c
+    -- todo case infnode
+    -- in case of leaf, endinfnode  
+    catchupR c@Context{func_stack = _  : fs } idx = c
     -- unknown should not be possible
 
     to_str = "Pos"
@@ -566,26 +427,26 @@ instance DdF3 Neg where
     interLeaf c a@(_, Leaf True) b = (c, b) -- (future if i want to remove absorb) check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
     interLeaf c a b@(_, Leaf True) = (c, a)
     interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
-        let (_, (dcA, _)) = head $ func_stack c
+        let (_, (dcA, _, _)) = head $ func_stack c
         in intersection'' @Neg c dcA b  --`debug` ("using dcA in interLeaf neg: " ++ show dcA)
     interLeaf c a b@(_, Unknown) =
-        let (_, (_, dcB)) = head $ func_stack c
+        let (_, (_, dcB, _)) = head $ func_stack c
         in intersection'' @Neg c a dcB  --`debug` ("using dcB in interLeaf neg: " ++ show dcB)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
 
     unionLeaf c a@(_, Leaf True) b = (c, a) -- (future if i want to remove absorb) True might be absorbed, then return Unknown
     unionLeaf c a b@(_, Leaf True) = (c, b)
-    unionLeaf c a@(_, Leaf False) b = (c, b) -- (future if i want to remove absorb) check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
+    unionLeaf c a@(_, Leaf False) b = (c, b) -- (future if i want to remove absorb) check if b needs to be absorbed, if b == dcA? or b == _ at this point?
     unionLeaf c a b@(_, Leaf False) = (c, a)
     unionLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a False or True or a dd, then do the above or continue with the dd 
-        let (_, (dcA, _)) = head $ func_stack c
+        let (_, (dcA, _, _)) = head $ func_stack c
         in union'' @Neg c dcA b  --`debug` ("using dcA in unionLeaf neg: " ++ show dcA)
     unionLeaf c a b@(_, Unknown) =
-        let (_, (_, dcB)) = head $ func_stack c
+        let (_, (_, dcB, _)) = head $ func_stack c
         in union'' @Neg c a dcB  --`debug` ("using dcB in unionLeaf neg: " ++ show dcB)
     unionLeaf _ _ _ = error "wrong arguments for union leaf case"
 
-    catchupA c@Context{func_stack = (inf, ((_, Node positionA _ neg_childA), b))  : fs } idx
+    catchupA c@Context{func_stack = (inf, ((_, Node positionA _ neg_childA), b, dcR))  : fs } idx
         | idx == -1 = catchupA @Neg (moveA c "neg child" "neg") idx
         -- catchup
         | idx > positionA = catchupA @Neg (moveA c "neg child" "neg") idx
@@ -597,7 +458,7 @@ instance DdF3 Neg where
     catchupA c@Context{func_stack = _  : fs } idx = c
     -- unknown should not be possible
 
-    catchupB c@Context{func_stack = (inf, (a, (_, Node positionB _ neg_childB)))  : fs } idx
+    catchupB c@Context{func_stack = (inf, (a, (_, Node positionB _ neg_childB), dcR))  : fs } idx
         | idx == -1 = catchupB @Neg (moveB c "neg child" "neg") idx
         -- catchup
         | idx > positionB = catchupB @Neg (moveB c "neg child" "neg") idx
@@ -607,6 +468,18 @@ instance DdF3 Neg where
     -- todo case infnode
     -- in case of leaf, endinfnode  
     catchupB c@Context{func_stack = _  : fs } idx = c
+    -- unknown should not be possible
+
+    catchupR c@Context{func_stack = (inf, (a, (_, Node positionR _ neg_childR), dcR))  : fs } idx
+        | idx == -1 = catchupR @Neg (moveR c "neg child" "neg") idx
+        -- catchup
+        | idx > positionR = catchupR @Neg (moveR c "neg child" "neg") idx
+        -- ending criteria
+        | idx < positionR = c
+        | idx == positionR = c
+    -- todo case infnode
+    -- in case of leaf, endinfnode  
+    catchupR c@Context{func_stack = _  : fs } idx = c
     -- unknown should not be possible
 
     to_str = "Neg"
@@ -623,90 +496,223 @@ func_tail s c@Context{func_stack = _ : fs } =
 func_tail s c@Context{func_stack = [] } = 
     if s == "Dc" then c else error "func_tail should not be called on an empty func_stack"
 
-func_alt :: String -> Context -> (Inf, (Node,Node)) -> Context
+func_alt :: String -> Context -> (Inf, (Node,Node, Node)) -> Context
 func_alt s c@Context{func_stack = _ : fs } alt_head =
     if s == "Dc" then c else c{func_stack = alt_head : fs} --`debug` "applying func_alt"
 func_alt s c@Context{func_stack = [] } alt_head = 
     if s == "Dc" then c else c{func_stack = [alt_head]} --`debug` "applying func_alt"
 
-processStackElementA :: Context -> String -> String -> (Inf, (Node, Node)) -> (Inf, (Node, Node))
-processStackElementA c m t element@(inf, (a, b)) =
-    case a of -- Pattern match on the Node part
-        (_, Node positionA pos_childA neg_childA) ->
-            let new_a = if m == "pos child" then getNode c pos_childA
-                        else if m == "neg child" then getNode c neg_childA
-                        -- Add conditions for "neginf", "posinf" if needed, potentially involving 'inf'
-                        else error $ "moveA: undefined update string '" ++ m ++ "' for Node pattern on element: " ++ show element
-            in (inf, (new_a, b))
+-- Combined helper function: Processes a single Node based on the move string.
+-- Takes the specific node to process and returns the new Node resulting from the move.
+processStackElement :: Context -> String -> String -> Node -> Node
+processStackElement c m t node =
+    case node of -- Pattern match directly on the Node structure passed in
+        (_, Node position pos_child neg_child) -> -- Use generic pattern variable names
+            if m == "pos child" then getNode c pos_child
+            else if m == "neg child" then getNode c neg_child
+            -- Add conditions for "neginf", "posinf" if needed
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for Node pattern: " ++ show node
 
-        (_, EndInfNode childA) ->
-            let new_a = if m == "endinf" then getNode c childA
-                        else error $ "moveA: undefined update string '" ++ m ++ "' for EndInfNode pattern on element: " ++ show element
-            in (inf, (new_a, b))
+        (_, EndInfNode child) ->
+            if m == "endinf" then getNode c child
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndInfNode pattern: " ++ show node
 
-        (_, InfNodes positionA dcA pA nA) ->
-            let new_a = if m == "inf pos" then getNode c pA
-                        else if m == "inf ned" then getNode c nA
-                        else if m == "inf dc" then getNode c dcA
-                        else error $ "moveA: undefined update string '" ++ m ++ "' for InfNodes pattern on element: " ++ show element
-            in (inf, (new_a, b))
+        (_, InfNodes position dc p n) ->
+            if m == "inf pos" then getNode c p
+            else if m == "inf ned" then getNode c n
+            else if m == "inf dc" then getNode c dc
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for InfNodes pattern: " ++ show node
 
         -- Add cases for any other constructors of Node if they exist
-        _ -> error $ "moveA: Unhandled Node pattern in processStackElementA: " ++ show a
+        _ -> error $ "processStackElement: Unhandled Node pattern: " ++ show node
 
 
--- Modified moveA applying the logic to all stack elements
 moveA :: Context -> String -> String -> Context
 moveA c m t
   | null (func_stack c) = c -- Nothing to do if the stack is empty
   | otherwise =
-      let processFn = processStackElementA c m t -- Partially apply the helper
-          new_func_stack = map processFn (func_stack c)
-      -- You could add tracing here if needed, e.g.:
-      -- trace ("moveA processed stack with '" ++ m ++ "'. New head: " ++ show (head new_func_stack)) $
+      let
+          -- This function is applied to each element of the func_stack
+          updateElementForA :: (Inf, (Node, Node, Node)) -> (Inf, (Node, Node, Node))
+          updateElementForA (inf, (a, b, r)) =
+              let new_a = processStackElement c m t a -- Call the common helper on 'a'
+              in (inf, (new_a, b, r)) -- Construct the result tuple with the modified 'a'
+          
+          new_func_stack = map updateElementForA (func_stack c)
       in c { func_stack = new_func_stack }
+      -- Optional trace: trace ("moveA processed stack...") $ ...
 
--- Helper function to process a single stack element for moveB logic
-processStackElementB :: Context -> String -> String -> (Inf, (Node, Node)) -> (Inf, (Node, Node))
-processStackElementB c m t element@(inf, (a, b)) =
-    case b of -- Pattern match on the Node part
-        (_, Node positionB pos_childB neg_childB) ->
-            let new_b = if m == "pos child" then getNode c pos_childB
-                        else if m == "neg child" then getNode c neg_childB
-                        -- Add conditions for "neginf", "posinf" if needed, potentially involving 'inf'
-                        else error $ "moveB: undefined update string '" ++ m ++ "' for Node pattern on element: " ++ show element
-            in (inf, (a, new_b))
 
-        (_, EndInfNode childB) ->
-            let new_b = if m == "endinf" then getNode c childB
-                        else error $ "moveB: undefined update string '" ++ m ++ "' for EndInfNode pattern on element: " ++ show element
-            in (inf, (a, new_b))
-
-        (_, InfNodes positionB dcB pB nB) ->
-            let new_b = if m == "inf pos" then getNode c pB
-                        else if m == "inf ned" then getNode c nB
-                        else if m == "inf dc" then getNode c dcB
-                        else error $ "moveB: undefined update string '" ++ m ++ "' for InfNodes pattern on element: " ++ show element
-            in (inf, (a, new_b))
-
-        -- Add cases for any other constructors of Node if they exist
-        _ -> error $ "moveB: Unhandled Node pattern in processStackElementB: " ++ show b
-
--- Modified moveB applying the logic to all stack elements
 moveB :: Context -> String -> String -> Context
 moveB c m t
   | null (func_stack c) = c -- Nothing to do if the stack is empty
   | otherwise =
-      let processFn = processStackElementB c m t -- Partially apply the helper
-          new_func_stack = map processFn (func_stack c)
-      -- You could add tracing here if needed
+      let
+          -- This function is applied to each element of the func_stack
+          updateElementForB :: (Inf, (Node, Node, Node)) -> (Inf, (Node, Node, Node))
+          updateElementForB (inf, (a, b, r)) =
+              let new_b = processStackElement c m t b -- Call the common helper on 'b'
+              in (inf, (a, new_b, r)) -- Construct the result tuple with the modified 'b'
+
+          new_func_stack = map updateElementForB (func_stack c)
       in c { func_stack = new_func_stack }
+      -- Optional trace: trace ("moveB processed stack...") $ ...
+
+moveR :: Context -> String -> String -> Context
+moveR c m t
+  | null (func_stack c) = c -- Nothing to do if the stack is empty
+  | otherwise =
+      let
+          -- This function is applied to each element of the func_stack
+          updateElementForB :: (Inf, (Node, Node, Node)) -> (Inf, (Node, Node, Node))
+          updateElementForB (inf, (a, b, r)) =
+              let new_r = processStackElement c m t r -- Call the common helper on 'b'
+              in (inf, (a, b, new_r)) -- Construct the result tuple with the modified 'b'
+
+          new_func_stack = map updateElementForB (func_stack c)
+      in c { func_stack = new_func_stack }
+      -- Optional trace: trace ("moveB processed stack...") $ ...
 
 -- update_func_stack :: String -> Int -> Context -> Context
 -- update_func_stack s idx c@Context{func_stack = fl} = traverse_dcB s idx (traverse_dcA s idx c)
 -- todo map over full func_stack
 
 
+data Component = CompA | CompB | CompR
 
 
+class Dd1_helper a where
+    traverse_dc :: String -> Context -> NodeId -> NodeId -> Context
+    getComponentFuncs :: Dd1 a => Component -> ( (Inf, (Node, Node, Node)) -> Node -- getter
+                                           , Context -> String -> String -> Context -- mover
+                                           , Context -> Int -> Context -- catchuper
+                                           , String -- component string label
+                                           )
+    traverse_dc_generic :: Component -> String -> Context -> Node -> Context
+    applyInf :: Context -> String -> Node -> Node -> (Context, Node)
+    applyInf' :: Context -> String -> Node -> Node -> (Context, Node)
 
+
+instance (DdF3 a) => Dd1_helper a where
+    -- apply traversal
+    applyInf :: Context -> String ->  Node -> Node -> (Context, Node)
+    applyInf c s a b = debug_manipulation (applyInf' @a c s a b) s "applyInf" c a b
+
+    applyInf' :: Context -> String -> Node -> Node -> (Context, Node)
+    applyInf' c s a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
+        | positionA == positionB =  if s == "intersection" then
+            let
+                -- if there is an above layer
+                -- update func stack so its dc's are on the same level as a and b (if not in dc context) 
+                c_ = if func_stack c == [] then c else 
+                    traverse_dc @a "inf" c a_id b_id
+                
+                (c1, dcR) = intersection @Dc c_ dcA dcB
+
+                -- to remeber the dcA and dcB specifically for this neg intersection call, we place them on the func stack
+                -- whenever, in this call, encountering (endinfnode) it should be taken off the func stack
+                c2_ = c1{func_stack = (Neg, (getNode c1 dcA, getNode c1 dcB, dcR)) : func_stack c1}  
+                (c2, nR) =
+                    let (c2', r2') = intersection @Neg c2_ nA nB
+                    in absorb'' @Neg c2' r2' dcR
+
+                -- todo ugly type specification from func_tail here, inside intersection we wan to skip on Dc.. 
+                c3_ = c2{func_stack = (Pos, (getNode c1 dcA, getNode c1 dcB, dcR)) : func_stack (func_tail "" c2)}
+                (c3, pR) =
+                    let (c3', r3') = intersection @Pos c3_ pA pB
+                    in absorb'' @Pos c3' r3' dcR
+
+                c4 = func_tail (to_str @a) c3 --remove the func_stack layer
+            in apply_elimRule c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
+
+            else let
+                -- if there is an above layer
+                -- update func stack so its dc's are on the same level as a and b (if not in dc context) 
+                c_ = if func_stack c == [] then c else 
+                    traverse_dc @a "inf" c a_id b_id
+                
+                (c1, dcR) = union @Dc c_ dcA dcB
+
+                -- to remeber the dcA and dcB specifically for this neg union call, we place them on the func stack
+                -- whenever, in this call, encountering (endinfnode) it should be taken off the func stack
+                c2_ = c1{func_stack = (Neg, (getNode c1 dcA, getNode c1 dcB, dcR)) : func_stack c1}  
+                (c2, nR) =
+                    let (c2', r2') = union @Neg c2_ nA nB
+                    in absorb'' @Neg c2' r2' dcR
+
+                -- todo ugly type specification from func_tail here, inside union we wan to skip on Dc.. 
+                c3_ = c2{func_stack = (Pos, (getNode c1 dcA, getNode c1 dcB, dcR)) : func_stack (func_tail "" c2)}
+                (c3, pR) =
+                    let (c3', r3') = union @Pos c3_ pA pB
+                    in absorb'' @Pos c3' r3' dcR
+
+                c4 = func_tail (to_str @a) c3 --remove the func_stack layer
+            in apply_elimRule c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
+
+        | positionA > positionB = applyInfA @a c s a b
+        | positionA < positionB = applyInfB @a c s a b
+        where
+            apply_elimRule c' (InfNodes _ (1,0) (0,0) (0,0)) = (c', ((1,0), Leaf True))
+            apply_elimRule c' (InfNodes _ (2,0) (0,0) (0,0)) = (c', ((2,0), Leaf False))
+            apply_elimRule c' (InfNodes _ (0,0) (0,0) (0,0)) = (c', ((0,0), Unknown))
+            apply_elimRule c' d@(InfNodes _ consq (0,0) (0,0)) = case getDd c' consq of 
+                EndInfNode d' -> (c', getNode c' d')
+                _ -> insert c' d
+            apply_elimRule c' d = insert c' d
+    applyInf' c s a b = error_display "apply inf" c a b
+
+    traverse_dc s c a b = if to_str @a == "Dc" then c else traverse_dc_generic @a CompB s (traverse_dc_generic @a CompA s c (getNode c a)) (getNode c b)
+
+    
+    traverse_dc_generic component s c refNode
+        | null (func_stack c) = c -- Should not happen if called from A/B/R defaults, but good practice
+        | otherwise =
+            let headElement@(inf, _) = head (func_stack c)
+                fs = tail (func_stack c)
+                (getter, mover, catchuper, compStr) = getComponentFuncs @a component -- Get functions for A, B, or R
+                targetNode = getter headElement -- Get the Node (a, b, or r) we are currently traversing
+            in
+            case (targetNode, refNode) of
+                -- Main Node vs Node comparison logic
+                ( tNode@(_, Node position _ _), rNode@(_, Node idx _ _) ) ->
+                    if | position > idx -> c -- Target is ahead, do nothing
+                        | position == idx -> mover c s (to_str @a) -- Positions match, move
+                        | position < idx -> traverse_dc_generic @a component s (catchuper c idx) refNode -- Target behind, catchup then recurse
+
+                -- Target Node vs Leaf/EndInfNode (Target needs to catch up fully)
+                ( (_, Node{}), (_, Leaf _) )         -> catchuper c (-1) -- Use -1 to signify catch up fully
+                ( (_, Node{}), rNode@(_, EndInfNode{}) ) -> traverse_dc_generic @a component s (catchuper c (-1)) rNode -- Catch up fully, then re-evaluate with EndInfNode
+
+                -- Both EndInfNode
+                ( (_, EndInfNode{}), (_, EndInfNode{}) ) ->
+                    if s == "endinf" then mover c "endinf" (to_str @a) else c -- Perform endinf move or no-op
+
+                -- Base cases where target is already at EndInfNode or Leaf (usually no-op for traversal)
+                ( (_, EndInfNode{}), (_, Leaf{}) )      -> c
+                ( (_, Leaf{}),       (_, Leaf{}) )      -> c
+                ( (_, Leaf{}),       (_, EndInfNode{}) ) -> c
+
+                -- Base cases where target is EndInfNode/Leaf and refNode is Node (target is "ahead")
+                ( (_, EndInfNode{}), (_, Node idx _ _) ) -> c
+                ( (_, Leaf _),       (_, Node idx _ _) ) -> c
+
+                -- Handle Unknown reference node
+                ( _, (_, Unknown) ) -> c
+
+                -- Handle InfNodes (using placeholder undefined for logic - needs careful implementation)
+                ( (_, InfNodes{}), (_, InfNodes idx dc p n) ) -> undefined -- Add specific logic using mover/catchuper
+                ( (_, InfNodes{}), rNode@(_, Node idx _ _) )  -> undefined -- Add specific logic
+                ( (_, EndInfNode{}), (_, InfNodes idx dc p n) ) -> undefined -- Add specific logic
+                ( (_, InfNodes{}), (_, Leaf{}) )           -> undefined -- Add specific logic
+
+                -- Error case for unhandled patterns
+                ( t, r ) -> error $ "traverse_dc_generic (" ++ compStr ++ ") unhandled. targetNode=" ++ show t ++ " refNode=" ++ show r ++ " c=" ++ show (func_stack c) ++ " s=" ++ s
+
+    getComponentFuncs :: Component -> ( (Inf, (Node, Node, Node)) -> Node -- getter
+                                           , Context -> String -> String -> Context -- mover
+                                           , Context -> Int -> Context -- catchuper
+                                           , String -- component string label
+                                           )
+    getComponentFuncs CompA = ( (\(_, (a, _, _)) -> a), moveA, catchupA @a, "A" )
+    getComponentFuncs CompB = ( (\(_, (_, b, _)) -> b), moveB, catchupB @a, "B" )
+    getComponentFuncs CompR = ( (\(_, (_, _, r)) -> r), moveR, catchupR @a, "R" ) -- Requires catchupR @a

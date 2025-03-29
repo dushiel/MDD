@@ -98,7 +98,7 @@ data Context = Context {
   cache_ :: SingleCache,
   cache' :: ShowCache,
   nodelookup:: NodeLookup,
-  func_stack :: [(Inf, (Node, Node))], -- remember on what infnode what dc's there are when unknowns need to be resolved
+  func_stack :: [(Inf, (Node, Node, Node))], -- remember on what infnode what dc's there are when unknowns need to be resolved
   current_level :: Level -- todo implement this still, so that hashing uses a level instead of position only
 }
 
