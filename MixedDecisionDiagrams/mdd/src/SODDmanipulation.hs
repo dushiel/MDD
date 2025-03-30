@@ -62,9 +62,9 @@ class Dd1 a where
     union'' :: Context -> Node -> Node -> (Context, Node)
     intersection' :: Context -> Node -> Node -> (Context, Node)
     union' :: Context -> Node -> Node -> (Context, Node)
-    absorb :: Context -> NodeId -> NodeId -> (Context, Node)
-    absorb' :: Context -> Node -> Node -> (Context, Node)
-    absorb'' :: Context -> Node -> Node -> (Context, Node)
+    -- absorb :: Context -> NodeId -> NodeId -> (Context, Node)
+    -- absorb' :: Context -> Node -> Node -> (Context, Node)
+    -- absorb'' :: Context -> Node -> Node -> (Context, Node)
 
 
 
@@ -177,39 +177,39 @@ instance (DdF3 a) => Dd1 a where
 
 
     --todo add endinfnode (0,0) /(1,0) removal on leaf cases
-    absorb c a b = debug_manipulation  (absorb' @a c (getNode c a) (getNode c b)) "absorb" ("absorb" ++ to_str @a) c (getNode c a) (getNode c b)
-    absorb'' c a b = debug_manipulation  (absorb' @a c a b) "absorb" ("absorb" ++ to_str @a) c a b
-    absorb' :: Context -> Node -> Node -> (Context, Node)
-    -- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")   
-    absorb' c a dc@(_, Unknown) = (c, a)
-    absorb' c a@(_, Unknown) dc = (c, ((0,0), Unknown))
-    absorb' c a@(_, Leaf _) dc = if a == dc then (c, ((0,0), Unknown)) else (c, a)
-    absorb' c a@(_, EndInfNode _) dc@(_, Node positionD pos_childD neg_childD)  = inferNodeA @a (absorb' @a) c a dc
-    absorb' c a@(_, EndInfNode a_child) dc@(_, Leaf _)  = if getNode c a_child == dc then (c, ((0,0), Unknown)) else (c, a)
-    absorb' c a@(_, InfNodes {}) dc@(_, Leaf _)  = (c, a)
-    absorb' c a@(_, Node positionA pos_childA neg_childA) dc@(dc_id, EndInfNode _)  = --infere Dc node
-        let (c', (pos_result, _)) = absorb @a c pos_childA dc_id
-            (c'', (neg_result, _)) = absorb @a c' neg_childA dc_id
-        in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
-    absorb' c a@(_, EndInfNode a') dc@(_, EndInfNode dc') = if a' == dc' then (c, ((0,0), Unknown)) else (c, a)
-    absorb' c a@(_, Node positionA pos_childA neg_childA) dc@(dc_id, Leaf _) =
-        let (c', (pos_result, _)) = absorb @a c pos_childA dc_id
-            (c'', (neg_result, _)) = absorb @a c' neg_childA dc_id
-        in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result) -- `debug` ("absorb " ++ to_str @a ++ show (Node positionA pos_result neg_result))
+    -- absorb c a b = debug_manipulation  (absorb' @a c (getNode c a) (getNode c b)) "absorb" ("absorb" ++ to_str @a) c (getNode c a) (getNode c b)
+    -- absorb'' c a b = debug_manipulation  (absorb' @a c a b) "absorb" ("absorb" ++ to_str @a) c a b
+    -- absorb' :: Context -> Node -> Node -> (Context, Node)
+    -- -- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")   
+    -- absorb' c a dc@(_, Unknown) = (c, a)
+    -- absorb' c a@(_, Unknown) dc = (c, a)
+    -- absorb' c a@(_, Leaf _) dc = if a == dc then (c, ((0,0), Unknown)) else (c, a)
+    -- absorb' c a@(_, EndInfNode a_child) dc@(_, Leaf _)  = if getNode c a_child == dc then (c, ((0,0), Unknown)) else (c, a)
+    -- absorb' c a@(_, InfNodes {}) dc@(_, Leaf _)  = (c, a)
+    -- absorb' c a@(_, EndInfNode a') dc@(_, EndInfNode dc') = if a' == dc' then (c, ((0,0), Unknown)) else (c, a) 
+    -- absorb' c a@(_, EndInfNode _) dc@(_, Node positionD pos_childD neg_childD)  = inferNodeA @a (absorb' @a) c a dc
+    -- absorb' c a@(_, Node positionA pos_childA neg_childA) dc@(dc_id, EndInfNode _)  = --infere Dc node
+    --     let (c', (pos_result, _)) = absorb @a c pos_childA dc_id
+    --         (c'', (neg_result, _)) = absorb @a c' neg_childA dc_id
+    --     in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+    -- absorb' c a@(_, Node positionA pos_childA neg_childA) dc@(dc_id, Leaf _) =
+    --     let (c', (pos_result, _)) = absorb @a c pos_childA dc_id
+    --         (c'', (neg_result, _)) = absorb @a c' neg_childA dc_id
+    --     in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result) -- `debug` ("absorb " ++ to_str @a ++ show (Node positionA pos_result neg_result))
 
-    absorb' c a@(_, Node positionA pos_childA neg_childA)  dc@(dc_id, Node positionD pos_childD neg_childD)
-        -- No mismatch
-        | positionA == positionD =
-            let (c', (pos_result, _)) = absorb @a c pos_childA pos_childD
-                (c'', (neg_result, _)) = absorb @a c' neg_childA neg_childD
-            in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+    -- absorb' c a@(_, Node positionA pos_childA neg_childA)  dc@(dc_id, Node positionD pos_childD neg_childD)
+    --     -- No mismatch
+    --     | positionA == positionD =
+    --         let (c', (pos_result, _)) = absorb @a c pos_childA pos_childD
+    --             (c'', (neg_result, _)) = absorb @a c' neg_childA neg_childD
+    --         in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
 
-        -- Mismatch
-        | positionA > positionD = inferNodeA @a (absorb' @a) c a dc
-        | positionA < positionD =
-            let (c', (pos_result, _)) = absorb @a c pos_childA dc_id
-                (c'', (neg_result, _)) = absorb @a c' neg_childA dc_id
-            in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
+    --     -- Mismatch
+    --     | positionA > positionD = inferNodeA @a (absorb' @a) c a dc
+    --     | positionA < positionD =
+    --         let (c', (pos_result, _)) = absorb @a c pos_childA dc_id
+    --             (c'', (neg_result, _)) = absorb @a c' neg_childA dc_id
+    --         in withCache c (a, dc, "absorb") $ applyElimRule @a c'' (Node positionA pos_result neg_result)
 
     -- absorb' c a@(_, InfNodes {}) b@(_, InfNodes {}) = case to_constr @a of
     --     Dc -> error "absorb with a dc as first argument should not be possible"
@@ -239,7 +239,7 @@ instance (DdF3 a) => Dd1 a where
     --     | otherwise = undefined
     --         where
     --             f b' = apply @a Absorb c "absorb" (t_and_rInferA b') a dc
-    absorb' c a b = error $ "absorb , " ++ "a = " ++ show a ++ "  \n  b = " ++ show b
+    -- absorb' c a b = error $ "absorb , " ++ "a = " ++ show a ++ "  \n  b = " ++ show b
 
 
 
@@ -336,10 +336,10 @@ instance DdF3 Pos where
 
     --  Unknown is stronger than True in finite + intersection context
     -- if the result is 
-    interLeaf c a@(_, Leaf False) b = (c, a) -- False might be absorbed, then return Unknown
-    interLeaf c a b@(_, Leaf False) = (c, b)
-    interLeaf c a@(_, Leaf True) b = (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
-    interLeaf c a b@(_, Leaf True) = (c, a)
+    interLeaf c a@(_, Leaf False) b = absorb' (c, a) -- False might be absorbed, then return Unknown
+    interLeaf c a b@(_, Leaf False) = absorb' (c, b)
+    interLeaf c a@(_, Leaf True) b = absorb' (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
+    interLeaf c a b@(_, Leaf True) = absorb' (c, a)
     interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos intersection 
         let (_, (dcA, _, _)) = head $ func_stack c
@@ -351,10 +351,10 @@ instance DdF3 Pos where
 
     --  Unknown is stronger than True in finite + union context
     -- if the result is 
-    unionLeaf c a@(_, Leaf True) b = (c, a) -- True might be absorbed, then return Unknown
-    unionLeaf c a b@(_, Leaf True) = (c, b)
-    unionLeaf c a@(_, Leaf False) b = (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
-    unionLeaf c a b@(_, Leaf False) = (c, a)
+    unionLeaf c a@(_, Leaf True) b = absorb' (c, a) -- True might be absorbed, then return Unknown
+    unionLeaf c a b@(_, Leaf True) = absorb' (c, b)
+    unionLeaf c a@(_, Leaf False) b = absorb' (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
+    unionLeaf c a b@(_, Leaf False) = absorb' (c, a)
     unionLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos union 
         let (_, (dcA, _, _)) = head $ func_stack c
@@ -389,7 +389,7 @@ instance DdF3 Pos where
     catchupB c@Context{func_stack = _  : fs } idx = c
     -- unknown should not be possible
 
-    catchupR c@Context{func_stack = (inf, (a, (_, Node positionR pos_childR _ ), dcR))  : fs } idx
+    catchupR c@Context{func_stack = (inf, (a, b, (_, Node positionR pos_childR _ )))  : fs } idx
         | idx == -1 = catchupR @Pos (moveR c "pos child" "pos") idx
         -- catchup
         | idx > positionR = catchupR @Pos (moveR c "pos child" "pos") idx
@@ -402,6 +402,23 @@ instance DdF3 Pos where
     -- unknown should not be possible
 
     to_str = "Pos"
+
+
+absorb' :: (Context, Node) -> (Context, Node)
+-- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")   
+absorb' (c@Context{func_stack = (inf, (_, _, dc@(_, Unknown)))  : fs }, a)  = (c, a)
+absorb' (c@Context{func_stack = (inf, (_, _, dc))  : fs }, a@(_, Unknown)) = (c, a)
+absorb' (c@Context{func_stack = (inf, (_, _, dc))  : fs }, a@(_, Leaf _))
+    | a == dc = (c, ((0,0), Unknown))
+    | otherwise = (c,a) 
+absorb' (c@Context{func_stack = (inf, (_, _, dc@(_, Leaf _)))  : fs }, a@(_, InfNodes {}))  = (c, a)
+absorb' (c@Context{func_stack = (inf, (_, _, dc@(_, Leaf _)))  : fs }, a@(_, EndInfNode a_child))   = if getNode c a_child == dc then (c, ((0,0), Unknown)) else (c, a)
+absorb' (c@Context{func_stack = (inf, (_, _, dc@(_, EndInfNode dc')))  : fs }, a@(_, EndInfNode a'))  
+    | a' == dc' = (c, ((0,0), Unknown))
+    | otherwise = (c,a) 
+absorb' (c@Context{func_stack = (inf, (_, _, dc))  : fs }, a) 
+    | a == dc = (c, ((0,0), Unknown))
+    | otherwise = (c,a) 
 
 instance DdF3 Neg where
     inferNodeA f c a@(a_id, _) b@(b_id, Node positionB pos_childB neg_childB) =
@@ -422,10 +439,10 @@ instance DdF3 Neg where
     applyElimRule c d@(Node _ (0, 0) negC) = (c, (negC, getDd c negC))
     applyElimRule c d = insert c d
 
-    interLeaf c a@(_, Leaf False) b = (c, a) -- (future if i want to remove absorb) False might be absorbed, then return Unknown
-    interLeaf c a b@(_, Leaf False) = (c, b)
-    interLeaf c a@(_, Leaf True) b = (c, b) -- (future if i want to remove absorb) check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
-    interLeaf c a b@(_, Leaf True) = (c, a)
+    interLeaf c a@(_, Leaf False) b = absorb' (c, a) -- (future if i want to remove absorb) False might be absorbed, then return Unknown
+    interLeaf c a b@(_, Leaf False) = absorb' (c, b)
+    interLeaf c a@(_, Leaf True) b = absorb' (c, b) -- (future if i want to remove absorb) check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
+    interLeaf c a b@(_, Leaf True) = absorb' (c, a)
     interLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         let (_, (dcA, _, _)) = head $ func_stack c
         in intersection'' @Neg c dcA b  --`debug` ("using dcA in interLeaf neg: " ++ show dcA)
@@ -434,10 +451,10 @@ instance DdF3 Neg where
         in intersection'' @Neg c a dcB  --`debug` ("using dcB in interLeaf neg: " ++ show dcB)
     interLeaf _ _ _ = error "wrong arguments for inter leaf case"
 
-    unionLeaf c a@(_, Leaf True) b = (c, a) -- (future if i want to remove absorb) True might be absorbed, then return Unknown
-    unionLeaf c a b@(_, Leaf True) = (c, b)
-    unionLeaf c a@(_, Leaf False) b = (c, b) -- (future if i want to remove absorb) check if b needs to be absorbed, if b == dcA? or b == _ at this point?
-    unionLeaf c a b@(_, Leaf False) = (c, a)
+    unionLeaf c a@(_, Leaf True) b = absorb' (c, a) -- (future if i want to remove absorb) True might be absorbed, then return Unknown
+    unionLeaf c a b@(_, Leaf True) = absorb' (c, b)
+    unionLeaf c a@(_, Leaf False) b = absorb' (c, b) -- (future if i want to remove absorb) check if b needs to be absorbed, if b == dcA? or b == _ at this point?
+    unionLeaf c a b@(_, Leaf False) = absorb' (c, a)
     unionLeaf c a@(_, Unknown) b = -- resolve Unknown to see if it is a False or True or a dd, then do the above or continue with the dd 
         let (_, (dcA, _, _)) = head $ func_stack c
         in union'' @Neg c dcA b  --`debug` ("using dcA in unionLeaf neg: " ++ show dcA)
@@ -445,6 +462,8 @@ instance DdF3 Neg where
         let (_, (_, dcB, _)) = head $ func_stack c
         in union'' @Neg c a dcB  --`debug` ("using dcB in unionLeaf neg: " ++ show dcB)
     unionLeaf _ _ _ = error "wrong arguments for union leaf case"
+
+    
 
     catchupA c@Context{func_stack = (inf, ((_, Node positionA _ neg_childA), b, dcR))  : fs } idx
         | idx == -1 = catchupA @Neg (moveA c "neg child" "neg") idx
@@ -470,7 +489,7 @@ instance DdF3 Neg where
     catchupB c@Context{func_stack = _  : fs } idx = c
     -- unknown should not be possible
 
-    catchupR c@Context{func_stack = (inf, (a, (_, Node positionR _ neg_childR), dcR))  : fs } idx
+    catchupR c@Context{func_stack = (inf, (a, b, (_, Node positionR _ neg_childR)))  : fs } idx
         | idx == -1 = catchupR @Neg (moveR c "neg child" "neg") idx
         -- catchup
         | idx > positionR = catchupR @Neg (moveR c "neg child" "neg") idx
@@ -564,12 +583,12 @@ moveR c m t
   | otherwise =
       let
           -- This function is applied to each element of the func_stack
-          updateElementForB :: (Inf, (Node, Node, Node)) -> (Inf, (Node, Node, Node))
-          updateElementForB (inf, (a, b, r)) =
+          updateElementForR :: (Inf, (Node, Node, Node)) -> (Inf, (Node, Node, Node))
+          updateElementForR (inf, (a, b, r)) =
               let new_r = processStackElement c m t r -- Call the common helper on 'b'
               in (inf, (a, b, new_r)) -- Construct the result tuple with the modified 'b'
 
-          new_func_stack = map updateElementForB (func_stack c)
+          new_func_stack = map updateElementForR (func_stack c)
       in c { func_stack = new_func_stack }
       -- Optional trace: trace ("moveB processed stack...") $ ...
 
@@ -612,15 +631,12 @@ instance (DdF3 a) => Dd1_helper a where
                 -- to remeber the dcA and dcB specifically for this neg intersection call, we place them on the func stack
                 -- whenever, in this call, encountering (endinfnode) it should be taken off the func stack
                 c2_ = c1{func_stack = (Neg, (getNode c1 dcA, getNode c1 dcB, dcR)) : func_stack c1}  
-                (c2, nR) =
-                    let (c2', r2') = intersection @Neg c2_ nA nB
-                    in absorb'' @Neg c2' r2' dcR
+                (c2, nR) = intersection @Neg c2_ nA nB
+                    
 
                 -- todo ugly type specification from func_tail here, inside intersection we wan to skip on Dc.. 
                 c3_ = c2{func_stack = (Pos, (getNode c1 dcA, getNode c1 dcB, dcR)) : func_stack (func_tail "" c2)}
-                (c3, pR) =
-                    let (c3', r3') = intersection @Pos c3_ pA pB
-                    in absorb'' @Pos c3' r3' dcR
+                (c3, pR) = intersection @Pos c3_ pA pB
 
                 c4 = func_tail (to_str @a) c3 --remove the func_stack layer
             in apply_elimRule c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
@@ -636,15 +652,11 @@ instance (DdF3 a) => Dd1_helper a where
                 -- to remeber the dcA and dcB specifically for this neg union call, we place them on the func stack
                 -- whenever, in this call, encountering (endinfnode) it should be taken off the func stack
                 c2_ = c1{func_stack = (Neg, (getNode c1 dcA, getNode c1 dcB, dcR)) : func_stack c1}  
-                (c2, nR) =
-                    let (c2', r2') = union @Neg c2_ nA nB
-                    in absorb'' @Neg c2' r2' dcR
+                (c2, nR) = union @Neg c2_ nA nB
 
                 -- todo ugly type specification from func_tail here, inside union we wan to skip on Dc.. 
                 c3_ = c2{func_stack = (Pos, (getNode c1 dcA, getNode c1 dcB, dcR)) : func_stack (func_tail "" c2)}
-                (c3, pR) =
-                    let (c3', r3') = union @Pos c3_ pA pB
-                    in absorb'' @Pos c3' r3' dcR
+                (c3, pR) = union @Pos c3_ pA pB
 
                 c4 = func_tail (to_str @a) c3 --remove the func_stack layer
             in apply_elimRule c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
@@ -715,4 +727,4 @@ instance (DdF3 a) => Dd1_helper a where
                                            )
     getComponentFuncs CompA = ( (\(_, (a, _, _)) -> a), moveA, catchupA @a, "A" )
     getComponentFuncs CompB = ( (\(_, (_, b, _)) -> b), moveB, catchupB @a, "B" )
-    getComponentFuncs CompR = ( (\(_, (_, _, r)) -> r), moveR, catchupR @a, "R" ) -- Requires catchupR @a
+    getComponentFuncs CompR = ( (\(_, (_, _, r)) -> r), moveR, catchupR @a, "R" ) 
