@@ -73,7 +73,7 @@ infixl 4 -.
 -- base context
 c = Context{
     nodelookup = defaultNodeMap,
-    cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId) NodeId) ["union", "intersection", "inter", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId) NodeId),
+    cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, [(Inf, (Node, Node, Node))]) NodeId) ["union", "intersection", "inter", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, [(Inf, (Node, Node, Node))]) NodeId),
     cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
     func_stack = [],
     current_level = L [] 0,
@@ -155,9 +155,11 @@ n'_3 = path (fst n'_2)      [(1, Neg0)] [3]
 n'__2 = path (fst n'_3)     [(2, Neg0)] [2]
 n'__3 = path (fst n'__2)     [(2, Neg0)] [3]
 
+-- | ALL POS NODES HAVE THEIR NEGATIVE CHILD LEAD TO LEAF, AND POS TO UNKNOWN. OTHERWISE THEY GET ELIMINATED
 p2 = path (fst n'__3)       [(0, Pos1)] [-2]
 p3 = path (fst p2)          [(0, Pos1)] [-3]
-p_2 = path (fst p3)         [(1, Pos1)] [-2]
+p23 = path (fst p3)         [(0, Pos1)] [-2,-3]
+p_2 = path (fst p23)         [(1, Pos1)] [-2]
 p__2 = path (fst p_2)       [(2, Pos1)] [-2]
 
 p'2 = path (fst p__2)       [(0, Pos0)] [-2]
@@ -166,15 +168,15 @@ p'_2 = path (fst p'3)       [(1, Pos0)] [-2]
 p'__2 = path (fst p'_2)     [(2, Pos0)] [-2]
 
 -- mixing different types of domains in the same path (nested domains)
-dcn1 = path (fst p'__2)     [(0, Dc1), (0, Neg1)] [1]
-dcn'1 = path (fst dcn1)     [(0, Dc1), (0, Neg0)] [-1]
+dcn1 = path (fst p'__2)     [(0, Dc1), (0, Neg1)] [-1]
+dcn'1 = path (fst dcn1)     [(0, Dc1), (0, Neg0)] [1]
 
 nn1 = path (fst dcn'1)      [(0, Neg1), (0, Neg1)] [1]
 nn2 = path (fst nn1)        [(0, Neg1), (0, Neg1)] [2]
 n_n1 = path (fst nn2)       [(0, Neg1), (1, Neg1)] [1]
 n_n2 = path (fst n_n1)      [(0, Neg1), (1, Neg1)] [2]
-n'n'1 = path (fst n_n2)     [(0, Neg1), (0, Neg1)] [1]
-n'n1 = path (fst n'n'1)     [(0, Neg1), (0, Neg1)] [-1]
+n'n'1 = path (fst n_n2)     [(0, Neg0), (0, Neg0)] [1]
+n'n1 = path (fst n'n'1)     [(0, Neg0), (0, Neg1)] [1]
 n'n2 = path (fst n'n1)      [(0, Neg0), (0, Neg1)] [2]
 n'_n1 = path (fst n'n2)     [(0, Neg0), (1, Neg1)] [1]
 n'_n2 = path (fst n'_n1)    [(0, Neg0), (1, Neg1)] [2]
@@ -225,11 +227,14 @@ test = do
 
     -- intersection mixed 
             -- Dc with neg
-            , (snd $ ddOf t_c $ And (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Or (Var n2) (Var n23))  `debug5` "######## test nr "
-            , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr "
+            , (snd $ ddOf t_c $ And (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Or (Var n2) (Var n23))  `debug5` "######## test nr 12"
+            , (snd $ ddOf t_c $ And (Var dc2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Or (Var p2) (Var p23))  `debug5` "######## test nr 13" -- double check validity
+            , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 14"
+            , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 15"-- double check validity
             -- Dc with neg
-            , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var n'2)) == (snd $ ddOf t_c $ Var n'2)  `debug5` "######## test nr "
-            , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr "
+            , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var n'2)) == (snd $ ddOf t_c $ Var n'2)  `debug5` "######## test nr 16"
+            ,  (snd $ ddOf t_c $ Or (And (Var dc2) (Var p'2)) (Var p'2)) == (snd $ ddOf t_c $ Var p'2)  `debug5` "######## test nr 17"-- double check validity
+            , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 18"
     --         -- etc
 
 

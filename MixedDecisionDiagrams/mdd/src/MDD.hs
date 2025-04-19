@@ -4,6 +4,8 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module MDD where
 
 import Debug.Trace ( trace )
@@ -11,6 +13,7 @@ import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import System.Console.ANSI
+import GHC.Generics (Generic)
 
 -- proof of concept GenDDs where no merging of isomorphic nodes happen and no cashing / moization of results during traversal.
 -- GenDDs can model check second order logic formulas containing variables in multiple (disjointed and/or nested) infinite domains.
@@ -29,7 +32,7 @@ show_id (k, alt) = "#" ++ show k ++ ":" ++ show alt
 type HashedId = Int
 
 data Inf = Dc | Neg | Pos
-    deriving (Eq, Show)
+    deriving (Eq, Show, Generic, Hashable)
 
 
 data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
@@ -262,7 +265,7 @@ deep_equality = undefined
 
 -- * functions for Caching / Memoization of results during traversal
 
-type Cache =  Map.Map String (HashMap.HashMap (NodeId, NodeId) NodeId)
+type Cache =  Map.Map String (HashMap.HashMap (NodeId, NodeId, [(Inf, (Node, Node, Node))]) NodeId)
 type SingleCache =  HashMap.HashMap NodeId NodeId
 type ShowCache =  HashMap.HashMap NodeId [String]
 
@@ -292,17 +295,18 @@ withCache' c@Context { cache' = nc } (key, _) func_with_args =
 
 -- A higher-order function for handling cache lookup and update
 withCache :: Context -> (Node, Node, String) -> (Context, Node) -> (Context, Node)
-withCache c@Context{cache = nc} ((keyA, _), (keyB, _), keyFunc) func_with_args =
+withCache c@Context{cache = nc, func_stack = fsk} ((keyA, _), (keyB, _), keyFunc) func_with_args =
   case Map.lookup keyFunc nc of
-    Just nc' -> case HashMap.lookup (keyA, keyB) nc' of
+    Just nc' -> case HashMap.lookup (keyA, keyB, fsk) nc' of
       Just result -> (c, getNode c result) `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
       Nothing -> let
         (updatedContext, r@(result, _)) = func_with_args
-        x = case getDd updatedContext result of
-          --(EndInfNode d) -> error ("EndInf to be inserted in func cache" ++ show d)
-          _ -> updatedContext
-        updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB) result nc') nc
-        in (x { cache = updatedCache }, r) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
+        -- x = case getDd updatedContext result of
+        --   --(EndInfNode d) -> error ("EndInf to be inserted in func cache" ++ show d)
+        --   _ -> updatedContext
+        new_fsk = func_stack updatedContext
+        updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB, new_fsk) result nc') nc
+        in (updatedContext { cache = updatedCache }, r) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
     Nothing -> error ("function not in map, bad initialisation?: " ++ show keyFunc)
 
 

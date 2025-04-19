@@ -191,15 +191,17 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a@(a_
         if a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]
         then if not $ display_leaf_cases settings
             then (c{func_stack=fs}, r)
-            else myTrace (show_func_stack old_c) $ myTrace (colorize "green" (f_name ++ " : ") ++
+            else --myTrace (show_func_stack old_c) $ 
+                myTrace (colorize "green" (f_name ++ " : ") ++
                 "\n  " ++ show_dd settings c a ++
                 " : " ++ show_dd settings c b ++
                 " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
                 "\n") (c, r)
         else
-        myTrace (show_func_stack old_c) $ myTrace (
+        --myTrace (show_func_stack old_c) $ 
+        myTrace (
         case Map.lookup f_key nc of
-            Just nc' -> case HashMap.lookup (a_id, b_id) nc' of
+            Just nc' -> case HashMap.lookup (a_id, b_id, fs) nc' of
                 Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
                     ++ colorize "green" (f_name ++ " : ") ++
                     (if not $ debug_shorten_close settings then
@@ -236,7 +238,7 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a@(a_
     if not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)])
         then myDebugLog ("{\"" ++ colorize "green" f_name ++"\": {" ++ "\"func_stack before\": [\"" ++ show_func_stack old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
             case Map.lookup f_key nc of
-                Just nc' -> case HashMap.lookup (a_id, b_id) nc' of
+                Just nc' -> case HashMap.lookup (a_id, b_id, fs) nc' of
                     Just rt -> myDebugLog ("],\n\"" ++ colorize "chill blue" "found cached result"++"\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
                         ++ show_dd settings c (rt, getDd c rt) ++ "\\n\"}},") (old_c, (rt, getDd c rt))
                     Nothing ->
@@ -289,7 +291,7 @@ settings = ShowSetting {
             ,   display_leaf_cases = True
             ,   display_end_infs = True
 
-            ,   debug_on = False
+            ,   debug_on = True
             ,   save_logs = False
 
             ,   debug_open = True
