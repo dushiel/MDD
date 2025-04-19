@@ -73,7 +73,7 @@ infixl 4 -.
 -- base context
 c = Context{
     nodelookup = defaultNodeMap,
-    cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, [(Inf, (Node, Node, Node))]) NodeId) ["union", "intersection", "inter", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, [(Inf, (Node, Node, Node))]) NodeId),
+    cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, [(Inf, (Node, Node, Node))]) NodeId) ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, [(Inf, (Node, Node, Node))]) NodeId),
     cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
     func_stack = [],
     current_level = L [] 0,
@@ -136,7 +136,8 @@ ddOf c (Var (_, d)) = (c, d)
 -- it would be nice to not have to 
 
 dc2 = path (c)              [(0, Dc1)] [2]
-dc3 = path (fst dc2)        [(0, Dc1)] [3]
+dc'2 = path (fst dc2)       [(0, Dc1)] [-2]
+dc3 = path (fst dc'2)       [(0, Dc1)] [3]
 dc_2 = path (fst dc3)       [(1, Dc1)] [2]
 dc__2 = path (fst dc_2)     [(2, Dc1)] [2]
 
@@ -228,7 +229,7 @@ test = do
     -- intersection mixed 
             -- Dc with neg
             , (snd $ ddOf t_c $ And (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Or (Var n2) (Var n23))  `debug5` "######## test nr 12"
-            , (snd $ ddOf t_c $ And (Var dc2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Or (Var p2) (Var p23))  `debug5` "######## test nr 13" -- double check validity
+            , (snd $ ddOf t_c $ And (Var dc'2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Or (Var p2) (Var p23))  `debug5` "######## test nr 13" -- double check validity
             , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 14"
             , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 15"-- double check validity
             -- Dc with neg
