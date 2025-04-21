@@ -20,6 +20,7 @@ import Control.Monad (when)
 import Data.List (intercalate, sortBy, groupBy)
 import Data.Function (on)
 import Data.Ord (comparing)
+import Control.Monad.Cont (Cont)
 
 indentInit :: [String] -> [String]
 indentInit [] = []
@@ -125,6 +126,7 @@ data Show_setting = ShowSetting {
   display_context :: Bool,
   display_leaf_cases :: Bool,
   display_end_infs :: Bool,
+  display_dc_traversal :: Bool, 
   debug_on :: Bool,
   save_logs :: Bool,
   debug_open :: Bool,
@@ -181,7 +183,7 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a@(a_
                 not ((a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]) && (not $ display_leaf_cases settings))
                  -- leaf vs leaf, always skip printing
             then if debug_func_stack settings
-                then myTrace (show_func_stack old_c) (myTrace leaf_msg f)
+                then myTrace (leaf_msg ++ display_func_stack old_c) f
                 else myTrace leaf_msg f
             else f
     in
@@ -191,14 +193,14 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, func_stack=fs} a@(a_
         if a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]
         then if not $ display_leaf_cases settings
             then (c{func_stack=fs}, r)
-            else --myTrace (show_func_stack old_c) $ 
+            else --myTrace (display_func_stack old_c) $ 
                 myTrace (colorize "green" (f_name ++ " : ") ++
                 "\n  " ++ show_dd settings c a ++
                 " : " ++ show_dd settings c b ++
                 " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
                 "\n") (c, r)
         else
-        --myTrace (show_func_stack old_c) $ 
+        --myTrace (display_func_stack old_c) $ 
         myTrace (
         case Map.lookup f_key nc of
             Just nc' -> case HashMap.lookup (a_id, b_id, fs) nc' of
@@ -256,6 +258,49 @@ debug_func f_name f = if save_logs settings
         else f
     -- where f' =  myTrace "\"inner\":{" f
 
+debug_dc_traverse :: String -> Context -> NodeId -> NodeId -> Context -> Context
+debug_dc_traverse s c a b f = if display_dc_traversal settings && debug_on settings
+    then myTrace (colorize "purple" "dc_traverse" ++ ", for arguments: " ++ s ++ " a: " ++ show_dd settings c (getNode c a) ++ "  b: " ++ show_dd settings c (getNode c b)) 
+        (myTrace (display_func_stack' c f ++ "\n\n") f)
+    else f
+    -- then myDebugLog ("{\"" ++ colorize "orange" "dc_traverse" ++ "\" : [") (myDebugLog ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (f) ++ "\"]}\n]},") f)
+    -- else if debug_on settings
+    --     then myTrace ("{\"" ++ colorize "orange" "dc_traverse" ++ "\" : [") (myTrace ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (f) ++ "\"]}\n]},") f)
+    --     else f
+
+
+
+display_func_stack' :: Context -> Context -> String
+display_func_stack' old_c@Context{func_stack = fs} Context{func_stack = new_fs} = let  
+            (infs, dcs) = unzip fs
+            (dcAs, dcBs, dcRs) = unzip3 dcs
+            (infs', dcs') = unzip new_fs
+            (dcAs', dcBs', dcRs') = unzip3 dcs'
+            old_dcAs = intercalate separator1 $ map (show_dd settings old_c) dcAs
+            old_dcBs = intercalate separator1 $ map (show_dd settings old_c) dcBs
+            old_dcRs = intercalate separator1 $ map (show_dd settings old_c) dcRs 
+            new_dcAs = intercalate separator1 $ map (show_dd settings old_c) dcAs'
+            new_dcBs = intercalate separator1 $ map (show_dd settings old_c) dcBs'
+            new_dcRs = intercalate separator1 $ map (show_dd settings old_c) dcRs' 
+            separator1 = " , \n  " 
+        in colorize "purple" "func stack : " ++ show infs ++
+            colorize "orange" "\n- DcA old : \n  " ++ old_dcAs ++ colorize "green" "\n  DcA new : \n  " ++ new_dcAs ++ 
+            colorize "orange" "\n- DcB old : \n  " ++ old_dcBs ++ colorize "green" "\n  DcB new : \n  " ++ new_dcBs ++ 
+            colorize "orange" "\n- DcR old : \n  " ++ old_dcRs ++ colorize "green" "\n  DcR new : \n  " ++ new_dcRs    
+
+display_func_stack :: Context -> String
+display_func_stack c@Context{func_stack = fs} = let  
+            (infs, dcs) = unzip fs
+            (dcAs, dcBs, dcRs) = unzip3 dcs
+            dcAs' = intercalate separator1 $ map (show_dd settings c) dcAs
+            dcBs' = intercalate separator1 $ map (show_dd settings c) dcBs
+            dcRs' = intercalate separator1 $ map (show_dd settings c) dcRs 
+            separator1 = " , \n" 
+        in colorize "purple" "func stack : " ++ show infs ++
+            colorize "blue" "\n DcA : \n" ++ dcAs' ++ 
+            colorize "blue" "\n DcB : \n" ++ dcBs' ++ 
+            colorize "blue" "\n DcR : \n" ++ dcRs' ++ "\n"
+
 jsonwrap :: String -> String -> String
 jsonwrap k v = "{ \""++ k ++    "\": \"" ++ v ++ "\" }"
 
@@ -290,14 +335,15 @@ settings = ShowSetting {
             ,   display_context = False
             ,   display_leaf_cases = True
             ,   display_end_infs = True
+            ,   display_dc_traversal = True
 
-            ,   debug_on = False
+            ,   debug_on = True
             ,   save_logs = False
 
             ,   debug_open = True
             ,   debug_close = True
             ,   debug_shorten_close = False
-            ,   debug_func_stack = False
+            ,   debug_func_stack = True
 }
 
 

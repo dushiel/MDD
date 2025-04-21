@@ -344,6 +344,8 @@ l1 =(1, 0)
 l0 = (2, 0)
 u = (0, 0)
 
+top_level_func_stack :: [(Inf, (Node, Node, Node))]
+top_level_func_stack = [(Dc, ((u, Unknown), (u, Unknown), (u, Unknown)))]
 
 makeNode :: Context -> LevelL -> (Context, Node)
 makeNode _ (Ll [] _) = error "empty context"
