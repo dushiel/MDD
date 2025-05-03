@@ -168,12 +168,30 @@ p'3 = path (fst p'2)        [(0, Pos0)] [-3]
 p'_2 = path (fst p'3)       [(1, Pos0)] [-2]
 p'__2 = path (fst p'_2)     [(2, Pos0)] [-2]
 
+-- nested domains dc
+dcdc2 = path (fst p'__2)     [(0, Dc1), (0, Dc1)] [2]
+dcdc3 = path (fst dcdc2)     [(0, Dc1), (0, Dc1)] [3]
+dcdc'2 = path (fst dcdc3)     [(0, Dc1), (0, Dc1)] [-2]
+dcdc'3 = path (fst dcdc'2)     [(0, Dc1), (0, Dc1)] [-3]
+
+-- nested domains pos
+pp2 = path (fst dcdc'3)     [(0, Pos1), (0, Pos1)] [-2]
+pp3 = path (fst pp2)     [(0, Pos1), (0, Pos1)] [-3]
+pp'2 = path (fst pp3)     [(0, Pos0), (0, Pos0)] [-2]
+pp'3 = path (fst pp'2)     [(0, Pos0), (0, Pos0)] [-3]
+
+-- nested domains neg
+nn2 = path (fst pp'3)     [(0, Neg1), (0, Neg1)] [2]
+nn3 = path (fst nn2)     [(0, Neg1), (0, Neg1)] [3]
+nn'2 = path (fst nn3)     [(0, Neg0), (0, Neg0)] [2]
+nn'3 = path (fst nn'2)     [(0, Neg0), (0, Neg0)] [3]
+
 -- mixing different types of domains in the same path (nested domains)
 dcn1 = path (fst p'__2)     [(0, Dc1), (0, Neg1)] [-1]
 dcn'1 = path (fst dcn1)     [(0, Dc1), (0, Neg0)] [1]
 
 nn1 = path (fst dcn'1)      [(0, Neg1), (0, Neg1)] [1]
-nn2 = path (fst nn1)        [(0, Neg1), (0, Neg1)] [2]
+-- nn2 = path (fst nn1)        [(0, Neg1), (0, Neg1)] [2]
 n_n1 = path (fst nn2)       [(0, Neg1), (1, Neg1)] [1]
 n_n2 = path (fst n_n1)      [(0, Neg1), (1, Neg1)] [2]
 n'n'1 = path (fst n_n2)     [(0, Neg0), (0, Neg0)] [1]
@@ -184,7 +202,7 @@ n'_n2 = path (fst n'_n1)    [(0, Neg0), (1, Neg1)] [2]
 nn'1 = path (fst n'_n2)      [(0, Neg1), (0, Neg0)] [1]
 
 -- the actual test context, containing all the DD's of the above declarations 
-(t_c, _) = dcn'1
+(t_c, _) = nn'1
 
 
 
@@ -325,18 +343,21 @@ test = do
             ,   (snd $ ddOf t_c $ Or (And (And (Var p_2) (Var p__2)) (Var p3)) (And (Var p__2)  (Var p3))) == (snd $ ddOf t_c $ And ( Var p__2) (Var p3))  `debug5` "#### test 3 levels of inf domains"
             ,   (snd $ ddOf t_c $ Or (And (And (Var n_2) (Var n__2)) (Var n3)) (And (Var n__2)  (Var n3))) == (snd $ ddOf t_c $ And ( Var n__2) (Var n3))  `debug5` "#### test 3 levels of inf domains"
 
-        --     ,   (snd $ ddOf t_c $ And (Or (Or (Var n'_2) (Var n'__2)) (Var n'3)) (Or (Var n'__2) (Var n'3))) == (snd $ ddOf t_c $ Or (Var n'__2) (Var n'3))  `debug5` "#### test 3 levels of inf domains"
-        --     ,   (snd $ ddOf t_c $ And (Or (Or (Var p'_2) (Var p'__2)) (Var p'3)) (Or (Var p'__2) (Var p'3))) == (snd $ ddOf t_c $ Or (Var p'__2) (Var p'3))  `debug5` "#### test 3 levels of inf domains"
-        --     ,   (snd $ ddOf t_c $ And (Or (Or (Var p_2) (Var p__2)) (Var p3)) (Or (Var p__2) (Var p3))) == (snd $ ddOf t_c $ Or (Var p__2) (Var p3))  `debug5` "#### test 3 levels of inf domains"
-        --     ,   (snd $ ddOf t_c $ And (Or (Or (Var n_2) (Var n__2)) (Var n3)) (Or (Var n__2) (Var n3))) == (snd $ ddOf t_c $ Or (Var n__2) (Var n3))  `debug5` "#### test 3 levels of inf domains"
+            ,   (snd $ ddOf t_c $ And (Or (Or (Var n'_2) (Var n'__2)) (Var n'3)) (Or (Var n'__2) (Var n'3))) == (snd $ ddOf t_c $ Or (Var n'__2) (Var n'3))  `debug5` "#### test 3 levels of inf domains"
+            ,   (snd $ ddOf t_c $ And (Or (Or (Var p'_2) (Var p'__2)) (Var p'3)) (Or (Var p'__2) (Var p'3))) == (snd $ ddOf t_c $ Or (Var p'__2) (Var p'3))  `debug5` "#### test 3 levels of inf domains"
+            ,   (snd $ ddOf t_c $ And (Or (Or (Var p_2) (Var p__2)) (Var p3)) (Or (Var p__2) (Var p3))) == (snd $ ddOf t_c $ Or (Var p__2) (Var p3))  `debug5` "#### test 3 levels of inf domains"
+            ,   (snd $ ddOf t_c $ And (Or (Or (Var n_2) (Var n__2)) (Var n3)) (Or (Var n__2) (Var n3))) == (snd $ ddOf t_c $ Or (Var n__2) (Var n3))  `debug5` "#### test 3 levels of inf domains"
     
     -- mixing all domains types
-        --     ,   (snd $ ddOf t_c $ And (Or (Or (Var n'_2) (Var p'__2)) (Var p3)) (Or (Var p'__2) (Var p3))) == (snd $ ddOf t_c $ Or (Var p'__2) (Var p3))  `debug5` "#### test 3 levels of inf domains"
-        --     ,   (snd $ ddOf t_c $ Or (And (Var dc2) (And (Var dc3) (Var n3))) (And (Or (And (Var n'_2) (Var p'__2)) (Var p3)) (Or (Var p'__2) (Var p3)))) == (snd $ ddOf t_c $ Or (And (Var dc2) (And (Var dc3) (Var n3))) (Or (And (Var n'_2) (Var p'__2)) (Var p3)))  `debug5` "#### test 3 levels of inf domains"
-        --     ,   (snd $ ddOf t_c $ Or (And (Var n2) (And (Var p'3) (Var dc3))) (And (Or (And (Var p__2) (Var p'__2)) (Var p3)) (Or (Var n__2) (Var p3)))) == (snd $ ddOf t_c $ Or (And (Var n2) (And (Var p'3) (Var dc3))) (Or (And (Var p__2) (Var n__2)) (Var p3)))  `debug5` "#### test 3 levels of inf domains"
+            ,   (snd $ ddOf t_c $ And (Or (Or (Var n'_2) (Var p'__2)) (Var p3)) (Or (Var p'__2) (Var p3))) == (snd $ ddOf t_c $ Or (Var p'__2) (Var p3))  `debug5` "#### test 3 levels of inf domains"
+            ,   (snd $ ddOf t_c $ Or (And (Var dc2) (And (Var dc3) (Var n3))) (And (Or (And (Var n'_2) (Var p'__2)) (Var p3)) (Or (Var p'__2) (Var p3)))) == (snd $ ddOf t_c $ Or (And (Var dc2) (And (Var dc3) (Var n3))) (Or (And (Var n'_2) (Var p'__2)) (Var p3)))  `debug5` "#### test 3 levels of inf domains"
+            ,   (snd $ ddOf t_c $ Or (And (Var n2) (And (Var p'3) (Var dc3))) (And (Or (And (Var p__2) (Var p'__2)) (Var p3)) (Or (Var n__2) (Var p3)))) == (snd $ ddOf t_c $ Or (And (Var n2) (And (Var p'3) (Var dc3))) (Or (And (Var p__2) (Var n__2)) (Var p3)))  `debug5` "#### test 3 levels of inf domains"
 
 
 -- combining DD's with nested / recursive inf domains
+        -- dc simple
+            -- (snd $ ddOf t_c $ (And (Var dcdc2) (Var dcdc3))) == (snd $ ddOf t_c Top)
+
             -- ,   (snd $ ddOf t_c $ Or (Impl (Var dcn1) (Var nn1)) (Var n'n1)) == (snd $ ddOf t_c Top) 
             -- ,   (snd $ ddOf t_c $ (ImplR (Var dcn1) (Var nn1))) == (snd $ ddOf t_c Bot) 
             -- ,   (snd $ ddOf t_c $ (ImplR (Var dcn1) (Var n'n1))) == (snd $ ddOf t_c Top) 
