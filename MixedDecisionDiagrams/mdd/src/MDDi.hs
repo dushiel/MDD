@@ -27,13 +27,13 @@ infixl 4 -.
 -- infix 2 .*.   -- F1 Conjunction / product | F0 Disjunction / sum
 (.*.) :: Context -> Node -> Node -> (Context, Node)
 (.*.) c a b =
-    let (c', (_, r)) = debug_func "INTER" $ intersection' @Dc c{func_stack = top_level_func_stack} a b
+    let (c', (_, r)) = debug_func "INTER" $ apply' @Dc c{func_stack = top_level_func_stack} "inter" a b
     in applyElimRule @Dc c' r
 
 -- infixl 3 .+.
 (.+.) :: Context -> Node -> Node -> (Context, Node)
 (.+.) c a b =
-    let (c', (_, r)) = debug_func "UNION" $ union' @Dc c{func_stack = top_level_func_stack} a b 
+    let (c', (_, r)) = debug_func "UNION" $ apply' @Dc c{func_stack = top_level_func_stack} "union" a b 
     in applyElimRule @Dc c' r
 
 -- ite :: Context -> Node -> Node -> Node -> (Context, Node)

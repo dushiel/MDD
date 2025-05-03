@@ -335,15 +335,15 @@ settings = ShowSetting {
             ,   display_context = False
             ,   display_leaf_cases = True
             ,   display_end_infs = True
-            ,   display_dc_traversal = True
+            ,   display_dc_traversal = False
 
-            ,   debug_on = False
+            ,   debug_on = True
             ,   save_logs = False
 
             ,   debug_open = True
             ,   debug_close = True
             ,   debug_shorten_close = False
-            ,   debug_func_stack = True
+            ,   debug_func_stack = False
 }
 
 
