@@ -107,7 +107,7 @@ instance (DdF3 a) => Dd1 a where
 
                 c_' = traverse_dc @a "neg child" c'{func_stack = fs} neg_childA neg_childB
                 (c'', (neg_result, _)) = apply @a c_' s neg_childA neg_childB
-            in withCache c (a, b, s) $ applyElimRule @a c''{func_stack = fs} (Node positionA pos_result neg_result)
+            in withCache c (a, b, s) $ applyElimRule @a c''{func_stack = fs} (Node positionA pos_result neg_result) `debug` ("apply noide node = " ++ show (Node positionA pos_result neg_result) ++ " .... " ++ show positionA ++ "\n for type elim " ++ to_str @a ++ " ,  elimed: " ++ show (snd $ applyElimRule @a c''{func_stack = fs} (Node positionA pos_result neg_result))) 
         -- Mismatch, highest position gets an inferred node at position of the lowest
         | positionA < positionB = applyElimRule' @a (inferNodeB' @a (apply'' @a) c s a b)
         | positionA > positionB = applyElimRule' @a (inferNodeA' @a (apply'' @a) c s a b)
@@ -117,20 +117,20 @@ instance (DdF3 a) => Dd1 a where
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
         | positionA > positionB = withCache c (a, b, s) $
                 applyElimRule' @a (inferNodeA' @a (apply'' @a) c s a b)
-        -- | positionA < positionB = withCache c (a, b, s) $
-        --         applyInfB c s a b 
+        | positionA < positionB = withCache c (a, b, s) $
+                absorb $ applyInfB @a c s a b 
     apply' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, InfNodes positionB _ _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-    --     | positionA > positionB = withCache c (a, b, s) $
-    --             applyInfA s a b
+        | positionA > positionB = withCache c (a, b, s) $
+                absorb $ applyInfA @a c s a b
         | positionA < positionB = withCache c (a, b, s) $
                 applyElimRule' @a (inferNodeB' @a (apply'' @a) c s a b)
     apply' c s a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
-        | positionA == positionB = applyInf @a c s a b
-        | positionA < positionB = applyInfB @a c s a b
-        | positionA > positionB = applyInfA @a c s a b
-    apply' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, s) $ applyInfA @a c s a b
-    apply' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, s) $ applyInfB @a c s a b
+        | positionA == positionB = withCache c (a, b, s) $ absorb $ applyInf @a c s a b
+        | positionA < positionB = withCache c (a, b, s) $ absorb $ applyInfB @a c s a b
+        | positionA > positionB = withCache c (a, b, s) $ absorb $ applyInfA @a c s a b
+    apply' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, s) $ absorb $ applyInfA @a c s a b
+    apply' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, s) $ absorb $ applyInfB @a c s a b
 
 -- | ======================== DC versions ========================
     -- b is of dc type
@@ -386,12 +386,12 @@ instance DdF3 Pos where
 
     inferNodeA' f c s a@(a_id, _) b@(b_id, Node positionB pos_childB neg_childB) =
         let
-            (c', r) = insert c (Node positionB (0,0) a_id)
+            (c', r) = insert c (Node positionB a_id (0,0))
             (c'', r'@(r_id, r_dd)) = f c' s r b
         in (c'', r_dd) 
     inferNodeB' f c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, _) =
         let
-            (c', r) = insert c (Node positionA (0,0) b_id)
+            (c', r) = insert c (Node positionA b_id (0,0))
             (c'', r'@(r_id, r_dd)) = f c' s a r
         in (c'', r_dd)
     
@@ -400,6 +400,16 @@ instance DdF3 Pos where
 
     applyElimRule' (c, d@(Node _ posC (0, 0))) = (c, getNode c posC) 
     applyElimRule' (c, d) = applyElimRule'_general (c, d)
+
+    applyInfA c s a@(a_id, _) b@(_, InfNodes positionB _ _ _) = let
+            (c', (r_id, _)) = insert c $ EndInfNode  a_id
+            (c'', r') = insert c' $ InfNodes positionB (0,0) r_id (0,0)
+        in applyInf @Dc c'' s r' b
+    applyInfB c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
+            (c', (r_id, _)) = insert c $ EndInfNode b_id
+            (c'', r') = insert c' $ InfNodes positionA (0,0) r_id (0,0)
+        in applyInf @Dc c'' s a r'
+
 
     catchup s c n@(_, Node positionA pos_child _) idx
         -- special case to go until the end
@@ -438,6 +448,15 @@ instance DdF3 Neg where
             (c', r) = insert c (Node positionA (0,0) b_id)
             (c'', r'@(r_id, r_dd)) = f c' s a r
         in (c'', r_dd) 
+
+    applyInfA c s a@(a_id, _) b@(_, InfNodes positionB _ _ _) = let
+            (c', (r_id, _)) = insert c $ EndInfNode  a_id
+            (c'', r') = insert c' $ InfNodes positionB (0,0) (0,0) r_id
+        in applyInf @Dc c'' s r' b
+    applyInfB c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
+            (c', (r_id, _)) = insert c $ EndInfNode b_id
+            (c'', r') = insert c' $ InfNodes positionA (0,0) (0,0) r_id
+        in applyInf @Dc c'' s a r'
 
     applyElimRule c d@(Node _ (0, 0) negC) = (c, (negC, getDd c negC))
     applyElimRule c d = applyElimRule_general c d
@@ -568,8 +587,7 @@ class Dd1_helper a where
 instance (DdF3 a) => Dd1_helper a where
     -- apply traversal
     applyInf :: Context -> String ->  Node -> Node -> (Context, Node)
-    applyInf c s a b = debug_manipulation (applyInf' @a c s a b) s "applyInf" c a b
-
+    applyInf c s a@(a_id, a_d) b = debug_manipulation (applyInf' @a c s a b) s "applyInf" c a b --`debug` ("applyinf: " ++ (show $ a))-- ++ "  :   " ++ (show a_d)) -- ++ getDd old_c b_id )
     applyInf' :: Context -> String -> Node -> Node -> (Context, Node)
     applyInf' c@Context{func_stack = fs} s a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
         | positionA == positionB =  
@@ -591,7 +609,7 @@ instance (DdF3 a) => Dd1_helper a where
                 (c3, pR) = apply @Pos (traverse_dc @a "inf pos" c3_ pA pB) s pA pB
 
                 c4 = func_tail (to_str @a) c3 --remove the func_stack layer
-            in applyElimRule @a c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
+            in applyElimRule @a c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR) 
 
         | positionA > positionB = applyInfA @a c s a b
         | positionA < positionB = applyInfB @a c s a b

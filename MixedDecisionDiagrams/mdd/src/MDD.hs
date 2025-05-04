@@ -112,7 +112,6 @@ instance Show Context where
 
 show_context :: Context -> [Char]
 show_context c = "Context nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
-            --  "\\n\\t, cache keys = " ++ show (Map.map HashMap.size (cache c)) ++
              "\\n\\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "\\n"
 
 show_func_stack :: Context -> String
@@ -213,7 +212,7 @@ insert_id k v nm = case HashMap.lookup k nm of
 type Node = (NodeId, Dd)
 
 insert :: Context -> Dd -> (Context, Node)
-insert c@Context{nodelookup = nm} d = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, (new_id, d))
+insert c@Context{nodelookup = nm} d = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, (new_id, d)) --`debug` ("about to insert " ++ show d  ++ "  ,  " ++ (show new_id))
 
 merge_rule :: (Context -> Dd -> Dd -> (Context, Dd)) -> Context -> Dd -> Dd -> (Context, Node)
 merge_rule f c a b = let
@@ -364,9 +363,18 @@ makeNode c (Ll [(i, inf)] nodePosition)
         ins' c d = insert c d
         ins d = insert c d
         -- 0 is for the InfNodes position, vars start from 1
-        loopDc b n = if n >0 then ins (Node n (leafid b) (leafid $ not b)) else ins (Node (abs n) (leafid $ not b) (leafid b))
-        loopPos b n = if n >0 then ins (Node n u (leafid b)) else ins (Node (abs n) (leafid b) u)
-        loopNeg b n = if n >0 then ins (Node n (leafid b) u) else ins (Node (abs n) u (leafid b)) 
+        loopDc b n
+          | n ==0 = (c, leaf b)
+          | n >= 0 = ins (Node n (leafid b) (leafid $ not b))
+          | otherwise = ins (Node (abs n) (leafid $ not b) (leafid b))
+        loopPos b n
+          | n ==0 = (c, leaf b)
+          | n >= 0 = ins (Node n u (leafid b))
+          | otherwise = ins (Node (abs n) (leafid b) u)
+        loopNeg b n
+          | n ==0 = (c, leaf b)
+          | n >= 0 = ins (Node n (leafid b) u)
+          | otherwise = ins (Node (abs n) u (leafid b))
         -- close = (!! l) . iterate EndInfNode
 makeNode c (Ll ((i, inf):cs) nodePosition)
     | inf == Dc1 = let (c', (rid, _)) = makeNode c (Ll cs nodePosition) in ins' c' (InfNodes i rid u u)
@@ -406,19 +414,25 @@ makeLocalPath' c [(i, inf)] nodeList
     where
         loopDc c b (n:ns) = let
           (c', (next_iter,_)) = loopDc c b ns in
-          if n >=0  then insert c' (Node n next_iter (leafid $ not b))
-                    else insert c' (Node (abs n) (leafid $ not b) next_iter)
+            if n ==0  then (c, leaf b)
+            else if n >= 0
+                  then insert c' (Node n next_iter (leafid $ not b))
+                  else insert c' (Node (abs n) (leafid $ not b) next_iter)
         loopDc c b [] = (c, leaf b)
 
         loopPos c b [] = (c, leaf b)
         loopPos c b (n:ns) = let
           r@(c', (next_iter,_)) = loopPos c b ns in
-            if n >=0  then insert c' (Node n next_iter u )
+            if n ==0  then (c, leaf b)
+            else if n >= 0
+                  then insert c' (Node n next_iter u )
                       else insert c' (Node (abs n) u next_iter )
         loopNeg c b [] = (c, leaf b)
         loopNeg c b (n:ns) = let
           r@(c', (next_iter,_)) = loopNeg c b ns in
-            if n >=0  then insert c' (Node n next_iter u)
+            if n ==0  then (c, leaf b)
+            else if n >= 0
+                  then insert c' (Node n next_iter u)
                       else insert c' (Node (abs n) u next_iter)
 
 makeLocalPath' c ((i, inf):ns) nodeList
