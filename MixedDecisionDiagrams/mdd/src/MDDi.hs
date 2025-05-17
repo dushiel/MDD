@@ -114,6 +114,27 @@ ddOf c (ImplR a b) = ddOf c $ Or a (Negate b)
 ddOf c (PrpF l) = makeNode c l
 ddOf c (Var (_, d)) = (c, d)
 
+ddOf' :: Form -> (Context, Node)
+ddOf' Top = (c, ((1,0), Leaf True))
+ddOf' Bot = (c, ((2,0), Leaf False))
+ddOf' (Negate a) =
+                let
+                    (c1, r1) = ddOf' a
+                in (-.) c1 r1
+ddOf' (And a b) =
+                let
+                    (c1, r1) = ddOf' a
+                    (c2, r2) = ddOf' b
+                in (.*.) (unionContext c1 c2) r1 r2
+ddOf' (Or a b) =
+                let
+                    (c1, r1) = ddOf' a
+                    (c2, r2) = ddOf' b
+                in (.+.) (unionContext c1 c2) r1 r2
+ddOf' (Impl a b) = ddOf' $ Or (Negate a) b
+ddOf' (ImplR a b) = ddOf' $ Or a (Negate b)
+ddOf' (PrpF l) = makeNode c l
+ddOf' (Var (c, d)) = (c, d)
 
 
 -- |======================================== Constructing base test DD's ==============================================
@@ -197,8 +218,10 @@ nn'3 = path (fst nn'2)     [(1, Neg1), (1, Neg0)] [3]
 -- mixing different types of domains in the same path (nested domains)
 dcn1 = path (fst nn'3)     [(1, Dc1), (1, Neg1)] [1]
 dcn'1 = path (fst dcn1)     [(1, Dc1), (1, Neg0)] [1]
+dcn23 = path (fst dcn'1)     [(1, Dc1), (1, Neg1)] [2,3]
+dcn'23 = path (fst dcn23)     [(1, Dc1), (1, Neg0)] [2,3]
 
-nn1 = path (fst dcn'1)      [(1, Neg1), (1, Neg1)] [1]
+nn1 = path (fst dcn'23)      [(1, Neg1), (1, Neg1)] [1]
 n_n1 = path (fst nn1)       [(1, Neg1), (2, Neg1)] [1]
 n_n2 = path (fst n_n1)      [(1, Neg1), (2, Neg1)] [2]
 n'n'1 = path (fst n_n2)     [(1, Neg0), (1, Neg0)] [1]
@@ -218,9 +241,10 @@ p'p2 = path (fst p'p1)      [(1, Pos0), (1, Pos1)] [-2]
 p'_p1 = path (fst p'p2)     [(1, Pos0), (2, Pos1)] [-1]
 p'_p2 = path (fst p'_p1)    [(1, Pos0), (2, Pos1)] [-2]
 pp'1 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1]
+p'p'12 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1, -2]
 
 -- the actual test context, containing all the DD's of the above declarations 
-(t_c, _) = pp'1
+(t_c, _) = p'p'12
 
 
 -- |======================================== Actual test cases ==============================================
@@ -390,20 +414,21 @@ test = do
     -- intersection pos
             ,   (snd $ ddOf t_c (Or (Var pp'3) (Var p'p'1))) == (snd $ ddOf t_c Top) `debug5` "######## test nr 8"
             ,   (snd $ ddOf t_c (And (Var pp3) (Var pp3))) == (snd $ ddOf t_c (Var pp3)) `debug5` "######## test nr 9"
-            ,   (snd $ ddOf t_c (And (Var p'p2) (Var pp2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 10"
-            ,   (snd $ ddOf t_c $ And (Var p'p'1) (Var p'p'2)) == (snd $ ddOf t_c Bot)`debug5` "######## test nr 11"
+            ,   (snd $ ddOf t_c (And (Var p'p2) (Var pp2))) == (snd $ ddOf t_c (Var pp2)) `debug5` "######## test nr 10"
+            ,   (snd $ ddOf t_c $ (And (Var p'p'1) (Var p'p'2))) == (snd $ ddOf t_c (Impl (Or (Var pp1) (Var pp2)) (Bot))) `debug5` "######## test nr 11"
+            ,   (snd $ ddOf t_c (And (Var pp1) (Var pp2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 10"
 
 --     -- intersection mixed 
---             -- Dc with neg
---             , (snd $ ddOf t_c $ And (Var dcdc2) (Or (Var dcn2) (Var dcn23))) == (snd $ ddOf t_c $ Or (Var dcn2) (Var dcn23))  `debug5` "######## test nr 12"
---             , (snd $ ddOf t_c $ And (Var dc'2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Or (Var p2) (Var p23))  `debug5` "######## test nr 13" 
---             , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 14"
---             , (snd $ ddOf t_c $ Or (Var dc'2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Var dc'2)  `debug5` "######## test nr 15"
---             -- Dc with neg
---             , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var n'2)) == (snd $ ddOf t_c $ Var n'2)  `debug5` "######## test nr 16"
---             ,  (snd $ ddOf t_c $ Or (And (Var dc2) (Var p'2)) (Var p'2)) == (snd $ ddOf t_c $ Var p'2)  `debug5` "######## test nr 17"
---             , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 18"
---     --         -- etc
+            -- Dc with neg
+            , (snd $ ddOf t_c $ And (Var dcdc2) (Or (Var dcn1) (Var dcn23))) == (snd $ ddOf t_c $ Or (Var dcn1) (Var dcn23))  `debug5` "######## test nr 12"
+            , (snd $ ddOf t_c $ And (Var dc'2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Or (Var p2) (Var p23))  `debug5` "######## test nr 13" 
+            , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 14"
+            , (snd $ ddOf t_c $ Or (Var dc'2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Var dc'2)  `debug5` "######## test nr 15"
+            -- Dc with neg
+            , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var n'2)) == (snd $ ddOf t_c $ Var n'2)  `debug5` "######## test nr 16"
+            ,  (snd $ ddOf t_c $ Or (And (Var dc2) (Var p'2)) (Var p'2)) == (snd $ ddOf t_c $ Var p'2)  `debug5` "######## test nr 17"
+            , (snd $ ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var dc2)) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 18"
+    --         -- etc
 
 
 --     -- -- union dc

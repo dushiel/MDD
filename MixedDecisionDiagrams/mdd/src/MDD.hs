@@ -483,3 +483,70 @@ setColor24bit r g b = "\ESC[38;2;" ++ show r ++ ";" ++ show g ++ ";" ++ show b +
 
 resetColor :: String
 resetColor = "\ESC[0m"
+
+
+
+-- | Merges two Contexts, including their NodeLookups and caches.
+-- For NodeLookup: All Dd entries from the second context (ctx2) are merged into
+-- the first context's (ctx1) NodeLookup. Reference counts for identical Dds are summed.
+-- Dds are stored under their canonical HashedId.
+-- For caches ('cache', 'cache_', 'cache''): A union is performed. If a key exists
+-- in both, the value from ctx1 is preferred.
+-- Non-cache fields ('func_stack', 'current_level') are taken from ctx1.
+unionContext :: Context -> Context -> Context
+unionContext ctx1 ctx2 =
+    Context
+        { cache         = mergedCache,
+          cache_        = mergedCache_,
+          cache'        = mergedCache',
+          nodelookup    = mergedNodeLookup,
+          func_stack    = [],
+          current_level = L [] 0
+        }
+  where
+    -- Cache merging (prefers ctx1 on collision for HashMap values)
+    mergedCache :: Cache
+    mergedCache = Map.unionWith HashMap.union (cache ctx1) (cache ctx2)
+
+    mergedCache_ :: SingleCache
+    mergedCache_ = HashMap.union (cache_ ctx1) (cache_ ctx2)
+
+    mergedCache' :: ShowCache
+    mergedCache' = HashMap.union (cache' ctx1) (cache' ctx2)
+
+    -- NodeLookup merging logic
+    -- Accumulator (accNL) starts as nl1. 
+    mergedNodeLookup :: NodeLookup
+    mergedNodeLookup =
+      let nl1 = nodelookup ctx1
+          nl2 = nodelookup ctx2
+      in HashMap.foldlWithKey' mergeHashedIdEntryFromNL2IntoAcc nl1 nl2
+
+    -- This function is called for each (HashedId, LookupEntry) pair from nl2.
+    -- It merges all Dds within lookupEntryFromNL2 into accNL under hIdFromNL2.
+    mergeHashedIdEntryFromNL2IntoAcc :: NodeLookup -> HashedId -> LookupEntry -> NodeLookup  
+    mergeHashedIdEntryFromNL2IntoAcc accNL hIdFromNL2 lookupEntryFromNL2 =
+      -- Fold over the alternatives (TableEntry) within lookupEntryFromNL2.
+      -- The 'accNL' is passed through and updated by 'processSingleTableEntry'.
+      Map.foldlWithKey' (processSingleTableEntry hIdFromNL2) accNL lookupEntryFromNL2
+
+    -- This function processes a single TableEntry (containing a Dd) from nl2.
+    -- hIdFromNL2 is the HashedId under which this Dd was found in nl2.
+    -- _altKeyFromNL2 is the original alternative key in nl2 (not directly used for insertion index).
+    processSingleTableEntry :: HashedId -> NodeLookup -> Int -> TableEntry -> NodeLookup  
+    processSingleTableEntry hIdFromNL2 accNL _altKeyFromNL2 tableEntryFromNL2 =
+      let ddToMerge       = dd tableEntryFromNL2
+          refCountToMerge = reference_count tableEntryFromNL2
+      in
+      case HashMap.lookup hIdFromNL2 accNL of
+        Just existingAlternativesMap -> -- HashedId from nl2 already exists in the accumulator
+          case match_alternative ddToMerge existingAlternativesMap of
+            Just _ -> accNL -- DD structure also matches an existing alternative, so do nothing.
+            Nothing -> -- HashedId exists, but this Dd is a new alternative. Add it.
+              let newAltIdx = getFreeKey existingAlternativesMap
+                  newEntry  = Entry { dd = ddToMerge, reference_count = refCountToMerge }
+              in HashMap.insert hIdFromNL2 (Map.insert newAltIdx newEntry existingAlternativesMap) accNL
+        Nothing -> -- HashedId from nl2 does not exist in accumulator. Add new HashedId entry with this Dd.
+          let newEntry = Entry { dd = ddToMerge, reference_count = refCountToMerge }
+          -- Create a new LookupEntry (Map Int TableEntry) with the Dd as alternative 0.
+          in HashMap.insert hIdFromNL2 (Map.singleton 0 newEntry) accNL

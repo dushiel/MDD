@@ -29,6 +29,7 @@ library
       MDD
       MDDi
       SODDmanipulation
+      Example 
   other-modules:
   hs-source-dirs:
       src
