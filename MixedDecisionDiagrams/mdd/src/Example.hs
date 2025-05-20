@@ -24,13 +24,21 @@ symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW
 
 
 word_to_symbols :: [Char] -> Form
-word_to_symbols sl = foldr1 Or (map (Var . (uncurry $ path c )) (word_to_symbols' sl))
+word_to_symbols sl = foldr1 And (map (Var . (uncurry $ path c )) (word_to_symbols' sl))
 
-word_to_symbols' :: [Char] -> [([(Int, InfL)], [Int])]
-word_to_symbols' sl = [([(s_pos :: Int, Neg1)], [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl ]
+word_to_symbols' :: [Char] -> [([(Int, InfL)], [Int])] 
+word_to_symbols' sl = [([(2 :: Int, Dc1), (s_pos :: Int, Neg1)], [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl ]
+
+end_of_word :: Int -> Form
+end_of_word i = foldr1 Or (map (Var . (uncurry $ path c )) (end_of_word' i 1))
+
+end_of_word' :: Int -> Int -> [([(Int, InfL)], [Int])]
+end_of_word' 0 _ = [] 
+end_of_word' i j = ([(2, Neg1), (j, Dc1)], [0]) : end_of_word' (i - 1) (j + 1)
+
 
 vocabulary :: Form
-vocabulary = foldl1 Or (map word_to_symbols ["hell", "hello my name is", "daniel", "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."])
+vocabulary = foldl1 Or (map word_to_symbols ["he", "hel"])--- my", "daniel"]) --, "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."])
 
 -- generateAndShow_c 
 

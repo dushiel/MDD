@@ -17,10 +17,11 @@ import System.Exit (ExitCode(..))
 import System.FilePath ((</>))  -- Import for path manipulation
 import System.Directory (getCurrentDirectory)
 import Control.Monad (when) 
-import Data.List (intercalate, sortBy, groupBy)
+import Data.List (intercalate, sortBy, groupBy, foldl')
 import Data.Function (on)
 import Data.Ord (comparing)
 import Control.Monad.Cont (Cont)
+import qualified Data.Set as Set
 
 indentInit :: [String] -> [String]
 indentInit [] = []
@@ -296,7 +297,7 @@ display_func_stack c@Context{func_stack = fs} = let
             dcBs' = intercalate separator1 $ map (show_dd settings c) dcBs
             dcRs' = intercalate separator1 $ map (show_dd settings c) dcRs 
             separator1 = " , \n" 
-        in colorize "purple" "func stack : " ++ show infs ++
+        in colorize "purple" "func stack : " ++ show infs  ++
             colorize "blue" "\n DcA : \n" ++ dcAs' ++ 
             colorize "blue" "\n DcB : \n" ++ dcBs' ++ 
             colorize "blue" "\n DcR : \n" ++ dcRs' ++ "\n"
@@ -337,13 +338,13 @@ settings = ShowSetting {
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
-            ,   debug_on = False
+            ,   debug_on = True
             ,   save_logs = False
 
             ,   debug_open = True
             ,   debug_close = True
             ,   debug_shorten_close = False
-            ,   debug_func_stack = False
+            ,   debug_func_stack = True
 }
 
 
@@ -391,12 +392,16 @@ generateAndShow_c (context, rootNode) = do
     putStrLn message
     when success $ putStrLn $ "Image file: " ++ imageFilePath
 
--- Function to create the .dot graph
+-- Helper function to convert NodeId to DOT string format
+nodeIdToDotId :: NodeId -> String
+nodeIdToDotId (hash, idx) = "node" ++ show (abs hash) ++ "_" ++ show idx
 
+
+-- Function to create the .dot graph (main traversal for nodes and edges)
 createDotGraph' :: Context -> Node -> Map.Map NodeId String -> Bool -> ([String], [String], Map.Map NodeId String)
 createDotGraph' context node@(nodeId, nodeData) visited colorized =
     case Map.lookup nodeId visited of
-        Just existingLabel -> ([], [], visited)  -- Node already visited
+        Just _existingLabel -> ([], [], visited)
         Nothing ->
             let (nodeLabel, nodeShape, fontColor) = case nodeData of
                   Leaf True  -> ("1", "square", if colorized then "forestgreen" else "")
@@ -406,7 +411,7 @@ createDotGraph' context node@(nodeId, nodeData) visited colorized =
                   InfNodes position _ _ _ -> ("{" ++ show position ++ "}", "trapezium", if colorized then "SteelBlue" else "")
                   EndInfNode _ -> ("", "diamond", "")
 
-                nodeIdStr = "node" ++ show (abs (fst nodeId)) ++ "_" ++ show (snd nodeId)
+                nodeIdStr = nodeIdToDotId nodeId
                 nodeAttributes = case nodeData of
                     EndInfNode _ -> " [label=\"" ++ nodeLabel ++ "\", shape=" ++ nodeShape ++ ", fontsize=8, margin=\"0.08,0.08\", width=0.3, height=0.3" ++ (if null fontColor then "" else ", fontcolor=" ++ fontColor) ++ "];"
                     _            -> " [label=\"" ++ nodeLabel ++ "\", shape=" ++ nodeShape ++ ", width=0.5, height=0.25, margin=\"0.025,0.001\"" ++ (if null fontColor then "" else ", fontcolor=" ++ fontColor) ++ "];"
@@ -424,7 +429,8 @@ createDotGraph' context node@(nodeId, nodeData) visited colorized =
                         in (lDefs ++ rDefs, lEdges ++ rEdges ++ newEdges, v2)
 
                     InfNodes _ dc n p ->
-                        let (dcDefs, dcEdges, v1) = createDotGraph' context (getNode context dc) updatedVisited colorized
+                        let vBase = updatedVisited
+                            (dcDefs, dcEdges, v1) = if dc /= (0,0) then createDotGraph' context (getNode context dc) vBase colorized else ([], [], vBase)
                             (pDefs, pEdges, v2) = if p /= (0,0) then createDotGraph' context (getNode context p) v1 colorized else ([], [], v1)
                             (nDefs, nEdges, v3) = if n /= (0,0) then createDotGraph' context (getNode context n) v2 colorized else ([], [], v2)
                             edgeColorStart = if colorized then "[fontcolor=dimgray, " else "["
@@ -435,9 +441,8 @@ createDotGraph' context node@(nodeId, nodeData) visited colorized =
                             newEdges2 = if p /= (0,0)
                                         then [nodeIdStr ++ " -> " ++ (v3 Map.! p) ++ " " ++ edgeColorStart ++ "style=\"dotted\", taillabel=\"Pos\", labeldistance=2, fontsize=12, arrowsize=0.75" ++ edgeColorEnd]
                                         else []
-
                             newEdges3 =  if n /= (0,0)
-                                         then [nodeIdStr ++ " -> " ++ (v3 Map.! n) ++ " " ++ edgeColorStart ++ "style=\"dotted\", labeldistance=2, fontsize=12, arrowsize=0.75" ++ edgeColorEnd]
+                                         then [nodeIdStr ++ " -> " ++ (v3 Map.! n) ++ " " ++ edgeColorStart ++ "style=\"dotted\", /*taillabel=\"Neg\",*/ labeldistance=2, fontsize=12, arrowsize=0.75" ++ edgeColorEnd]
                                          else []
                         in (dcDefs ++ pDefs ++ nDefs, dcEdges ++ pEdges ++ nEdges ++ newEdges ++ newEdges2 ++newEdges3, v3)
 
@@ -450,76 +455,162 @@ createDotGraph' context node@(nodeId, nodeData) visited colorized =
             in (newNodeDefs ++ childNodeDefs, childEdgeDefs, finalVisited)
 
 
+-- Data structure to hold the hierarchy of InfNodes for subgraph generation
+data InfNodeHierarchy = InfCluster {
+    hNodeId :: NodeId,
+    hPosition :: Int,
+    hLevel :: Int,
+    hDirectMemberNodeIds :: [NodeId],
+    hNestedClusters :: [[InfNodeHierarchy]]
+} deriving Show
+
+-- Collects InfNode hierarchies
+collectHierarchy :: Context -> Node -> Int -> Set.Set NodeId -> (Maybe InfNodeHierarchy, Set.Set NodeId)
+collectHierarchy context (nodeId, nodeData) level visited =
+    if Set.member nodeId visited then (Nothing, visited) else
+    let visited' = Set.insert nodeId visited
+    in case nodeData of
+        InfNodes pos dc n p ->
+            let childNodeIds = filter (/= (0,0)) [dc, n, p]
+                (directMembers, nested, finalVisited) = processChildrenForHierarchy context childNodeIds (level + 1) visited'
+                currentCluster = InfCluster nodeId pos level directMembers nested
+            in (Just currentCluster, finalVisited)
+
+        Node _ l r ->
+            let (lRes, v1) = if l /= (0,0) then collectHierarchy context (getNode context l) level visited' else (Nothing, visited')
+                (rRes, v2) = if r /= (0,0) then collectHierarchy context (getNode context r) level v1 else (Nothing, v1)
+                finalRes = case lRes of
+                               Just _  -> lRes
+                               Nothing -> rRes
+            in (finalRes, v2)
+
+        EndInfNode cons ->
+            if cons /= (0,0) then collectHierarchy context (getNode context cons) level visited' else (Nothing, visited')
+        Leaf _          -> (Nothing, visited')
+        Unknown         -> (Nothing, visited')
+
+-- Processes children of an InfNode for hierarchy building
+processChildrenForHierarchy :: Context -> [NodeId] -> Int -> Set.Set NodeId
+                            -> ([NodeId], [[InfNodeHierarchy]], Set.Set NodeId)
+processChildrenForHierarchy context childNodeIds childLevel initialVisited =
+  let folder (directsAcc, nestsAcc, visitedAcc) childId =
+        if Set.member childId visitedAcc then (directsAcc, nestsAcc, visitedAcc) else
+        let childFullNode@(cNodeId, _cNodeData) = getNode context childId
+            (mClusterStartedByChild, visitedAfterChildProcessing) =
+                 collectHierarchy context childFullNode childLevel visitedAcc
+        in case mClusterStartedByChild of
+             Just foundCluster ->
+                 (directsAcc, foundCluster : nestsAcc, visitedAfterChildProcessing)
+             Nothing ->
+                 (cNodeId : directsAcc, nestsAcc, visitedAfterChildProcessing)
+
+      (directMemberIds_rev, nestedClusters_rev, finalVisited) =
+          foldl' folder ([], [], initialVisited) childNodeIds
+      
+      groupedNested = if null nestedClusters_rev
+                      then []
+                      else groupBy ((==) `on` hPosition) $ sortBy (comparing hPosition) (reverse nestedClusters_rev)
+  in (reverse directMemberIds_rev, groupedNested, finalVisited)
+
+
+-- Serializes a group of InfNodeHierarchies (sharing position and level)
+serializeNestedGroup :: [InfNodeHierarchy] -> String
+serializeNestedGroup [] = ""
+serializeNestedGroup infNodeGroup =
+    "  {\n" ++
+    "    rank=same; " ++ intercalate "; " (map (nodeIdToDotId . hNodeId) infNodeGroup) ++ ";\n" ++
+    "  }\n" ++
+    intercalate "\n" (map serializeHierarchyActualSubgraph infNodeGroup)
+
+-- Serializes a single InfNodeHierarchy into its DOT subgraph cluster
+serializeHierarchyActualSubgraph :: InfNodeHierarchy -> String
+serializeHierarchyActualSubgraph cluster =
+    let clusterDotId = "cluster_L" ++ show (hLevel cluster) ++ "_N" ++ show (abs (fst (hNodeId cluster))) ++ "_" ++ show (snd (hNodeId cluster))
+        directMemberStrings = map nodeIdToDotId (hDirectMemberNodeIds cluster)
+        memberNodesListing = if null directMemberStrings
+                             then ""
+                             else "  " ++ intercalate "; " directMemberStrings ++ ";\n"
+    in
+    "subgraph " ++ clusterDotId ++ " {\n" ++
+    "  label=\"L:" ++ show (hLevel cluster) ++ " P:" ++ show (hPosition cluster) ++ "\";\n" ++
+    memberNodesListing ++
+    intercalate "\n" (map serializeNestedGroup (hNestedClusters cluster)) ++
+    "}\n"
+
+-- Finds all top-level InfNode hierarchies
+findTopLevelHierarchies :: Context -> Node -> Set.Set NodeId -> ([InfNodeHierarchy], Set.Set NodeId)
+findTopLevelHierarchies context (nodeId, nodeData) visited =
+    if Set.member nodeId visited then ([], visited) else
+    let visited' = Set.insert nodeId visited
+    in case nodeData of
+        InfNodes {} ->
+            let (mCluster, finalV) = collectHierarchy context (nodeId, nodeData) 0 visited'
+            in (maybe [] (:[]) mCluster, finalV)
+
+        Node _ l r ->
+            let (lH, v1) = if l /= (0,0) then findTopLevelHierarchies context (getNode context l) visited' else ([], visited')
+                (rH, v2) = if r /= (0,0) then findTopLevelHierarchies context (getNode context r) v1 else ([], v1)
+            in (lH ++ rH, v2)
+
+        EndInfNode cons ->
+            if cons /= (0,0) then findTopLevelHierarchies context (getNode context cons) visited' else ([], visited')
+        Leaf _          -> ([], visited')
+        Unknown         -> ([], visited')
+
+-- MODIFIED Function to create subgraphs for InfNodes with nesting
+createInfNodesSubgraphs :: Context -> Node -> String
+createInfNodesSubgraphs context startNode =
+    let (topLevelClusters, _) = findTopLevelHierarchies context startNode Set.empty
+        groupedTopLevel = if null topLevelClusters
+                          then []
+                          else groupBy ((==) `on` hPosition) $ sortBy (comparing hPosition) topLevelClusters
+    in intercalate "\n" (map serializeNestedGroup groupedTopLevel)
+
+
+-- Helper function to collect leaf and unknown nodes
+leafAndUnknownNodes :: Context -> Node -> [String]
+leafAndUnknownNodes context startNode = fst (collectNodesRecursive startNode Set.empty)
+  where
+    collectNodesRecursive :: Node -> Set.Set NodeId -> ([String], Set.Set NodeId)
+    collectNodesRecursive (nodeId, nodeData) visited =
+      if Set.member nodeId visited then ([], visited) else
+      let visitedAfterCurrent = Set.insert nodeId visited
+          nodeStr = nodeIdToDotId nodeId
+      in case nodeData of
+        Leaf _  -> ([nodeStr], visitedAfterCurrent)
+        Unknown -> ([nodeStr], visitedAfterCurrent)
+        Node _ l r ->
+            let (lStrs, vL) = if l /= (0,0) then collectNodesRecursive (getNode context l) visitedAfterCurrent else ([], visitedAfterCurrent)
+                (rStrs, vR) = if r /= (0,0) then collectNodesRecursive (getNode context r) vL else ([], vL)
+            in (lStrs ++ rStrs, vR)
+        InfNodes _ dc n p ->
+            let childrenInOrder = filter (/=(0,0)) [dc, p, n]
+                foldFn (accStrs, currentVisited) childId =
+                    let (childStrs, nextVisited) = collectNodesRecursive (getNode context childId) currentVisited
+                    in (accStrs ++ childStrs, nextVisited)
+            in foldl' foldFn ([], visitedAfterCurrent) childrenInOrder
+        EndInfNode cons ->
+            if cons /= (0,0) then collectNodesRecursive (getNode context cons) visitedAfterCurrent else ([], visitedAfterCurrent)
+
+
+-- Top-level function to create the complete .dot graph string
 createDotGraph :: Context -> Node -> Bool -> String
 createDotGraph context startNode colorized =
+  let collectedLUNodes = leafAndUnknownNodes context startNode
+      -- Construct the sink block with an explicit rank=same for all leaf/unknown nodes
+      sinkBlock = if null collectedLUNodes
+                  then ""
+                  else "{\n" ++
+                       "    rank=same;\n" ++
+                       "    {  rank=sink;" ++ intercalate "; " collectedLUNodes ++ "; }\n" ++
+                       "  }\n"
+      (nodeDefs, edgeDefs, _) = createDotGraph' context startNode Map.empty colorized
+  in
   "digraph G {\n" ++
   "  node [shape=box];\n" ++
   (if colorized then "  graph [bgcolor=white];\n" else "") ++
   "  edge [style=\"mydotted\"];\n" ++
   "  \"mydotted\"[style=\"invis\", height=0.0,width=0.0, fixedsize=true, label=\"\", peripheries=0];\n" ++
-  "{\n" ++
-  "    rank=sink;\n" ++
-  "    " ++ intercalate ";\n    " (leafAndUnknownNodes context startNode) ++ ";\n" ++
-  "  }\n" ++
-  (createInfNodesSubgraphs context startNode) ++  -- Add InfNodes subgraphs
+  sinkBlock ++ "\n" ++ -- Add the sink block here
+  createInfNodesSubgraphs context startNode ++ "\n" ++
   intercalate "\n" (nodeDefs ++ edgeDefs) ++ "\n}\n"
-  where
-    (nodeDefs, edgeDefs, _) = createDotGraph' context startNode Map.empty colorized
-
--- Helper function to collect leaf and unknown nodes
-leafAndUnknownNodes :: Context -> Node -> [String]
-leafAndUnknownNodes context startNode = collectNodes startNode []
-  where
-    collectNodes :: Node -> [String] -> [String]
-    collectNodes (nodeId, nodeData) acc =
-      case nodeData of
-        Leaf _    -> nodeStr : acc
-        Unknown   -> nodeStr : acc
-        Node _ l r -> collectNodes (getNode context r) (collectNodes (getNode context l) acc)
-        InfNodes _ dc n p ->
-          let acc1 = if dc /= (0,0) then collectNodes (getNode context dc) acc else acc
-              acc2 = if p /= (0,0) then collectNodes (getNode context p) acc1 else acc1
-              acc3 = if n /= (0,0) then collectNodes (getNode context n) acc2 else acc2
-          in acc3
-        EndInfNode cons -> collectNodes (getNode context cons) acc
-        _ -> acc
-      where
-        nodeStr = "node" ++ show (abs (fst nodeId)) ++ "_" ++ show (snd nodeId)
-
--- Function to create subgraphs for InfNodes (Corrected Accumulator Logic)
-createInfNodesSubgraphs :: Context -> Node -> String
-createInfNodesSubgraphs context startNode = intercalate "\n" $ map subgraphString (groupByPosition $ collectInfNodes startNode [])
-    where
-      subgraphString :: [(NodeId, Int)] -> String
-      subgraphString nodesWithIds =
-        "{\n" ++
-        "    rank=same;\n" ++
-        "    " ++ intercalate ";\n    " (map (\(nodeId,_) -> "node" ++ show (abs (fst nodeId)) ++ "_" ++ show (snd nodeId)) nodesWithIds) ++ ";\n" ++
-        "  }" `debug` 
-        ("{\n" ++
-        "    rank=same;\n" ++
-        "    " ++ intercalate ";\n    " (map (\(nodeId,_) -> "node" ++ show (abs (fst nodeId)) ++ "_" ++ show (snd nodeId)) nodesWithIds) ++ ";\n" ++
-        "  }")
-
-      groupByPosition :: [(NodeId, Int)] -> [[(NodeId, Int)]]
-      groupByPosition l = groupByNonConsecutive snd l 
-
-      collectInfNodes :: Node -> [(NodeId, Int)] -> [(NodeId, Int)]
-      collectInfNodes (nodeId, nodeData) acc =
-        case nodeData of
-          Node _ l r     -> collectInfNodes (getNode context r) (collectInfNodes (getNode context l) acc) 
-          InfNodes pos dc n p ->
-            let acc0 = (nodeId, pos) : acc
-                acc1 = collectInfNodes (getNode context dc) acc0 
-                acc2 = collectInfNodes (getNode context p) acc1 
-                acc3 = collectInfNodes (getNode context n) acc2 
-            in acc3
-          EndInfNode cons -> collectInfNodes (getNode context cons) acc  
-          _              -> acc
-
-
-groupByNonConsecutive :: (Eq b, Ord b) => (a -> b) -> [a] -> [[a]]
-groupByNonConsecutive f xs = 
-  let sorted = sortBy (comparing f) xs
-  in groupBy ((==) `on` f) sorted
-
