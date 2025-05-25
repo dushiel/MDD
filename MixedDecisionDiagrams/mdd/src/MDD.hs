@@ -53,6 +53,7 @@ data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
 -- e.g. [(3, dc), (1, n)] 4 =
 -- <3> dc: (<1> dc: 1, n: (4) )
 -- apply abs on the Int if its a pure level, instead of a level used for construction of a node
+type Level' = [(Int, Inf)]
 data Level = L [(Int, Inf)] Int deriving (Eq, Show)
 data LevelL = Ll [(Int, InfL)] Int deriving (Eq, Show)
 
@@ -101,8 +102,8 @@ data Context = Context {
   cache_ :: SingleCache,
   cache' :: ShowCache,
   nodelookup:: NodeLookup, -- map of all nodes in the graph
-  func_stack :: [(Inf, (Node, Node, Node))], -- remember on what infnode what dc's there are when unknowns need to be resolved
-  current_level :: Level -- todo implement this still, so that hashing uses a level instead of position only
+  dc_stack :: ([Node], [Node], [Node]), -- remember on what infnode what dc's there are when unknowns need to be resolved
+  current_level :: Level' -- todo implement this still, so that hashing uses a level instead of position only
 }
 
 instance Show Context where
@@ -114,8 +115,8 @@ show_context :: Context -> [Char]
 show_context c = "Context nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
              "\\n\\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "\\n"
 
-show_func_stack :: Context -> String
-show_func_stack Context{func_stack = fs} = "\\n" ++ show fs
+show_dc_stack :: Context -> String
+show_dc_stack Context{dc_stack = fs} = "\\n" ++ show fs
 
 data FType = Union | Inter | MixedIntersection | MixedIntersection2 | MixedUnion | MixedUnion2 | Absorb | Remove | T_and_r
     deriving (Eq, Show)
@@ -264,7 +265,7 @@ deep_equality = undefined
 
 -- * functions for Caching / Memoization of results during traversal
 
-type Cache =  Map.Map String (HashMap.HashMap (NodeId, NodeId, [(Inf, (Node, Node, Node))]) NodeId)
+type Cache =  Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId)
 type SingleCache =  HashMap.HashMap NodeId NodeId
 type ShowCache =  HashMap.HashMap NodeId [String]
 
@@ -294,17 +295,17 @@ withCache' c@Context { cache' = nc } (key, _) func_with_args =
 
 -- A higher-order function for handling cache lookup and update
 withCache :: Context -> (Node, Node, String) -> (Context, Node) -> (Context, Node)
-withCache c@Context{cache = nc, func_stack = fsk} ((keyA, _), (keyB, _), keyFunc) func_with_args =
+withCache c@Context{cache = nc, dc_stack = dck} ((keyA, _), (keyB, _), keyFunc) func_with_args =
   case Map.lookup keyFunc nc of
-    Just nc' -> case HashMap.lookup (keyA, keyB, fsk) nc' of
+    Just nc' -> case HashMap.lookup (keyA, keyB, dck) nc' of
       Just result -> (c, getNode c result) `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
       Nothing -> let
         (updatedContext, r@(result, _)) = func_with_args
         -- x = case getDd updatedContext result of
         --   --(EndInfNode d) -> error ("EndInf to be inserted in func cache" ++ show d)
         --   _ -> updatedContext
-        new_fsk = func_stack updatedContext
-        updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB, new_fsk) result nc') nc
+        new_dck = dc_stack updatedContext
+        updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB, new_dck) result nc') nc
         in (updatedContext { cache = updatedCache }, r) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
     Nothing -> error ("function not in map, bad initialisation?: " ++ show keyFunc)
 
@@ -343,8 +344,8 @@ l1 =(1, 0)
 l0 = (2, 0)
 u = (0, 0)
 
-top_level_func_stack :: [(Inf, (Node, Node, Node))]
-top_level_func_stack = [(Dc, ((u, Unknown), (u, Unknown), (u, Unknown)))]
+-- top_level_dc_stack :: [(Inf, (Node, Node, Node))]
+-- top_level_dc_stack = [(Dc, ((u, Unknown), (u, Unknown), (u, Unknown)))]
 
 makeNode :: Context -> LevelL -> (Context, Node)
 makeNode _ (Ll [] _) = error "empty context"
@@ -492,7 +493,7 @@ resetColor = "\ESC[0m"
 -- Dds are stored under their canonical HashedId.
 -- For caches ('cache', 'cache_', 'cache''): A union is performed. If a key exists
 -- in both, the value from ctx1 is preferred.
--- Non-cache fields ('func_stack', 'current_level') are taken from ctx1.
+-- Non-cache fields ('dc_stack', 'current_level') are taken from ctx1.
 unionContext :: Context -> Context -> Context
 unionContext ctx1 ctx2 =
     Context
@@ -500,8 +501,8 @@ unionContext ctx1 ctx2 =
           cache_        = mergedCache_,
           cache'        = mergedCache',
           nodelookup    = mergedNodeLookup,
-          func_stack    = [],
-          current_level = L [] 0
+          dc_stack    = ([],[],[]),
+          current_level = [] 
         }
   where
     -- Cache merging (prefers ctx1 on collision for HashMap values)

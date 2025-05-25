@@ -30,6 +30,7 @@ library
       MDDi
       SODDmanipulation
       Example 
+      SupportMDD
   other-modules:
   hs-source-dirs:
       src
