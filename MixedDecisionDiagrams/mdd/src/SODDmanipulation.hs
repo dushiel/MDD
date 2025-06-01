@@ -62,16 +62,15 @@ negation' c u@(_, Unknown) = (c, u)
 class Dd1 a where
     intersection_leaf_cases :: Context -> Node -> Node -> (Context, Node)
     union_leaf_cases :: Context -> Node -> Node -> (Context, Node)
+    intersectionDc_leaf_cases :: Context -> Node -> Node -> (Context, Node)
+    unionDc_leaf_cases :: Context -> Node -> Node -> (Context, Node)
     apply :: Context -> String -> NodeId -> NodeId -> (Context, Node)
     apply'' :: Context -> String -> Node -> Node -> (Context, Node)
-    intersectionDc :: Context -> NodeId -> NodeId -> (Context, Node)
-    intersectionDc'' :: Context -> Node -> Node -> (Context, Node)
-    unionDc :: Context -> NodeId -> NodeId -> (Context, Node)
-    unionDc'' :: Context -> Node -> Node -> (Context, Node)
+    applyDc :: Context -> String -> NodeId -> NodeId -> (Context, Node)
+    applyDc'' :: Context -> String -> Node -> Node -> (Context, Node)
 
     apply' :: Context -> String -> Node -> Node -> (Context, Node)
-    intersectionDc' :: Context -> Node -> Node -> (Context, Node)
-    unionDc' :: Context -> Node -> Node -> (Context, Node)
+    applyDc' :: Context -> String -> Node -> Node -> (Context, Node)
     endinf_case :: Context -> String -> NodeId -> NodeId -> NodeId -> NodeId -> (Context, Node)
 
 
@@ -137,154 +136,59 @@ instance (DdF3 a) => Dd1 a where
     -- this version is designed not to be working with recursion yet (generalized refactored version needed)
     -- Unknown handeling should be different. 
 
-    unionDc c a b = debug_manipulation  (unionDc' @a c (getNode c a) (getNode c b)) "unionDc" ("unionDc" ++ to_str @a) c (getNode c a) (getNode c b)
-    unionDc'' c a b = debug_manipulation  (unionDc' @a c a b) "unionDc" ("unionDc==" ++ to_str @a) c a b
+    applyDc c s a b = debug_manipulation  (applyDc' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)
+    applyDc'' c s a b = debug_manipulation  (applyDc' @a c s a b) s (s ++ "==" ++ to_str @a) c a b
 
-    -- unionDc node cases
-    unionDc' c a@(_, Leaf True) b@(_, Node{}) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeA @a (unionDc'' @a) c a b )
-    unionDc' c a@(_, Node{}) b@(_, Leaf True) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeB @Dc (unionDc'' @a) c a b )
-    unionDc' c a@(_, Leaf False) b@(_, Node{}) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeA @a (unionDc'' @a) c a b )
-    unionDc' c a@(_, Node{}) b@(_, Leaf False) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeB @Dc (unionDc'' @a) c a b )
-    -- endinfnode
-    -- perform original apply again since we are going out of the Dc environment
-    -- todo: even if we do double substitution?? probably not
-    unionDc' c a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, "unionDc") $  
-        endinf_case @a c "union" a_id b_id (1,0) bc
-    unionDc' c a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, "unionDc") $ 
-        endinf_case @a c "union" a_id b_id ac (1,0)
-    unionDc' c a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, "unionDc") $ 
-        endinf_case @a c "union" a_id b_id (2,0) bc
-    unionDc' c a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, "unionDc") $ 
-        endinf_case @a c "union" a_id b_id ac (2,0)
-    -- todo add infnode 
-    unionDc' c a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, "unionDc") $ 
-        applyInfA @a c "union" a b
-    unionDc' c a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, "unionDc") $ 
-        applyInfB @a c "union" a b
+    applyDc' c s a@(_, Leaf _) b = if s == "union" 
+        then unionDc_leaf_cases @a c a b
+        else intersectionDc_leaf_cases @a c a b
+    applyDc' c s a b@(_, Leaf _) = if s == "union" 
+        then unionDc_leaf_cases @a c a b
+        else intersectionDc_leaf_cases @a c a b
+    applyDc' c s a@(_, Unknown) b = if s == "union" 
+        then unionDc_leaf_cases @a c a b
+        else intersectionDc_leaf_cases @a c a b
+    applyDc' c s a b@(_, Unknown) = if s == "union" 
+        then unionDc_leaf_cases @a c a b
+        else intersectionDc_leaf_cases @a c a b
 
-    --  Unknown is stronger than True in finite + unionDc context    
-    unionDc' c a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
-    unionDc' c a b@(_, Unknown) = 
-        let (c', dcB) = pop_dcB c
-        in unionDc'' @a c' a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
-    unionDc' c a@(_, Leaf True) b = absorb (c, a) -- True might be absorbed, then return Unknown
-    unionDc' c a b@(_, Leaf True) = absorb (c, b)
-    unionDc' c a@(_, Leaf False) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
-    unionDc' c a b@(_, Leaf False) = absorb (c, a)
-
-
-    unionDc' c a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeA @a (unionDc'' @a) c a b)
-    unionDc' c a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeB @Dc (unionDc'' @a) c a b)
-    unionDc' c a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, "unionDc") $
+    applyDc' c s a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b)
+    applyDc' c s a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b)
+    applyDc' c s a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, (s ++ "Dc")) $
         endinf_case @a c "union" a_id b_id ac bc 
 
-    unionDc' c@Context{dc_stack = dcs} a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
+    applyDc' c@Context{dc_stack = dcs} s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         -- Match
         | positionA == positionB =
             let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
-                (c', (pos_result, _)) = unionDc @a c_ pos_childA pos_childB
+                (c', (pos_result, _)) = applyDc @a c_ s pos_childA pos_childB
 
                 c_' = traverse_dc @a "neg child" c'{dc_stack = dcs} neg_childA neg_childB
-                (c'', (neg_result, _)) = unionDc @a c_' neg_childA neg_childB
-            in withCache c (a, b, "unionDc") $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result)
+                (c'', (neg_result, _)) = applyDc @a c_' s neg_childA neg_childB
+            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result)
         -- Mismatch, highest position gets an inferred node at position of the lowest
-        | positionA < positionB = applyElimRule' @a (inferNodeB @Dc (unionDc'' @a) c a b)
-        | positionA > positionB = applyElimRule' @a (inferNodeA @a (unionDc'' @a) c a b)
+        | positionA < positionB = applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b)
+        | positionA > positionB = applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b)
 
     -- -- entering new domains
-    unionDc' c a@(a_id, InfNodes positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
+    applyDc' c s a@(a_id, InfNodes positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA > positionB = withCache c (a, b, "unionDc") $
-                applyElimRule' @a (inferNodeA @a (unionDc'' @a) c a b)
-        -- | positionA < positionB = withCache c (a, b, "unionDc") $
+        | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
+                applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b)
+        -- | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
         --         applyElimRule @a $ applyInfB a b 
-    unionDc' c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, InfNodes positionB _ _ _)
+    applyDc' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, InfNodes positionB _ _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-    --     | positionA > positionB = withCache c (a, b, "unionDc") $
+    --     | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
     --             applyElimRule @a $ applyInfA a b
-        | positionA < positionB = withCache c (a, b, "unionDc") $
-                applyElimRule' @a (inferNodeB @Dc (unionDc'' @a) c a b)
-    unionDc' c a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
-        | positionA == positionB = applyInf @a c "unionDc" a b
-        | positionA < positionB = applyInfB @a c "unionDc" a b
-        | positionA > positionB = applyInfA @a c "unionDc" a b
-    unionDc' c a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, "unionDc") $ applyInfA @a c "unionDc" a b
-    unionDc' c a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, "unionDc") $ applyInfB @a c "unionDc" a b
-
-    intersectionDc c a b = debug_manipulation  (intersectionDc' @a c (getNode c a) (getNode c b)) "interDc" ("interDc" ++ to_str @a) c (getNode c a) (getNode c b)
-    intersectionDc'' c a b = debug_manipulation  (intersectionDc' @a c a b) "interDc" ("intersectionDc==" ++ to_str @a) c a b
-
-        -- infer node cases
-    intersectionDc' c a@(_, Leaf False) b@(_, Node{}) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeA @a (intersectionDc'' @a) c a b )
-    intersectionDc' c a@(_, Node{}) b@(_, Leaf False) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeB @Dc (intersectionDc'' @a) c a b )
-    intersectionDc' c a@(_, Leaf True) b@(_, Node{}) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeA @a (intersectionDc'' @a) c a b )
-    intersectionDc' c a@(_, Node{}) b@(_, Leaf True) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeB @Dc (intersectionDc'' @a) c a b) `debug` "infer dc node? "
-    -- endinfnode
-    -- perform original apply again since we are going out of the Dc environment
-    -- todo: even if we do double substitution?? probably not
-    intersectionDc' c a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, "interDc") $  
-        endinf_case @a c "inter" a_id b_id (1,0) bc
-    intersectionDc' c a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, "interDc") $ 
-        endinf_case @a c "inter" a_id b_id ac (1,0)
-    intersectionDc' c a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, "interDc") $ 
-        endinf_case @a c "inter" a_id b_id (2,0) bc
-    intersectionDc' c a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, "interDc") $ 
-        endinf_case @a c "inter" a_id b_id ac (2,0)
-    -- todo add infnode 
-    intersectionDc' c a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, "interDc") $ 
-        applyInfA @a c "inter" a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc
-    intersectionDc' c a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, "interDc") $ 
-        applyInfB @a c "inter" a b 
-
-    --  Unknown is stronger than True in finite + intersectionDc context
-    intersectionDc' c a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
-    intersectionDc' c a b@(_, Unknown) = 
-        let (c', dcB) = pop_dcB c
-        in intersectionDc'' @a c' a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
-    -- if the result is 
-    intersectionDc' c a@(_, Leaf False) b = absorb (c, a) -- False might be absorbed, then return Unknown
-    intersectionDc' c a b@(_, Leaf False) = absorb (c, b)
-    intersectionDc' c a@(_, Leaf True) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
-    intersectionDc' c a b@(_, Leaf True) = absorb (c, a)
-
-
-    intersectionDc' c a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeA @a (intersectionDc'' @a) c a b)
-    intersectionDc' c a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeB @Dc (intersectionDc'' @a) c a b)
-    intersectionDc' c a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, "interDc") $
-        endinf_case @a c "inter" a_id b_id ac bc
-
-    intersectionDc' c@Context{dc_stack = dcs} a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
-        -- Match
-        | positionA == positionB =
-            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
-                (c', (pos_result, _)) = intersectionDc @a c_ pos_childA pos_childB
-
-                c_' = traverse_dc @a "neg child" c'{dc_stack = dcs} neg_childA neg_childB
-                (c'', (neg_result, _)) = intersectionDc @a c_' neg_childA neg_childB
-            in withCache c (a, b, "interDc") $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result) --`debug` ("pos: " ++ (show pos_result) ++ ", neg : "  ++ (show neg_result) ++ " \n prefinal:  " ++ (show $ (Node positionA pos_result neg_result)) ++ " \n final:  " ++ (show $ applyElimRule @a c'' (Node positionA pos_result neg_result)))
-        -- Mismatch, highest position gets an inferred node at position of the lowest
-        | positionA < positionB = applyElimRule' @a (inferNodeB @Dc (intersectionDc'' @a) c a b)
-        | positionA > positionB = applyElimRule' @a (inferNodeA @a (intersectionDc'' @a) c a b)
-
-    -- -- entering new domains
-    intersectionDc' c a@(a_id, InfNodes positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA > positionB = withCache c (a, b, "interDc") $
-                applyElimRule' @a (inferNodeA @a (intersectionDc'' @a) c a b)
-        -- | positionA < positionB = withCache c (a, b, "interDc") $
-        --         applyElimRule @a $ applyInfB a b 
-    intersectionDc' c a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, InfNodes positionB _ _ _)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-    --     | positionA > positionB = withCache c (a, b, "interDc") $
-    --             applyElimRule @a $ applyInfA a b
-        | positionA < positionB = withCache c (a, b, "interDc") $
-                applyElimRule' @a (inferNodeB @Dc (intersectionDc'' @a) c a b)
-    intersectionDc' c a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
-        | positionA == positionB = applyInf @a c "interDc" a b
-        | positionA < positionB = applyInfB @a c "interDc" a b
-        | positionA > positionB = applyInfA @a c "interDc" a b
-    intersectionDc' c a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, "interDc") $ applyInfA @a c "interDc" a b
-    intersectionDc' c a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, "interDc") $ applyInfB @a c "interDc" a b
+        | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
+                applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b)
+    applyDc' c s a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
+        | positionA == positionB = applyInf @a c (s ++ "Dc") a b
+        | positionA < positionB = applyInfB @a c (s ++ "Dc") a b
+        | positionA > positionB = applyInfA @a c (s ++ "Dc") a b
+    applyDc' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, (s ++ "Dc")) $ applyInfA @a c (s ++ "Dc") a b
+    applyDc' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfB @a c (s ++ "Dc") a b
 
 
 
@@ -312,16 +216,19 @@ instance (DdF3 a) => Dd1 a where
     intersection_leaf_cases c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos intersection 
         let (c', dcA) = pop_dcA c 
-        in intersectionDc'' @a c' b dcA   --`debug` ("using dcA to replace Unknown: " ++ show dcA)
+        in applyDc'' @a c' "inter" b dcA   --`debug` ("using dcA to replace Unknown: " ++ show dcA)
     intersection_leaf_cases c a b@(_, Unknown) =
         let (c', dcB) = pop_dcB c 
-        in intersectionDc'' @a c' a dcB -- `debug` ("using dcB to replace Unknown: " ++ show dcB)
+        in applyDc'' @a c' "inter" a dcB -- `debug` ("using dcB to replace Unknown: " ++ show dcB)
     --  Unknown is stronger than True in finite + intersection context
     -- if the result is 
     intersection_leaf_cases c a@(_, Leaf False) b = absorb (c, a) -- False might be absorbed, then return Unknown
     intersection_leaf_cases c a b@(_, Leaf False) = absorb (c, b)
     intersection_leaf_cases c a@(_, Leaf True) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
     intersection_leaf_cases c a b@(_, Leaf True) = absorb (c, a)
+
+
+    
 
 
 
@@ -349,15 +256,82 @@ instance (DdF3 a) => Dd1 a where
     union_leaf_cases c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos union 
         let (c', dcA) = pop_dcA c 
-        in unionDc'' @a c' b dcA   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
+        in applyDc'' @a c' "union" b dcA   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
     union_leaf_cases c a b@(_, Unknown) =
         let (c', dcB) = pop_dcB c 
-        in unionDc'' @a c' a dcB  -- `debug` ("using dcB to replace Unknown : " ++ show dcB)
+        in applyDc'' @a c' "union" a dcB  -- `debug` ("using dcB to replace Unknown : " ++ show dcB)
     --  Unknown is stronger than True in finite + union context    
     union_leaf_cases c a@(_, Leaf True) b = absorb (c, a) -- True might be absorbed, then return Unknown
     union_leaf_cases c a b@(_, Leaf True) = absorb (c, b)
     union_leaf_cases c a@(_, Leaf False) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
     union_leaf_cases c a b@(_, Leaf False) = absorb (c, a)
+
+
+    -- unionDc node cases
+    unionDc_leaf_cases c a@(_, Leaf True) b@(_, Node{}) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c "union" a b )
+    unionDc_leaf_cases c a@(_, Node{}) b@(_, Leaf True) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c "union" a b )
+    unionDc_leaf_cases c a@(_, Leaf False) b@(_, Node{}) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c "union" a b )
+    unionDc_leaf_cases c a@(_, Node{}) b@(_, Leaf False) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c "union" a b )
+    -- endinfnode
+    -- perform original apply again since we are going out of the Dc environment
+    -- todo: even if we do double substitution?? probably not
+    unionDc_leaf_cases c a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, "unionDc") $  
+        endinf_case @a c "union" a_id b_id (1,0) bc
+    unionDc_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, "unionDc") $ 
+        endinf_case @a c "union" a_id b_id ac (1,0)
+    unionDc_leaf_cases c a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, "unionDc") $ 
+        endinf_case @a c "union" a_id b_id (2,0) bc
+    unionDc_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, "unionDc") $ 
+        endinf_case @a c "union" a_id b_id ac (2,0)
+    -- todo add infnode 
+    unionDc_leaf_cases c a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, "unionDc") $ 
+        applyInfA @a c "union" a b
+    unionDc_leaf_cases c a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, "unionDc") $ 
+        applyInfB @a c "union" a b
+
+    --  Unknown is stronger than True in finite + unionDc context    
+    unionDc_leaf_cases c a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
+    unionDc_leaf_cases c a b@(_, Unknown) = 
+        let (c', dcB) = pop_dcB c
+        in applyDc'' @a c' "unionDc" a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
+    unionDc_leaf_cases c a@(_, Leaf True) b = absorb (c, a) -- True might be absorbed, then return Unknown
+    unionDc_leaf_cases c a b@(_, Leaf True) = absorb (c, b)
+    unionDc_leaf_cases c a@(_, Leaf False) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
+    unionDc_leaf_cases c a b@(_, Leaf False) = absorb (c, a)
+
+
+    -- infer node cases
+    intersectionDc_leaf_cases c a@(_, Leaf False) b@(_, Node{}) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c "inter" a b )
+    intersectionDc_leaf_cases c a@(_, Node{}) b@(_, Leaf False) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c "inter" a b )
+    intersectionDc_leaf_cases c a@(_, Leaf True) b@(_, Node{}) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c "inter" a b )
+    intersectionDc_leaf_cases c a@(_, Node{}) b@(_, Leaf True) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c "inter" a b) `debug` "infer dc node? "
+    -- endinfnode
+    -- perform original apply again since we are going out of the Dc environment
+    -- todo: even if we do double substitution?? probably not
+    intersectionDc_leaf_cases c a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, "interDc") $  
+        endinf_case @a c "inter" a_id b_id (1,0) bc
+    intersectionDc_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, "interDc") $ 
+        endinf_case @a c "inter" a_id b_id ac (1,0)
+    intersectionDc_leaf_cases c a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, "interDc") $ 
+        endinf_case @a c "inter" a_id b_id (2,0) bc
+    intersectionDc_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, "interDc") $ 
+        endinf_case @a c "inter" a_id b_id ac (2,0)
+    -- todo add infnode 
+    intersectionDc_leaf_cases c a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, "interDc") $ 
+        applyInfA @a c "inter" a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc
+    intersectionDc_leaf_cases c a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, "interDc") $ 
+        applyInfB @a c "inter" a b 
+
+    --  Unknown is stronger than True in finite + intersectionDc context
+    intersectionDc_leaf_cases c a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
+    intersectionDc_leaf_cases c a b@(_, Unknown) = 
+        let (c', dcB) = pop_dcB c
+        in applyDc'' @a c' "inter" a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
+    -- if the result is 
+    intersectionDc_leaf_cases c a@(_, Leaf False) b = absorb (c, a) -- False might be absorbed, then return Unknown
+    intersectionDc_leaf_cases c a b@(_, Leaf False) = absorb (c, b)
+    intersectionDc_leaf_cases c a@(_, Leaf True) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
+    intersectionDc_leaf_cases c a b@(_, Leaf True) = absorb (c, a)
 
 
     endinf_case c s a_id b_id ac bc = let 
