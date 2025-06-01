@@ -45,7 +45,7 @@ get_dcR c@Context{dc_stack = (dcA, dcB, dcR : fs)} = dcR
 get_dcR c@Context{dc_stack = (dcA, dcB, [])} = error "requeated dcR from empty stack"
 
 pop_dcA :: Context -> (Context, Node)
-pop_dcA c@Context{dc_stack = (dcA : fs, dcB, dcR)} = (c{dc_stack = (fs, dcB, dcR)}, dcA) `debug` "popped dcA"
+pop_dcA c@Context{dc_stack = (dcA : fs, dcB, dcR)} = (c{dc_stack = (fs, dcB, dcR)}, dcA) --`debug` "popped dcA"
 pop_dcA c@Context{dc_stack = ([], dcB, dcR)} = error "requeated dcA from empty stack"
 
 pop_dcB :: Context -> (Context, Node)
@@ -76,21 +76,21 @@ pop_stack1 c@Context{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_le
 -- todo: popping the dcs is naive currently
 pop_stack :: Context -> (Context, (Inf, (Node, Node, Node)))
 pop_stack c@Context{dc_stack = (current_A : dcA : dcAs, current_B : dcB : dcBs, current_R : dcR : dcRs), current_level = _: lv@(_, inf) : lvs} = 
-    (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs) `debug` "dcA", trimListToSize n (current_B : dcB : dcBs) `debug` "dcB", trimListToSize n (current_R : dcR : dcRs) `debug` "dcR"), current_level= lv : lvs}, (inf, (dcA, dcB, dcR)))
-    where n = length $ lv : lvs `debug` ("n = " ++ (show $ length $ lv : lvs))
+    (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= lv : lvs}, (inf, (dcA, dcB, dcR)))
+    where n = length $ lv : lvs -- `debug` ("n = " ++ (show $ length $ lv : lvs))
 
 -- removes the current level and returns information about the previous level
 -- todo: popping the dcs is naive currently
 pop_stack' :: Context -> (Context, Inf)
 pop_stack' c@Context{dc_stack = (dcAs, dcBs, dcRs), current_level = _: lv@(_, inf) : lvs} = 
-    (c{dc_stack = (trimListToSize n dcAs `debug` "dcA", trimListToSize n dcBs `debug` "dcB", trimListToSize n dcRs `debug` "dcR"), current_level= lv : lvs}, inf)
+    (c{dc_stack = (trimListToSize n dcAs, trimListToSize n dcBs , trimListToSize n dcRs ), current_level= lv : lvs}, inf)
     where n = length $ lv : lvs
 
 trimListToSize :: Int -> [a] -> [a]
 trimListToSize n xs
   | n < 0     = xs -- Or error, depending on desired behavior for negative n
   | length xs <= n = xs
-  | otherwise = drop (length xs - n) xs `debug` ("dropping to length: " ++ show n ++ " from length " ++ show (length xs))
+  | otherwise = drop (length xs - n) xs -- `debug` ("dropping to length: " ++ show n ++ " from length " ++ show (length xs))
 
 func_tail :: Context -> Context
 func_tail c@Context{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = lv@(_, inf) : lvs} = 

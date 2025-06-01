@@ -24,7 +24,7 @@
 {-# LANGUAGE MultiWayIf #-}
 
 module SODDmanipulation where
--- todo-future : explore {-# UNPACK #-} !Int
+-- future : explore {-# UNPACK #-} !Int
 --SPECIALIZE pragma
 import MDD
 import SupportMDD
@@ -60,10 +60,8 @@ negation' c u@(_, Unknown) = (c, u)
 
 
 class Dd1 a where
-    intersection_leaf_cases :: Context -> Node -> Node -> (Context, Node)
-    union_leaf_cases :: Context -> Node -> Node -> (Context, Node)
-    intersectionDc_leaf_cases :: Context -> Node -> Node -> (Context, Node)
-    unionDc_leaf_cases :: Context -> Node -> Node -> (Context, Node)
+    leaf_cases :: Context -> String -> Node -> Node -> (Context, Node)
+    dc_leaf_cases :: Context -> String -> Node -> Node -> (Context, Node)
     apply :: Context -> String -> NodeId -> NodeId -> (Context, Node)
     apply'' :: Context -> String -> Node -> Node -> (Context, Node)
     applyDc :: Context -> String -> NodeId -> NodeId -> (Context, Node)
@@ -76,21 +74,13 @@ class Dd1 a where
 
 
 instance (DdF3 a) => Dd1 a where
-    apply c s a b = debug_manipulation  (apply' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)
+    apply c s a b = debug_manipulation  (apply' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b) 
     apply'' c s a b = debug_manipulation  (apply' @a c s a b) s (s ++ "==" ++ to_str @a) c a b
 
-    apply' c s a@(_, Leaf _) b = if s == "union" 
-        then union_leaf_cases @a c a b
-        else intersection_leaf_cases @a c a b
-    apply' c s a b@(_, Leaf _) = if s == "union" 
-        then union_leaf_cases @a c a b
-        else intersection_leaf_cases @a c a b
-    apply' c s a@(_, Unknown) b = if s == "union" 
-        then union_leaf_cases @a c a b
-        else intersection_leaf_cases @a c a b
-    apply' c s a b@(_, Unknown) = if s == "union" 
-        then union_leaf_cases @a c a b
-        else intersection_leaf_cases @a c a b
+    apply' c s a@(_, Leaf _) b = leaf_cases @a c s a b
+    apply' c s a b@(_, Leaf _) = leaf_cases @a c s a b
+    apply' c s a@(_, Unknown) b = leaf_cases @a c s a b
+    apply' c s a b@(_, Unknown) = leaf_cases @a c s a b
 
     apply' c s a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, s) $ applyElimRule' @a (inferNodeA' @a (apply'' @a) c s a b)
     apply' c s a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, s) $ applyElimRule' @a (inferNodeB' @a (apply'' @a) c s a b)
@@ -139,23 +129,15 @@ instance (DdF3 a) => Dd1 a where
     applyDc c s a b = debug_manipulation  (applyDc' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)
     applyDc'' c s a b = debug_manipulation  (applyDc' @a c s a b) s (s ++ "==" ++ to_str @a) c a b
 
-    applyDc' c s a@(_, Leaf _) b = if s == "union" 
-        then unionDc_leaf_cases @a c a b
-        else intersectionDc_leaf_cases @a c a b
-    applyDc' c s a b@(_, Leaf _) = if s == "union" 
-        then unionDc_leaf_cases @a c a b
-        else intersectionDc_leaf_cases @a c a b
-    applyDc' c s a@(_, Unknown) b = if s == "union" 
-        then unionDc_leaf_cases @a c a b
-        else intersectionDc_leaf_cases @a c a b
-    applyDc' c s a b@(_, Unknown) = if s == "union" 
-        then unionDc_leaf_cases @a c a b
-        else intersectionDc_leaf_cases @a c a b
+    applyDc' c s a@(_, Leaf _) b = dc_leaf_cases @a c s a b
+    applyDc' c s a b@(_, Leaf _) = dc_leaf_cases @a c s a b
+    applyDc' c s a@(_, Unknown) b = dc_leaf_cases @a c s a b
+    applyDc' c s a b@(_, Unknown) = dc_leaf_cases @a c s a b
 
     applyDc' c s a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b)
     applyDc' c s a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b)
     applyDc' c s a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, (s ++ "Dc")) $
-        endinf_case @a c "union" a_id b_id ac bc 
+        endinf_case @a c s a_id b_id ac bc 
 
     applyDc' c@Context{dc_stack = dcs} s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         -- Match
@@ -191,147 +173,66 @@ instance (DdF3 a) => Dd1 a where
     applyDc' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfB @a c (s ++ "Dc") a b
 
 
-
-    -- infer node cases
-    intersection_leaf_cases c a@(_, Leaf False) b@(_, Node{}) = withCache c (a, b, "inter") $ applyElimRule' @a (inferNodeA' @a (apply'' @a) c "inter" a b )
-    intersection_leaf_cases c a@(_, Node{}) b@(_, Leaf False) = withCache c (a, b, "inter") $ applyElimRule' @a (inferNodeB' @a (apply'' @a) c "inter" a b )
-    intersection_leaf_cases c a@(_, Leaf True) b@(_, Node{}) = withCache c (a, b, "inter") $ applyElimRule' @a (inferNodeA' @a (apply'' @a) c "inter" a b )
-    intersection_leaf_cases c a@(_, Node{}) b@(_, Leaf True) = withCache c (a, b, "inter") $ applyElimRule' @a (inferNodeB' @a (apply'' @a) c "inter" a b )
-    -- todo add endinfnode 
-    intersection_leaf_cases c a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, "inter") $  
-        endinf_case @a c "inter" a_id b_id (1,0) bc
-    intersection_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, "inter") $ 
-        endinf_case @a c "inter" a_id b_id ac (1,0)
-    intersection_leaf_cases c a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, "inter") $ 
-        endinf_case @a c "inter" a_id b_id (2,0) bc
-    intersection_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, "inter") $ 
-        endinf_case @a c "inter" a_id b_id ac (2,0)
-    -- todo add infnode 
-    intersection_leaf_cases c a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, "inter") $ 
-        applyInfA @a c "inter" a b
-    intersection_leaf_cases c a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, "inter") $ 
-        applyInfB @a c "inter" a b
-
-    intersection_leaf_cases c a@(_, Unknown) b@(_, Unknown) = (c , a)
-    intersection_leaf_cases c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
-        -- todo! if b is a node (or infnode o.O') perform dc : pos intersection 
-        let (c', dcA) = pop_dcA c 
-        in applyDc'' @a c' "inter" b dcA   --`debug` ("using dcA to replace Unknown: " ++ show dcA)
-    intersection_leaf_cases c a b@(_, Unknown) =
-        let (c', dcB) = pop_dcB c 
-        in applyDc'' @a c' "inter" a dcB -- `debug` ("using dcB to replace Unknown: " ++ show dcB)
-    --  Unknown is stronger than True in finite + intersection context
-    -- if the result is 
-    intersection_leaf_cases c a@(_, Leaf False) b = absorb (c, a) -- False might be absorbed, then return Unknown
-    intersection_leaf_cases c a b@(_, Leaf False) = absorb (c, b)
-    intersection_leaf_cases c a@(_, Leaf True) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
-    intersection_leaf_cases c a b@(_, Leaf True) = absorb (c, a)
-
-
-    
-
-
-
     -- union node cases
-    union_leaf_cases c a@(_, Leaf True) b@(_, Node{}) = withCache c (a, b, "union") $ applyElimRule' @a (inferNodeA' @a (apply'' @a) c "union" a b)
-    union_leaf_cases c a@(_, Node{}) b@(_, Leaf True) = withCache c (a, b, "union") $ applyElimRule' @a (inferNodeB' @a (apply'' @a) c "union" a b )
-    union_leaf_cases c a@(_, Leaf False) b@(_, Node{}) = withCache c (a, b, "union") $ applyElimRule' @a (inferNodeA' @a (apply'' @a) c "union" a b )
-    union_leaf_cases c a@(_, Node{}) b@(_, Leaf False) = withCache c (a, b, "union") $ applyElimRule' @a (inferNodeB' @a (apply'' @a) c "union" a b )
-    -- todo add endinfnode 
-    union_leaf_cases c a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, "union") $  
-        endinf_case @a c "union" a_id b_id (1,0) bc
-    union_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, "union") $ 
-        endinf_case @a c "union" a_id b_id ac (1,0)
-    union_leaf_cases c a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, "union") $ 
-        endinf_case @a c "union" a_id b_id (2,0) bc
-    union_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, "union") $ 
-        endinf_case @a c "union" a_id b_id ac (2,0)
-    -- todo add infnode 
-    union_leaf_cases c a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, "union") $ 
-        applyInfA @a c "union" a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with unionDc
-    union_leaf_cases c a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, "union") $ 
-        applyInfB @a c "union" a b
+    leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s) $ applyElimRule' @a (inferNodeA' @a (apply'' @a) c s a b)
+    leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s) $ applyElimRule' @a (inferNodeB' @a (apply'' @a) c s a b )
+    -- add endinfnode 
+    leaf_cases c s a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, s) $  
+        endinf_case @a c s a_id b_id (1,0) bc
+    leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, s) $ 
+        endinf_case @a c s a_id b_id ac (1,0)
+    leaf_cases c s a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, s) $ 
+        endinf_case @a c s a_id b_id (2,0) bc
+    leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, s) $ 
+        endinf_case @a c s a_id b_id ac (2,0)
+    -- add infnode 
+    leaf_cases c s a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, s) $ 
+        applyInfA @a c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with unionDc
+    leaf_cases c s a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, s) $ 
+        applyInfB @a c s a b
 
-    union_leaf_cases c a@(_, Unknown) b@(_, Unknown) = (c , a)
-    union_leaf_cases c a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
+    leaf_cases c s a@(_, Unknown) b@(_, Unknown) = (c , a)
+    leaf_cases c s a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos union 
         let (c', dcA) = pop_dcA c 
-        in applyDc'' @a c' "union" b dcA   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
-    union_leaf_cases c a b@(_, Unknown) =
+        in applyDc'' @a c' s b dcA   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
+    leaf_cases c s a b@(_, Unknown) =
         let (c', dcB) = pop_dcB c 
-        in applyDc'' @a c' "union" a dcB  -- `debug` ("using dcB to replace Unknown : " ++ show dcB)
+        in applyDc'' @a c' s a dcB  -- `debug` ("using dcB to replace Unknown : " ++ show dcB)
     --  Unknown is stronger than True in finite + union context    
-    union_leaf_cases c a@(_, Leaf True) b = absorb (c, a) -- True might be absorbed, then return Unknown
-    union_leaf_cases c a b@(_, Leaf True) = absorb (c, b)
-    union_leaf_cases c a@(_, Leaf False) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
-    union_leaf_cases c a b@(_, Leaf False) = absorb (c, a)
-
-
-    -- unionDc node cases
-    unionDc_leaf_cases c a@(_, Leaf True) b@(_, Node{}) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c "union" a b )
-    unionDc_leaf_cases c a@(_, Node{}) b@(_, Leaf True) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c "union" a b )
-    unionDc_leaf_cases c a@(_, Leaf False) b@(_, Node{}) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c "union" a b )
-    unionDc_leaf_cases c a@(_, Node{}) b@(_, Leaf False) = withCache c (a, b, "unionDc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c "union" a b )
-    -- endinfnode
-    -- perform original apply again since we are going out of the Dc environment
-    -- todo: even if we do double substitution?? probably not
-    unionDc_leaf_cases c a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, "unionDc") $  
-        endinf_case @a c "union" a_id b_id (1,0) bc
-    unionDc_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, "unionDc") $ 
-        endinf_case @a c "union" a_id b_id ac (1,0)
-    unionDc_leaf_cases c a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, "unionDc") $ 
-        endinf_case @a c "union" a_id b_id (2,0) bc
-    unionDc_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, "unionDc") $ 
-        endinf_case @a c "union" a_id b_id ac (2,0)
-    -- todo add infnode 
-    unionDc_leaf_cases c a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, "unionDc") $ 
-        applyInfA @a c "union" a b
-    unionDc_leaf_cases c a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, "unionDc") $ 
-        applyInfB @a c "union" a b
-
-    --  Unknown is stronger than True in finite + unionDc context    
-    unionDc_leaf_cases c a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
-    unionDc_leaf_cases c a b@(_, Unknown) = 
-        let (c', dcB) = pop_dcB c
-        in applyDc'' @a c' "unionDc" a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
-    unionDc_leaf_cases c a@(_, Leaf True) b = absorb (c, a) -- True might be absorbed, then return Unknown
-    unionDc_leaf_cases c a b@(_, Leaf True) = absorb (c, b)
-    unionDc_leaf_cases c a@(_, Leaf False) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
-    unionDc_leaf_cases c a b@(_, Leaf False) = absorb (c, a)
+    leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
+    leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a) -- True might be absorbed, then return Unknown
 
 
     -- infer node cases
-    intersectionDc_leaf_cases c a@(_, Leaf False) b@(_, Node{}) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c "inter" a b )
-    intersectionDc_leaf_cases c a@(_, Node{}) b@(_, Leaf False) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c "inter" a b )
-    intersectionDc_leaf_cases c a@(_, Leaf True) b@(_, Node{}) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c "inter" a b )
-    intersectionDc_leaf_cases c a@(_, Node{}) b@(_, Leaf True) = withCache c (a, b, "interDc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c "inter" a b) `debug` "infer dc node? "
+    dc_leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b )
+    dc_leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b) `debug` "infer dc node? "
     -- endinfnode
     -- perform original apply again since we are going out of the Dc environment
     -- todo: even if we do double substitution?? probably not
-    intersectionDc_leaf_cases c a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, "interDc") $  
-        endinf_case @a c "inter" a_id b_id (1,0) bc
-    intersectionDc_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, "interDc") $ 
-        endinf_case @a c "inter" a_id b_id ac (1,0)
-    intersectionDc_leaf_cases c a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, "interDc") $ 
-        endinf_case @a c "inter" a_id b_id (2,0) bc
-    intersectionDc_leaf_cases c a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, "interDc") $ 
-        endinf_case @a c "inter" a_id b_id ac (2,0)
-    -- todo add infnode 
-    intersectionDc_leaf_cases c a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, "interDc") $ 
-        applyInfA @a c "inter" a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc
-    intersectionDc_leaf_cases c a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, "interDc") $ 
-        applyInfB @a c "inter" a b 
+    dc_leaf_cases c s a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, s ++ "Dc") $  
+        endinf_case @a c s a_id b_id (1,0) bc
+    dc_leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, s ++ "Dc") $ 
+        endinf_case @a c s a_id b_id ac (1,0)
+    dc_leaf_cases c s a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, s ++ "Dc") $ 
+        endinf_case @a c s a_id b_id (2,0) bc
+    dc_leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, s ++ "Dc") $ 
+        endinf_case @a c s a_id b_id ac (2,0)
+    -- add infnode 
+    dc_leaf_cases c s a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, s ++ "Dc") $ 
+        applyInfA @a c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc
+    dc_leaf_cases c s a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, s ++ "Dc") $ 
+        applyInfB @a c s a b 
 
     --  Unknown is stronger than True in finite + intersectionDc context
-    intersectionDc_leaf_cases c a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
-    intersectionDc_leaf_cases c a b@(_, Unknown) = 
+    dc_leaf_cases c s a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
+    dc_leaf_cases c s a b@(_, Unknown) = 
         let (c', dcB) = pop_dcB c
-        in applyDc'' @a c' "inter" a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
+        in applyDc'' @a c' s a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
     -- if the result is 
-    intersectionDc_leaf_cases c a@(_, Leaf False) b = absorb (c, a) -- False might be absorbed, then return Unknown
-    intersectionDc_leaf_cases c a b@(_, Leaf False) = absorb (c, b)
-    intersectionDc_leaf_cases c a@(_, Leaf True) b = absorb (c, b) -- check if b needs to be absorbed, if b == dcA? or b == dcR at this point?
-    intersectionDc_leaf_cases c a b@(_, Leaf True) = absorb (c, a)
+    dc_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
+    dc_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a) -- True might be absorbed, then return Unknown
+
 
 
     endinf_case c s a_id b_id ac bc = let 
@@ -593,7 +494,7 @@ class Dd1_helper a where
 instance (DdF3 a) => Dd1_helper a where
     -- apply traversal
     applyInf :: Context -> String ->  Node -> Node -> (Context, Node)
-    applyInf c s a@(a_id, a_d) b = debug_manipulation (applyInf' @a c s a b) s ("applyInf " ++ to_str @a) c a b --`debug` ("applyinf: " ++ (show $ a))-- ++ "  :   " ++ (show a_d)) -- ++ getDd old_c b_id )
+    applyInf c s a@(a_id, a_d) b = debug_manipulation (applyInf' @a c s a b) s ("applyInf " ++ to_str @a ++ " " ++ s) c a b --`debug` ("applyinf: " ++ (show $ a))-- ++ "  :   " ++ (show a_d)) -- ++ getDd old_c b_id )
     applyInf' :: Context -> String -> Node -> Node -> (Context, Node)
     applyInf' c s a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
         | positionA == positionB =  

@@ -334,7 +334,7 @@ settings = ShowSetting {
             ,   display_node_id's = False -- show node_id's
             ,   draw_tree = False
             ,   display_context = False
-            ,   display_leaf_cases = False
+            ,   display_leaf_cases = True
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
@@ -342,7 +342,7 @@ settings = ShowSetting {
             ,   save_logs = False
 
             ,   debug_open = True
-            ,   debug_close = False
+            ,   debug_close = True
             ,   debug_shorten_close = False
             ,   debug_dc_stack = True
             ,   debug_level = True
