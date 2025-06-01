@@ -77,7 +77,7 @@ c = Context{
     nodelookup = defaultNodeMap,
     cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId) ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId),
     cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
-    dc_stack = ([], [], []),
+    dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)], [((0,0), Unknown)]),
     current_level = [(0, Dc)],
     cache' = HashMap.empty
     }
@@ -232,6 +232,9 @@ n'n2 = path (fst n'n1)      [(1, Neg0), (1, Neg1)] [2]
 n'_n1 = path (fst n'n2)     [(1, Neg0), (2, Neg1)] [1]
 n'_n2 = path (fst n'_n1)    [(1, Neg0), (2, Neg1)] [2]
 nn'1 = path (fst n'_n2)      [(1, Neg1), (1, Neg0)] [1]
+nn = path (fst dc')          [(1, Neg1), (1, Neg1)] [0]
+n'n = path (fst n)           [(1, Neg0), (1, Neg1)] [0]
+nn' = path (fst n)           [(1, Neg1), (1, Neg0)] [0]
 
 pp1 = path (fst nn'1)      [(1, Pos1), (1, Pos1)] [-1]
 p_p1 = path (fst pp1)       [(1, Pos1), (2, Pos1)] [-1]
@@ -244,6 +247,9 @@ p'_p1 = path (fst p'p2)     [(1, Pos0), (2, Pos1)] [-1]
 p'_p2 = path (fst p'_p1)    [(1, Pos0), (2, Pos1)] [-2]
 pp'1 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1]
 p'p'12 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1, -2]
+
+ndc = path (fst p'p'12)      [(1, Neg1), (1, Dc1)] [0]
+n'dc' = path (fst p'p'12)      [(1, Neg0), (1, Dc0)] [0]
 
 -- the actual test context, containing all the DD's of the above declarations 
 (t_c, _) = p'p'12
@@ -411,7 +417,8 @@ test = do
             ,   (snd $ ddOf t_c (And (Var nn'2) (Var nn2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 4"
             ,   (snd $ ddOf t_c (And (Var nn3) (Var nn2))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 5"
             ,   (snd $ ddOf t_c (And (Var nn2) (Var nn3))) == (snd $ ddOf t_c Bot) `debug5` "######## test nr 6"
-            ,   (snd $ ddOf t_c (Or (Var nn'2) (Var nn'3))) == (snd $ ddOf t_c (Var n)) `debug5` "######## test nr 7"
+            ,   (snd $ ddOf t_c (Or (Var nn'2) (Var nn'3))) == (snd $ ddOf t_c (Var ndc)) `debug5` "######## test nr 7"
+            ,   (snd $ ddOf t_c (And (Var n'n2) (Var n'n1))) == (snd $ ddOf t_c (Var n'dc')) `debug5` "######## test nr 7.5"
 
     -- intersection pos
             ,   (snd $ ddOf t_c (Or (Var pp'3) (Var p'p'1))) == (snd $ ddOf t_c Top) `debug5` "######## test nr 8"
@@ -422,7 +429,7 @@ test = do
 
 --     -- intersection mixed 
             -- Dc with neg
-            , (snd $ ddOf t_c $ And (Var dcdc2) (Or (Var dcn1) (Var dcn23))) == (snd $ ddOf t_c $ Or (Var dcn1) (Var dcn23))  `debug5` "######## test nr 12"
+            , (snd $ ddOf t_c $ And (Var dcdc2) (Or (Var dcn1) (Var dcn23))) == (snd $ ddOf t_c $ And (Var dcn23) (Var dcdc2))  `debug5` "######## test nr 12"
             , (snd $ ddOf t_c $ And (Var dc'2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Or (Var p2) (Var p23))  `debug5` "######## test nr 13" 
             , (snd $ ddOf t_c $ Or (Var dc2) (Or (Var n2) (Var n23))) == (snd $ ddOf t_c $ Var dc2)  `debug5` "######## test nr 14"
             , (snd $ ddOf t_c $ Or (Var dc'2) (Or (Var p2) (Var p23))) == (snd $ ddOf t_c $ Var dc'2)  `debug5` "######## test nr 15"

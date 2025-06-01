@@ -14,6 +14,10 @@ import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import System.Console.ANSI
 import GHC.Generics (Generic)
+import Data.List (sortBy)
+import Data.Ord (Down(..)) -- Used for easily specifying descending sort order
+import Data.Function (on)  -- Often useful, though not strictly needed if using Down directly with compare
+
 
 -- proof of concept GenDDs where no merging of isomorphic nodes happen and no cashing / moization of results during traversal.
 -- GenDDs can model check second order logic formulas containing variables in multiple (disjointed and/or nested) infinite domains.
@@ -56,6 +60,9 @@ data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
 type Level' = [(Int, Inf)]
 data Level = L [(Int, Inf)] Int deriving (Eq, Show)
 data LevelL = Ll [(Int, InfL)] Int deriving (Eq, Show)
+-- newtype NLevel = L' [([(Int, Inf)], Int)] deriving (Eq, Show)
+
+-- data NLevelL = Ll' [([(Int, InfL)], Int)] Int deriving (Eq, Show)
 
 instance Hashable Dd where
   -- Leaf True : 1
@@ -403,7 +410,7 @@ makeLocalPath = makeLocalPath'
 -- < 0:dc > 3' 4' <2: n1>
 
 makeLocalPath' :: Context -> [(Int, InfL)] -> [Int] -> (Context, Node)
-makeLocalPath' _ [] _ = error "empty context"
+makeLocalPath' _ [] _ = error "empty path"
 
 makeLocalPath' c [(i, inf)] nodeList
     | inf == Dc1 = let (c', (rid, _)) = loopDc c True nodeList in insert c' (InfNodes i rid u u )
@@ -442,6 +449,83 @@ makeLocalPath' c ((i, inf):ns) nodeList
     | inf == Neg1 = let ( c',(rid,_)) = makeLocalPath' c ns nodeList in insert c' (InfNodes i l0 u rid)
     | inf == Pos0 = let ( c',(rid,_)) = makeLocalPath' c ns nodeList in insert c' (InfNodes i l1 rid u)
     | inf == Neg0 = let ( c',(rid,_)) = makeLocalPath' c ns nodeList in insert c' (InfNodes i l1 u rid)
+
+data Path = P [Int]  
+            | P' [(Int, InfL, Path)] deriving Show 
+
+
+construct_path :: Context -> Path -> (Context, Node)
+construct_path c p = path' (c, ((0,0), Node (-5) (0,0) (0,0))) (sortPathDesc p)
+
+path' :: (Context, Node) -> Path -> (Context, Node)
+-- todo sort the path backwards
+
+-- path' c p@(P' level nodelist pl) = makeLocalPath'' c level nodelist pl
+path' (c, n) (P' ((i, inf, P nodelist) : pl)) 
+    | inf == Dc1 || inf == Dc0 = path' (insert c' (InfNodes i rid u u)) (P' pl) -- breadth step 
+    | inf == Pos1 = path' (insert c' (InfNodes i l0 rid u)) (P' pl) -- breadth step  
+    | inf == Neg1 = path' (insert c' (InfNodes i l0 u rid)) (P' pl) -- breadth step  
+    | inf == Pos0 = path' (insert c' (InfNodes i l1 rid u)) (P' pl) -- breadth step  
+    | inf == Neg0 = path' (insert c' (InfNodes i l1 u rid)) (P' pl) -- breadth step  
+      where 
+        (c',(rid,_)) = localpath' (c, n) inf nodelist -- depth first
+path' (c, n) (P' ((i, inf, pc) : pl)) 
+    | inf == Dc1 || inf == Dc0 = path' (insert c' (InfNodes i rid u u)) (P' pl) -- breadth step 
+    | inf == Pos1 = path' (insert c' (InfNodes i l0 rid u)) (P' pl) -- breadth step  
+    | inf == Neg1 = path' (insert c' (InfNodes i l0 u rid)) (P' pl) -- breadth step  
+    | inf == Pos0 = path' (insert c' (InfNodes i l1 rid u)) (P' pl) -- breadth step  
+    | inf == Neg0 = path' (insert c' (InfNodes i l1 u rid)) (P' pl) -- breadth step  
+      where 
+        (c',(rid,_)) = path' (c, n) pc -- depth first 
+path' (c, n) (P' []) = (c, n) -- end of breadth step, return accumelator to previous call
+
+localpath' :: (Context, Node) -> InfL -> [Int] -> (Context, Node)
+localpath' (c, n) inf nodeList 
+    | inf == Dc1 = loopDc c True nodeList n 
+    | inf == Pos1 = loopPos c True nodeList n
+    | inf == Neg1 = loopNeg c True nodeList n
+    | inf == Dc0 = loopDc c False nodeList n 
+    | inf == Pos0 = loopPos c False nodeList n
+    | inf == Neg0 = loopNeg c False nodeList n
+    where
+        loopDc c b [] (_, Node (-5) _ _) = (c, leaf b) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout 
+        loopDc c _ [] consequence = insert c $ EndInfNode $ fst consequence -- base case, add endinf for consequence 
+        loopDc c b (n:ns) consequence = let
+          (c', (next_iter,_)) = loopDc c b ns consequence in
+            if n ==0  then insert c $ EndInfNode $ fst consequence
+            else if n >= 0
+                  then insert c' (Node n next_iter (leafid $ not b))
+                  else insert c' (Node (abs n) (leafid $ not b) next_iter)
+        
+        loopPos c b [] (_, Node (-5) _ _) = (c, leaf b) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout 
+        loopPos c _ [] consequence = insert c $ EndInfNode $ fst consequence -- base case, add endinf for consequence 
+        loopPos c b (n:ns) consequence = let
+          r@(c', (next_iter,_)) = loopPos c b ns consequence in
+            if n ==0  then insert c $ EndInfNode $ fst consequence
+            else if n >= 0
+                  then insert c' (Node n next_iter u )
+                      else insert c' (Node (abs n) u next_iter )
+        loopNeg c b [] (_, Node (-5) _ _) = (c, leaf b) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout 
+        loopNeg c _ [] consequence = insert c $ EndInfNode $ fst consequence -- base case, add endinf for consequence 
+        loopNeg c b (n:ns) consequence = let
+          r@(c', (next_iter,_)) = loopNeg c b ns consequence in
+            if n ==0  then insert c $ EndInfNode $ fst consequence
+            else if n >= 0
+                  then insert c' (Node n next_iter u)
+                      else insert c' (Node (abs n) u next_iter)
+
+-- Function to sort the Path data structure in a depth-first manner
+-- from highest to lowest on the integers.
+sortPathDesc :: Path -> Path
+sortPathDesc (P ints) =
+    -- Sort the list of integers in descending order
+    P (sortBy (compare `on` Down) ints)
+sortPathDesc (P' taggedPaths) =
+    -- Step 1: Recursively sort the Path in each tuple's second element
+    let sortedInnerPaths = map (\(tag, inf, p) -> (tag, inf, sortPathDesc p)) taggedPaths
+    -- Step 2: Sort the list of tuples based on the tag (the Int) in descending order
+        sortedTaggedPaths = sortBy (\(tagA, _, _) (tagB, _, _) -> compare (Down tagA) (Down tagB)) sortedInnerPaths
+    in P' sortedTaggedPaths
 
 
 instance Show Dd where
