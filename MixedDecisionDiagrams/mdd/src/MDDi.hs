@@ -158,98 +158,194 @@ ddOf' (Var (c, d)) = (c, d)
 -- currently i expand the list of variables whenever i need it for a new test case
 -- it would be nice to not have to 
 
-dc = path (c)               [(1, Dc1)] [0]
-dc' = path (fst dc)         [(1, Dc0)] [0]
-n = path (fst dc')          [(1, Neg1)] [0]
-n' = path (fst n)           [(1, Neg0)] [0]
-p = path (fst n')           [(1, Pos1)] [0]
-p' = path (fst p)           [(1, Pos0)] [0]
+
+dc = path (c)               (P' [(1, Dc1, P [0])])
+dc' = path (fst dc)         (P' [(1, Dc0, P [0])])
+n = path (fst dc')          (P' [(1, Neg1, P [0])])
+n' = path (fst n)           (P' [(1, Neg0, P [0])])
+p = path (fst n')           (P' [(1, Pos1, P [0])])
+p' = path (fst p)           (P' [(1, Pos0, P [0])])
 
 
-dc2 = path (fst p')         [(1, Dc1)] [2]
-dc'2 = path (fst dc2)       [(1, Dc1)] [-2]
-dc3 = path (fst dc'2)       [(1, Dc1)] [3]
-dc_2 = path (fst dc3)       [(2, Dc1)] [2]
-dc__2 = path (fst dc_2)     [(3, Dc1)] [2]
+dc2 = path (fst p')         (P' [(1, Dc1, P [2])])
+dc'2 = path (fst dc2)       (P' [(1, Dc1, P [-2])])
+dc3 = path (fst dc'2)       (P' [(1, Dc1, P [3])])
+dc_2 = path (fst dc3)       (P' [(2, Dc1, P [2])])
+dc__2 = path (fst dc_2)     (P' [(3, Dc1, P [2])])
 
-n2 = path (fst dc__2)       [(1, Neg1)] [2]
-n3 = path (fst n2)          [(1, Neg1)] [3]
-n23 = path (fst n3)         [(1, Neg1)] [2,3]
-n_2 = path (fst n23)        [(2, Neg1)] [2]
-n__2 = path (fst n_2)       [(3, Neg1)] [2]
-n__3 = path (fst n__2)      [(3, Neg1)] [3]
+n2 = path (fst dc__2)       (P' [(1, Neg1, P [2])])
+n3 = path (fst n2)          (P' [(1, Neg1, P [3])])
+n23 = path (fst n3)         (P' [(1, Neg1, P [2,3])])
+n_2 = path (fst n23)        (P' [(2, Neg1, P [2])])
+n__2 = path (fst n_2)       (P' [(3, Neg1, P [2])])
+n__3 = path (fst n__2)      (P' [(3, Neg1, P [3])])
 
-n'2 = path (fst n__3)       [(1, Neg0)] [2]
-n'3 = path (fst n'2)        [(1, Neg0)] [3]
-n'23 = path (fst n'3)       [(1, Neg0)] [2,3]
-n'_2 = path (fst n'23)      [(2, Neg0)] [2]
-n'_3 = path (fst n'_2)      [(2, Neg0)] [3]
-n'__2 = path (fst n'_3)     [(3, Neg0)] [2]
-n'__3 = path (fst n'__2)    [(3, Neg0)] [3]
+n'2 = path (fst n__3)       (P' [(1, Neg0, P [2])])
+n'3 = path (fst n'2)        (P' [(1, Neg0, P [3])])
+n'23 = path (fst n'3)       (P' [(1, Neg0, P [2,3])])
+n'_2 = path (fst n'23)      (P' [(2, Neg0, P [2])])
+n'_3 = path (fst n'_2)      (P' [(2, Neg0, P [3])])
+n'__2 = path (fst n'_3)     (P' [(3, Neg0, P [2])])
+n'__3 = path (fst n'__2)    (P' [(3, Neg0, P [3])])
 
 -- | ALL POS NODES HAVE THEIR NEGATIVE CHILD LEAD TO LEAF, AND POS TO UNKNOWN. OTHERWISE THEY GET ELIMINATED
-p2 = path (fst n'__3)       [(1, Pos1)] [-2]
-p3 = path (fst p2)          [(1, Pos1)] [-3]
-p23 = path (fst p3)         [(1, Pos1)] [-2,-3]
-p_2 = path (fst p23)        [(2, Pos1)] [-2]
-p__2 = path (fst p_2)       [(3, Pos1)] [-2]
+p2 = path (fst n'__3)       (P' [(1, Pos1, P [-2])])
+p3 = path (fst p2)          (P' [(1, Pos1, P [-3])])
+p23 = path (fst p3)         (P' [(1, Pos1, P [-2,-3])])
+p_2 = path (fst p23)        (P' [(2, Pos1, P [-2])])
+p__2 = path (fst p_2)       (P' [(3, Pos1, P [-2])])
 
-p'2 = path (fst p__2)       [(1, Pos0)] [-2]
-p'3 = path (fst p'2)        [(1, Pos0)] [-3]
-p'_2 = path (fst p'3)       [(2, Pos0)] [-2]
-p'__2 = path (fst p'_2)     [(3, Pos0)] [-2]
+p'2 = path (fst p__2)       (P' [(1, Pos0, P [-2])])
+p'3 = path (fst p'2)        (P' [(1, Pos0, P [-3])])
+p'_2 = path (fst p'3)       (P' [(2, Pos0, P [-2])])
+p'__2 = path (fst p'_2)     (P' [(3, Pos0, P [-2])])
 
 -- nested domains dc
-dcdc2 = path (fst p'__2)     [(1, Dc1), (1, Dc1)] [2]
-dcdc3 = path (fst dcdc2)     [(1, Dc1), (1, Dc1)] [3]
-dcdc'2 = path (fst dcdc3)     [(1, Dc1), (1, Dc1)] [-2]
-dcdc'3 = path (fst dcdc'2)     [(1, Dc1), (1, Dc1)] [-3]
+dcdc2 = path (fst p'__2)     (P' [(1, Dc1, P' [(1, Dc1, P [2])])])
+dcdc3 = path (fst dcdc2)     (P' [(1, Dc1, P' [(1, Dc1, P [3])])])
+dcdc'2 = path (fst dcdc3)     (P' [(1, Dc1, P' [(1, Dc1, P [-2])])])
+dcdc'3 = path (fst dcdc'2)     (P' [(1, Dc1, P' [(1, Dc1, P [-3])])])
 
 -- nested domains pos
-pp2 = path (fst dcdc'3)     [(1, Pos1), (1, Pos1)] [-2]
-pp3 = path (fst pp2)     [(1, Pos1), (1, Pos1)] [-3]
-pp'2 = path (fst pp3)     [(1, Pos1), (1, Pos0)] [-2]
-pp'3 = path (fst pp'2)     [(1, Pos1), (1, Pos0)] [-3]
+pp2 = path (fst dcdc'3)     (P' [(1, Pos1, P' [(1, Pos1, P [-2])])])
+
+pp3 = path (fst pp2)     (P' [(1, Pos1, P' [(1, Pos1, P [-3])])])
+pp'2 = path (fst pp3)     (P' [(1, Pos1, P' [(1, Pos0, P [-2])])])
+pp'3 = path (fst pp'2)     (P' [(1, Pos1, P' [(1, Pos0, P [-3])])])
 
 -- nested domains neg
-nn2 = path (fst pp'3)     [(1, Neg1), (1, Neg1)] [2]
-nn3 = path (fst nn2)     [(1, Neg1), (1, Neg1)] [3]
-nn'2 = path (fst nn3)     [(1, Neg1), (1, Neg0)] [2]
-nn'3 = path (fst nn'2)     [(1, Neg1), (1, Neg0)] [3]
+nn2 = path (fst pp'3)     (P' [(1, Neg1, P' [(1, Neg1, P [2])])])
+nn3 = path (fst nn2)     (P' [(1, Neg1, P' [(1, Neg1, P [3])])])
+nn'2 = path (fst nn3)     (P' [(1, Neg1, P' [(1, Neg0, P [2])])])
+nn'3 = path (fst nn'2)     (P' [(1, Neg1, P' [(1, Neg0, P [3])])])
 
 -- mixing different types of domains in the same path (nested domains)
-dcn1 = path (fst nn'3)     [(1, Dc1), (1, Neg1)] [1]
-dcn'1 = path (fst dcn1)     [(1, Dc1), (1, Neg0)] [1]
-dcn23 = path (fst dcn'1)     [(1, Dc1), (1, Neg1)] [2,3]
-dcn'23 = path (fst dcn23)     [(1, Dc1), (1, Neg0)] [2,3]
+dcn1 = path (fst nn'3)     (P' [(1, Dc1, P' [(1, Neg1, P [1])])])
+dcn'1 = path (fst dcn1)     (P' [(1, Dc1, P' [(1, Neg0, P [1])])])
+dcn23 = path (fst dcn'1)     (P' [(1, Dc1, P' [(1, Neg1, P [2,3])])])
+dcn'23 = path (fst dcn23)     (P' [(1, Dc1, P' [(1, Neg0, P [2,3])])])
 
-nn1 = path (fst dcn'23)      [(1, Neg1), (1, Neg1)] [1]
-n_n1 = path (fst nn1)       [(1, Neg1), (2, Neg1)] [1]
-n_n2 = path (fst n_n1)      [(1, Neg1), (2, Neg1)] [2]
-n'n'1 = path (fst n_n2)     [(1, Neg0), (1, Neg0)] [1]
-n'n1 = path (fst n'n'1)     [(1, Neg0), (1, Neg1)] [1]
-n'n2 = path (fst n'n1)      [(1, Neg0), (1, Neg1)] [2]
-n'_n1 = path (fst n'n2)     [(1, Neg0), (2, Neg1)] [1]
-n'_n2 = path (fst n'_n1)    [(1, Neg0), (2, Neg1)] [2]
-nn'1 = path (fst n'_n2)      [(1, Neg1), (1, Neg0)] [1]
-nn = path (fst dc')          [(1, Neg1), (1, Neg1)] [0]
-n'n = path (fst n)           [(1, Neg0), (1, Neg1)] [0]
-nn' = path (fst n)           [(1, Neg1), (1, Neg0)] [0]
+nn1 = path (fst dcn'23)      (P' [(1, Neg1, P' [(1, Neg1, P [1])])])
+n_n1 = path (fst nn1)       (P' [(1, Neg1, P' [(2, Neg1, P [1])])])
+n_n2 = path (fst n_n1)      (P' [(1, Neg1, P' [(2, Neg1, P [2])])])
+n'n'1 = path (fst n_n2)     (P' [(1, Neg0, P' [(1, Neg0, P [1])])])
+n'n1 = path (fst n'n'1)     (P' [(1, Neg0, P' [(1, Neg1, P [1])])])
+n'n2 = path (fst n'n1)      (P' [(1, Neg0, P' [(1, Neg1, P [2])])])
+n'_n1 = path (fst n'n2)     (P' [(1, Neg0, P' [(2, Neg1, P [1])])])
+n'_n2 = path (fst n'_n1)    (P' [(1, Neg0, P' [(2, Neg1, P [2])])])
+nn'1 = path (fst n'_n2)      (P' [(1, Neg1, P' [(1, Neg0, P [1])])])
+nn = path (fst dc')          (P' [(1, Neg1, P' [(1, Neg1, P [0])])])
+n'n = path (fst n)           (P' [(1, Neg0, P' [(1, Neg1, P [0])])])
+nn' = path (fst n)           (P' [(1, Neg1, P' [(1, Neg0, P [0])])])
 
-pp1 = path (fst nn'1)      [(1, Pos1), (1, Pos1)] [-1]
-p_p1 = path (fst pp1)       [(1, Pos1), (2, Pos1)] [-1]
-p_p2 = path (fst p_p1)      [(1, Pos1), (2, Pos1)] [-2]
-p'p'1 = path (fst p_p2)     [(1, Pos0), (1, Pos0)] [-1]
-p'p'2 = path (fst p'p'1)     [(1, Pos0), (1, Pos0)] [-2]
-p'p1 = path (fst p'p'2)     [(1, Pos0), (1, Pos1)] [-1]
-p'p2 = path (fst p'p1)      [(1, Pos0), (1, Pos1)] [-2]
-p'_p1 = path (fst p'p2)     [(1, Pos0), (2, Pos1)] [-1]
-p'_p2 = path (fst p'_p1)    [(1, Pos0), (2, Pos1)] [-2]
-pp'1 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1]
-p'p'12 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1, -2]
+pp1 = path (fst nn'1)      (P' [(1, Pos1, P' [(1, Pos1, P [-1])])])
+p_p1 = path (fst pp1)       (P' [(1, Pos1, P' [(2, Pos1, P [-1])])])
+p_p2 = path (fst p_p1)      (P' [(1, Pos1, P' [(2, Pos1, P [-2])])])
+p'p'1 = path (fst p_p2)     (P' [(1, Pos0, P' [(1, Pos0, P [-1])])])
+p'p'2 = path (fst p'p'1)     (P' [(1, Pos0, P' [(1, Pos0, P [-2])])])
+p'p1 = path (fst p'p'2)     (P' [(1, Pos0, P' [(1, Pos1, P [-1])])])
+p'p2 = path (fst p'p1)      (P' [(1, Pos0, P' [(1, Pos1, P [-2])])])
+p'_p1 = path (fst p'p2)     (P' [(1, Pos0, P' [(2, Pos1, P [-1])])])
+p'_p2 = path (fst p'_p1)    (P' [(1, Pos0, P' [(2, Pos1, P [-2])])])
+pp'1 = path (fst p'_p2)      (P' [(1, Pos1, P' [(1, Pos0, P [-1])])])
+p'p'12 = path (fst p'_p2)      (P' [(1, Pos1, P' [(1, Pos0, P [-1, -2])])])
 
-ndc = path (fst p'p'12)      [(1, Neg1), (1, Dc1)] [0]
-n'dc' = path (fst p'p'12)      [(1, Neg0), (1, Dc0)] [0]
+ndc = path (fst p'p'12)      (P' [(1, Neg1, P' [(1, Dc1, P [0])])])
+n'dc' = path (fst p'p'12)      (P' [(1, Neg0, P' [(1, Dc0, P [0])])])
+
+-- dc = path (c)               [(1, Dc1)] [0]
+-- dc' = path (fst dc)         [(1, Dc0)] [0]
+-- n = path (fst dc')          [(1, Neg1)] [0]
+-- n' = path (fst n)           [(1, Neg0)] [0]
+-- p = path (fst n')           [(1, Pos1)] [0]
+-- p' = path (fst p)           [(1, Pos0)] [0]
+
+
+-- dc2 = path (fst p')         [(1, Dc1)] [2]
+-- dc'2 = path (fst dc2)       [(1, Dc1)] [-2]
+-- dc3 = path (fst dc'2)       [(1, Dc1)] [3]
+-- dc_2 = path (fst dc3)       [(2, Dc1)] [2]
+-- dc__2 = path (fst dc_2)     [(3, Dc1)] [2]
+
+-- n2 = path (fst dc__2)       [(1, Neg1)] [2]
+-- n3 = path (fst n2)          [(1, Neg1)] [3]
+-- n23 = path (fst n3)         [(1, Neg1)] [2,3]
+-- n_2 = path (fst n23)        [(2, Neg1)] [2]
+-- n__2 = path (fst n_2)       [(3, Neg1)] [2]
+-- n__3 = path (fst n__2)      [(3, Neg1)] [3]
+
+-- n'2 = path (fst n__3)       [(1, Neg0)] [2]
+-- n'3 = path (fst n'2)        [(1, Neg0)] [3]
+-- n'23 = path (fst n'3)       [(1, Neg0)] [2,3]
+-- n'_2 = path (fst n'23)      [(2, Neg0)] [2]
+-- n'_3 = path (fst n'_2)      [(2, Neg0)] [3]
+-- n'__2 = path (fst n'_3)     [(3, Neg0)] [2]
+-- n'__3 = path (fst n'__2)    [(3, Neg0)] [3]
+
+-- -- | ALL POS NODES HAVE THEIR NEGATIVE CHILD LEAD TO LEAF, AND POS TO UNKNOWN. OTHERWISE THEY GET ELIMINATED
+-- p2 = path (fst n'__3)       [(1, Pos1)] [-2]
+-- p3 = path (fst p2)          [(1, Pos1)] [-3]
+-- p23 = path (fst p3)         [(1, Pos1)] [-2,-3]
+-- p_2 = path (fst p23)        [(2, Pos1)] [-2]
+-- p__2 = path (fst p_2)       [(3, Pos1)] [-2]
+
+-- p'2 = path (fst p__2)       [(1, Pos0)] [-2]
+-- p'3 = path (fst p'2)        [(1, Pos0)] [-3]
+-- p'_2 = path (fst p'3)       [(2, Pos0)] [-2]
+-- p'__2 = path (fst p'_2)     [(3, Pos0)] [-2]
+
+-- -- nested domains dc
+-- dcdc2 = path (fst p'__2)     [(1, Dc1), (1, Dc1)] [2]
+-- dcdc3 = path (fst dcdc2)     [(1, Dc1), (1, Dc1)] [3]
+-- dcdc'2 = path (fst dcdc3)     [(1, Dc1), (1, Dc1)] [-2]
+-- dcdc'3 = path (fst dcdc'2)     [(1, Dc1), (1, Dc1)] [-3]
+
+-- -- nested domains pos
+-- pp2 = path (fst dcdc'3)     [(1, Pos1), (1, Pos1)] [-2]
+
+-- pp3 = path (fst pp2)     [(1, Pos1), (1, Pos1)] [-3]
+-- pp'2 = path (fst pp3)     [(1, Pos1), (1, Pos0)] [-2]
+-- pp'3 = path (fst pp'2)     [(1, Pos1), (1, Pos0)] [-3]
+
+-- -- nested domains neg
+-- nn2 = path (fst pp'3)     [(1, Neg1), (1, Neg1)] [2]
+-- nn3 = path (fst nn2)     [(1, Neg1), (1, Neg1)] [3]
+-- nn'2 = path (fst nn3)     [(1, Neg1), (1, Neg0)] [2]
+-- nn'3 = path (fst nn'2)     [(1, Neg1), (1, Neg0)] [3]
+
+-- -- mixing different types of domains in the same path (nested domains)
+-- dcn1 = path (fst nn'3)     [(1, Dc1), (1, Neg1)] [1]
+-- dcn'1 = path (fst dcn1)     [(1, Dc1), (1, Neg0)] [1]
+-- dcn23 = path (fst dcn'1)     [(1, Dc1), (1, Neg1)] [2,3]
+-- dcn'23 = path (fst dcn23)     [(1, Dc1), (1, Neg0)] [2,3]
+
+-- nn1 = path (fst dcn'23)      [(1, Neg1), (1, Neg1)] [1]
+-- n_n1 = path (fst nn1)       [(1, Neg1), (2, Neg1)] [1]
+-- n_n2 = path (fst n_n1)      [(1, Neg1), (2, Neg1)] [2]
+-- n'n'1 = path (fst n_n2)     [(1, Neg0), (1, Neg0)] [1]
+-- n'n1 = path (fst n'n'1)     [(1, Neg0), (1, Neg1)] [1]
+-- n'n2 = path (fst n'n1)      [(1, Neg0), (1, Neg1)] [2]
+-- n'_n1 = path (fst n'n2)     [(1, Neg0), (2, Neg1)] [1]
+-- n'_n2 = path (fst n'_n1)    [(1, Neg0), (2, Neg1)] [2]
+-- nn'1 = path (fst n'_n2)      [(1, Neg1), (1, Neg0)] [1]
+-- nn = path (fst dc')          [(1, Neg1), (1, Neg1)] [0]
+-- n'n = path (fst n)           [(1, Neg0), (1, Neg1)] [0]
+-- nn' = path (fst n)           [(1, Neg1), (1, Neg0)] [0]
+
+-- pp1 = path (fst nn'1)      [(1, Pos1), (1, Pos1)] [-1]
+-- p_p1 = path (fst pp1)       [(1, Pos1), (2, Pos1)] [-1]
+-- p_p2 = path (fst p_p1)      [(1, Pos1), (2, Pos1)] [-2]
+-- p'p'1 = path (fst p_p2)     [(1, Pos0), (1, Pos0)] [-1]
+-- p'p'2 = path (fst p'p'1)     [(1, Pos0), (1, Pos0)] [-2]
+-- p'p1 = path (fst p'p'2)     [(1, Pos0), (1, Pos1)] [-1]
+-- p'p2 = path (fst p'p1)      [(1, Pos0), (1, Pos1)] [-2]
+-- p'_p1 = path (fst p'p2)     [(1, Pos0), (2, Pos1)] [-1]
+-- p'_p2 = path (fst p'_p1)    [(1, Pos0), (2, Pos1)] [-2]
+-- pp'1 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1]
+-- p'p'12 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1, -2]
+
+-- ndc = path (fst p'p'12)      [(1, Neg1), (1, Dc1)] [0]
+-- n'dc' = path (fst p'p'12)      [(1, Neg0), (1, Dc0)] [0]
 
 -- the actual test context, containing all the DD's of the above declarations 
 (t_c, _) = p'p'12

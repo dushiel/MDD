@@ -136,7 +136,7 @@ move_dc c m node =
 
         (_, EndInfNode child) ->
             if m == "endinf" then getNode c child --`debug` ("endinf " ++ show (EndInfNode child) )
-            else (if (m == "pos child") || (m == "neg child") then node 
+            else (if m `elem` ["pos child", "neg child", "inf pos", "inf neg", "inf dc"] then node 
             else error $ "processStackElement: undefined move '" ++ m ++ "' for EndInfNode pattern: " ++ show node)
 
         (_, InfNodes position dc p n) ->

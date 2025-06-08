@@ -85,7 +85,7 @@ instance (DdF3 a) => Dd1 a where
     apply' c s a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, s) $ applyElimRule' @a (inferNodeA' @a (apply'' @a) c s a b)
     apply' c s a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, s) $ applyElimRule' @a (inferNodeB' @a (apply'' @a) c s a b)
     apply' c s a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, s) $
-        endinf_case @a c s a_id b_id ac bc `debug` "endinf endinf"
+        endinf_case @a c s a_id b_id ac bc 
 
     apply' c@Context{dc_stack = dcs} s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         -- Match
@@ -126,8 +126,8 @@ instance (DdF3 a) => Dd1 a where
     -- this version is designed not to be working with recursion yet (generalized refactored version needed)
     -- Unknown handeling should be different. 
 
-    applyDc c s a b = debug_manipulation  (applyDc' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)
-    applyDc'' c s a b = debug_manipulation  (applyDc' @a c s a b) s (s ++ "==" ++ to_str @a) c a b
+    applyDc c s a b = debug_manipulation  (applyDc' @a c s (getNode c a) (getNode c b)) s (s ++ "Dc " ++ to_str @a) c (getNode c a) (getNode c b)
+    applyDc'' c s a b = debug_manipulation  (applyDc' @a c s a b) s (s ++ "Dc ==" ++ to_str @a) c a b
 
     applyDc' c s a@(_, Leaf _) b = dc_leaf_cases @a c s a b
     applyDc' c s a b@(_, Leaf _) = dc_leaf_cases @a c s a b
@@ -166,11 +166,11 @@ instance (DdF3 a) => Dd1 a where
         | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
                 applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b)
     applyDc' c s a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
-        | positionA == positionB = applyInf @a c (s ++ "Dc") a b
-        | positionA < positionB = applyInfB @a c (s ++ "Dc") a b
-        | positionA > positionB = applyInfA @a c (s ++ "Dc") a b
-    applyDc' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, (s ++ "Dc")) $ applyInfA @a c (s ++ "Dc") a b
-    applyDc' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfB @a c (s ++ "Dc") a b
+        | positionA == positionB = applyInf @a c s a b
+        | positionA < positionB = applyInfB @Dc c s a b 
+        | positionA > positionB = applyInfA @a c s a b
+    applyDc' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, (s ++ "Dc")) $ applyInfA @a c s a b
+    applyDc' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfB @Dc c s a b
 
 
     -- union node cases
@@ -202,11 +202,11 @@ instance (DdF3 a) => Dd1 a where
     --  Unknown is stronger than True in finite + union context    
     leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
     leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a) -- True might be absorbed, then return Unknown
-
+    leaf_cases c s a b = error ("leaf case: " ++ s)
 
     -- infer node cases
     dc_leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b )
-    dc_leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b) `debug` "infer dc node? "
+    dc_leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b) 
     -- endinfnode
     -- perform original apply again since we are going out of the Dc environment
     -- todo: even if we do double substitution?? probably not
@@ -307,11 +307,11 @@ instance DdF3 Dc where
     applyElimRule' (c, d) = applyElimRule'_general (c, d)
 
     applyInfA c s a@(a_id, _) b@(_, InfNodes positionB _ _ _) = let
-            (c', (r_id, _)) = insert c $ EndInfNode  a_id
+            (c', (r_id, _)) = applyElimRule @Dc c (EndInfNode  a_id)
             (c'', r') = insert c' $ InfNodes positionB r_id (0,0) (0,0)
         in applyInf @Dc c'' s r' b
     applyInfB c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
-            (c', (r_id, _)) = insert c $ EndInfNode b_id
+            (c', (r_id, _)) = applyElimRule @Dc c $ EndInfNode b_id
             (c'', r') = insert c' $ InfNodes positionA r_id (0,0) (0,0)
         in applyInf @Dc c'' s a r'
 
@@ -353,11 +353,11 @@ instance DdF3 Pos where
     applyElimRule' (c, d) = applyElimRule'_general (c, d)
 
     applyInfA c s a@(a_id, _) b@(_, InfNodes positionB _ _ _) = let
-            (c', (r_id, _)) = insert c $ EndInfNode  a_id
+            (c', (r_id, _)) = applyElimRule @Pos c $ EndInfNode  a_id
             (c'', r') = insert c' $ InfNodes positionB (0,0) r_id (0,0)
         in applyInf @Pos c'' s r' b
     applyInfB c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
-            (c', (r_id, _)) = insert c $ EndInfNode b_id
+            (c', (r_id, _)) = applyElimRule @Pos c $ EndInfNode b_id
             (c'', r') = insert c' $ InfNodes positionA (0,0) r_id (0,0)
         in applyInf @Pos c'' s a r'
 
@@ -401,11 +401,11 @@ instance DdF3 Neg where
         in (c'', r_dd) 
 
     applyInfA c s a@(a_id, _) b@(_, InfNodes positionB _ _ _) = let
-            (c', (r_id, _)) = insert c $ EndInfNode  a_id
+            (c', (r_id, _)) = applyElimRule @Neg c $ EndInfNode  a_id
             (c'', r') = insert c' $ InfNodes positionB (0,0) (0,0) r_id
         in applyInf @Neg c'' s r' b
     applyInfB c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
-            (c', (r_id, _)) = insert c $ EndInfNode b_id
+            (c', (r_id, _)) = applyElimRule @Neg c $ EndInfNode b_id
             (c'', r') = insert c' $ InfNodes positionA (0,0) (0,0) r_id
         in applyInf @Neg c'' s a r'
 
@@ -436,20 +436,23 @@ instance DdF3 Neg where
 applyElimRule_general :: Context -> Dd -> (Context, Node)
 applyElimRule_general c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
 applyElimRule_general c (EndInfNode (2,0)) = (c, ((2,0), Leaf False))
+applyElimRule_general c (EndInfNode (0,0)) = (c, ((0,0), Unknown))
 applyElimRule_general c d = insert c d
 
 applyElimRule'_general :: (Context, Dd) -> (Context, Node)
 applyElimRule'_general (c, EndInfNode (1,0)) = (c, ((1,0), Leaf True))
 applyElimRule'_general (c, EndInfNode (2,0)) = (c, ((2,0), Leaf False))
+applyElimRule'_general (c, EndInfNode (0,0)) = (c, ((0,0), Unknown))
 applyElimRule'_general (c, d) = insert c d
 
 absorb :: (Context, Node) -> (Context, Node)
-absorb (c@Context{dc_stack = (_, _, dcR : fs) }, n@(id, d)) = absorb' (c, n) -- `debug` ("absorb check on node : " ++ (show n) ++ "\n with dcR :" ++ (show dcR) ++ "\n fs tail : " ++ show fs)
+-- absorb (c@Context{dc_stack = (_, _, dcR : fs) }, n@(id, d)) = absorb' (c, n) -- `debug` ("absorb check on node : " ++ (show n) ++ "\n with dcR :" ++ (show dcR) ++ "\n fs tail : " ++ show fs)
 absorb (c, n) = absorb' (c, n)
 
 absorb' :: (Context, Node) -> (Context, Node)
 -- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")   
-absorb' (c@Context{dc_stack = (_, _, dc@(_, Unknown) : fs) }, a)  = (c, a) -- todo: fix this, recursive absorb
+absorb' (c@Context{dc_stack = (dcA, dcB, dc@(_, Unknown) : fs) }, a)  = 
+    let (c', r) = absorb' (c{dc_stack = (dcA, dcB, fs)}, a) in (c, r) 
 absorb' (c@Context{dc_stack = (_, _, dc : fs) }, a@(_, Unknown)) = (c, a)
 absorb' (c@Context{dc_stack = (_, _, dc : fs) }, a@(_, Leaf _))
     | a == dc = (c, ((0,0), Unknown))
@@ -518,6 +521,10 @@ instance (DdF3 a) => Dd1_helper a where
 
         | positionA > positionB = applyInfA @a c s a b
         | positionA < positionB = applyInfB @a c s a b
+    applyInf' c s a@(_, InfNodes {}) b@(_, Leaf _) = applyInfB @a c s a b
+    applyInf' c s a@(_, InfNodes {}) b@(_, EndInfNode _) = applyInfB @a c s a b
+    applyInf' c s a@(_, Leaf _) b@(_, InfNodes{}) = applyInfA @a c s a b
+    applyInf' c s a@(_, EndInfNode _) b@(_, InfNodes{}) = applyInfA @a c s a b
     applyInf' c s a b = error_display "apply inf" c a b
 
 
@@ -574,6 +581,7 @@ instance (DdF3 a) => Dd1_helper a where
                         | position < idx -> undefined-- dc behind, catchup then move
                 ( (_, EndInfNode{}), (_, InfNodes idx dc p n) ) -> dcNode 
                 ( (_, InfNodes{}), (_, Leaf{}) )           -> dcNode -- todo for absorb; we should infer nodes for zdd side until an absorbable state has been reached.. 
+                ( (_, InfNodes{}), (_, EndInfNode{}) )     -> dcNode -- todo for absorb; we should infer nodes for zdd side until an absorbable state has been reached.. 
 
                 -- Error case for unhandled patterns
                 ( t, r ) -> error $ "traverse_dc_generic unhandled. dcNode=" ++ show t ++ " refNode=" ++ show r ++ " c=" ++ show (dc_stack c) ++ " s=" ++ s

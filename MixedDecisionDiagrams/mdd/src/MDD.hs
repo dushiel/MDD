@@ -222,6 +222,10 @@ type Node = (NodeId, Dd)
 insert :: Context -> Dd -> (Context, Node)
 insert c@Context{nodelookup = nm} d = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, (new_id, d)) --`debug` ("about to insert " ++ show d  ++ "  ,  " ++ (show new_id))
 
+insert' :: (Context, Dd) -> (Context, Node)
+insert' (c@Context{nodelookup = nm}, d) = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, (new_id, d)) --`debug` ("about to insert " ++ show d  ++ "  ,  " ++ (show new_id))
+
+
 merge_rule :: (Context -> Dd -> Dd -> (Context, Dd)) -> Context -> Dd -> Dd -> (Context, Node)
 merge_rule f c a b = let
   (rc, result) = f c a b
@@ -398,8 +402,8 @@ makeNode c (Ll ((i, inf):cs) nodePosition)
 
 
 
-path :: Context -> [(Int, InfL)] -> [Int] -> (Context, Node)
-path = makeLocalPath
+oldpath :: Context -> [(Int, InfL)] -> [Int] -> (Context, Node)
+oldpath = makeLocalPath
 
 makeLocalPath :: Context -> [(Int, InfL)] -> [Int] -> (Context, Node)
 makeLocalPath = makeLocalPath'
@@ -454,30 +458,40 @@ data Path = P [Int]
             | P' [(Int, InfL, Path)] deriving Show 
 
 
-construct_path :: Context -> Path -> (Context, Node)
-construct_path c p = path' (c, ((0,0), Node (-5) (0,0) (0,0))) (sortPathDesc p)
+path :: Context -> Path -> (Context, Node)
+path c p = path' (-1) (c, ((0,0), Node (-5) (0,0) (0,0))) (sortPathDesc p)
 
-path' :: (Context, Node) -> Path -> (Context, Node)
--- todo sort the path backwards
 
--- path' c p@(P' level nodelist pl) = makeLocalPath'' c level nodelist pl
-path' (c, n) (P' ((i, inf, P nodelist) : pl)) 
-    | inf == Dc1 || inf == Dc0 = path' (insert c' (InfNodes i rid u u)) (P' pl) -- breadth step 
-    | inf == Pos1 = path' (insert c' (InfNodes i l0 rid u)) (P' pl) -- breadth step  
-    | inf == Neg1 = path' (insert c' (InfNodes i l0 u rid)) (P' pl) -- breadth step  
-    | inf == Pos0 = path' (insert c' (InfNodes i l1 rid u)) (P' pl) -- breadth step  
-    | inf == Neg0 = path' (insert c' (InfNodes i l1 u rid)) (P' pl) -- breadth step  
+
+
+l0' b 
+  | b == 0 = u
+  | otherwise = l0
+l1' b 
+  | b == 1 = u
+  | otherwise = l1
+
+
+path' :: Int -> (Context, Node) -> Path -> (Context, Node)
+path' b (c, n) (P' ((i, inf, P nodelist) : pl)) 
+    | inf == Dc1 || inf == Dc0 = path' b (insert c' (InfNodes i rid u u)) (P' pl) -- breadth step 
+    | inf == Pos1 = path' b (insert c' (InfNodes i (l0' b) rid u)) (P' pl) -- breadth step  
+    | inf == Neg1 = path' b (insert c' (InfNodes i (l0' b) u rid)) (P' pl) -- breadth step  
+    | inf == Pos0 = path' b (insert c' (InfNodes i (l1' b) rid u)) (P' pl) -- breadth step  
+    | inf == Neg0 = path' b (insert c' (InfNodes i (l1' b) u rid)) (P' pl) -- breadth step  
       where 
         (c',(rid,_)) = localpath' (c, n) inf nodelist -- depth first
-path' (c, n) (P' ((i, inf, pc) : pl)) 
-    | inf == Dc1 || inf == Dc0 = path' (insert c' (InfNodes i rid u u)) (P' pl) -- breadth step 
-    | inf == Pos1 = path' (insert c' (InfNodes i l0 rid u)) (P' pl) -- breadth step  
-    | inf == Neg1 = path' (insert c' (InfNodes i l0 u rid)) (P' pl) -- breadth step  
-    | inf == Pos0 = path' (insert c' (InfNodes i l1 rid u)) (P' pl) -- breadth step  
-    | inf == Neg0 = path' (insert c' (InfNodes i l1 u rid)) (P' pl) -- breadth step  
+path' b (c, n) (P' ((i, inf, pc) : pl)) 
+    | inf == Dc1 || inf == Dc0 = path' b (insert cDc (InfNodes i ridDc u u)) (P' pl) -- breadth step 
+    | inf == Pos1 = path' b (insert c1 (InfNodes i (l0' b) rid1 u)) (P' pl) -- breadth step  
+    | inf == Neg1 = path' b (insert c1 (InfNodes i (l0' b) u rid1)) (P' pl) -- breadth step  
+    | inf == Pos0 = path' b (insert c0 (InfNodes i (l1' b) rid0 u)) (P' pl) -- breadth step  
+    | inf == Neg0 = path' b (insert c0 (InfNodes i (l1' b) u rid0)) (P' pl) -- breadth step  
       where 
-        (c',(rid,_)) = path' (c, n) pc -- depth first 
-path' (c, n) (P' []) = (c, n) -- end of breadth step, return accumelator to previous call
+        (c0,(rid0,_)) = path' 1 (c, n) pc -- depth first 
+        (c1,(rid1,_)) = path' 0 (c, n) pc -- depth first 
+        (cDc,(ridDc,_)) = path' b (c, n) pc -- depth first 
+path' b (c, n) (P' []) = (c, n) -- end of breadth step, return accumelator to previous call
 
 localpath' :: (Context, Node) -> InfL -> [Int] -> (Context, Node)
 localpath' (c, n) inf nodeList 
@@ -488,38 +502,50 @@ localpath' (c, n) inf nodeList
     | inf == Pos0 = loopPos c False nodeList n
     | inf == Neg0 = loopNeg c False nodeList n
     where
-        loopDc c b [] (_, Node (-5) _ _) = (c, leaf b) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout 
-        loopDc c _ [] consequence = insert c $ EndInfNode $ fst consequence -- base case, add endinf for consequence 
+        loopDc c b [] consequence = if consequence == initNode 
+            then (c, leaf b)
+            else insert c $ EndInfNode $ fst consequence -- base case, add endinf for consequence 
         loopDc c b (n:ns) consequence = let
           (c', (next_iter,_)) = loopDc c b ns consequence in
-            if n ==0  then insert c $ EndInfNode $ fst consequence
+            if n ==0 then 
+              if consequence == initNode then (c, leaf b)
+                else insert c $ EndInfNode $ fst consequence 
             else if n >= 0
                   then insert c' (Node n next_iter (leafid $ not b))
                   else insert c' (Node (abs n) (leafid $ not b) next_iter)
         
-        loopPos c b [] (_, Node (-5) _ _) = (c, leaf b) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout 
-        loopPos c _ [] consequence = insert c $ EndInfNode $ fst consequence -- base case, add endinf for consequence 
+        loopPos c b [] consequence = if consequence == initNode 
+            then (c, leaf b)
+            else insert c $ EndInfNode $ fst consequence -- base case, add endinf for consequence 
         loopPos c b (n:ns) consequence = let
           r@(c', (next_iter,_)) = loopPos c b ns consequence in
-            if n ==0  then insert c $ EndInfNode $ fst consequence
+            if n ==0  then 
+              if consequence == initNode then (c, leaf b)
+                else insert c $ EndInfNode $ fst consequence
             else if n >= 0
                   then insert c' (Node n next_iter u )
                       else insert c' (Node (abs n) u next_iter )
-        loopNeg c b [] (_, Node (-5) _ _) = (c, leaf b) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout 
-        loopNeg c _ [] consequence = insert c $ EndInfNode $ fst consequence -- base case, add endinf for consequence 
+
+        loopNeg c b [] consequence = if consequence == initNode 
+            then (c, leaf b)
+            else insert c $ EndInfNode $ fst consequence -- base case, add endinf for consequence 
         loopNeg c b (n:ns) consequence = let
           r@(c', (next_iter,_)) = loopNeg c b ns consequence in
-            if n ==0  then insert c $ EndInfNode $ fst consequence
+            if n ==0  then 
+              if consequence == initNode then (c, leaf b)
+                else insert c $ EndInfNode $ fst consequence
             else if n >= 0
                   then insert c' (Node n next_iter u)
                       else insert c' (Node (abs n) u next_iter)
+
+        initNode = ((0,0), Node (-5) (0,0) (0,0)) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout 
 
 -- Function to sort the Path data structure in a depth-first manner
 -- from highest to lowest on the integers.
 sortPathDesc :: Path -> Path
 sortPathDesc (P ints) =
-    -- Sort the list of integers in descending order
-    P (sortBy (compare `on` Down) ints)
+    -- Do not sort the list of integers in descending order
+    P ints
 sortPathDesc (P' taggedPaths) =
     -- Step 1: Recursively sort the Path in each tuple's second element
     let sortedInnerPaths = map (\(tag, inf, p) -> (tag, inf, sortPathDesc p)) taggedPaths

@@ -25,21 +25,21 @@ y = ddOf' $ end_of_word 2
 x = ddOf' $ word_to_symbols'' "he"
 
 word_to_symbols :: [Char] -> Form
-word_to_symbols sl = And (foldr1 And (map (Var . (uncurry $ path c )) (word_to_symbols' sl))) (end_of_word $ length sl)
+word_to_symbols sl = And (foldr1 And (map (Var . (uncurry $ oldpath c )) (word_to_symbols' sl))) (end_of_word $ length sl)
 
 word_to_symbols'' :: [Char] -> Form
-word_to_symbols'' sl = (foldr1 And (map (Var . (uncurry $ path c )) (word_to_symbols' sl))) 
+word_to_symbols'' sl = (foldr1 And (map (Var . (uncurry $ oldpath c )) (word_to_symbols' sl))) 
 
 word_to_symbols' :: [Char] -> [([(Int, InfL)], [Int])] 
 word_to_symbols' sl = [([(2 :: Int, Dc1), (s_pos :: Int, Neg1)], [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl ]
 
 end_of_word :: Int -> Form
-end_of_word i = (Var . construct_path c) (end_of_word' i) `debug` (show $ end_of_word' i) 
+end_of_word i = (Var . path c) (end_of_word' i) `debug` (show $ end_of_word' i) 
 
 end_of_word' :: Int -> Path 
 end_of_word' i = P' [(2, Neg1, P' [(j, Dc1, P [0]) | j <- [1..i]])] 
 
-
+-- ddOf' 
 vocabulary :: Form
 vocabulary = foldl1 Or (map word_to_symbols ["h", "he"])--- my", "daniel"]) --, "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."])
 

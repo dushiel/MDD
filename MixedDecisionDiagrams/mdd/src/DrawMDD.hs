@@ -134,7 +134,10 @@ data Show_setting = ShowSetting {
   debug_close :: Bool,
   debug_shorten_close :: Bool,
   debug_dc_stack :: Bool,
-  debug_level :: Bool
+  display_level :: Bool,
+  display_dcAs :: Bool,
+  display_dcBs :: Bool,
+  display_dcRs :: Bool
 }
 
 
@@ -181,9 +184,7 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, dc_stack=dcs, curren
     leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
                     "\n  ->   " ++ show_dd settings old_c a ++
                     "\n  ->   " ++ show_dd settings old_c b ++ "\n"
-    (c,r) = if debug_on settings && debug_open settings &&
-                not ((a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]) && (not $ display_leaf_cases settings))
-                 -- leaf vs leaf, always skip printing
+    (c,r) = if debug_open settings && check_skip_display a_id b_id
             then if debug_dc_stack settings
                 then myTrace (leaf_msg ++ display_func_stack old_c) f
                 else myTrace leaf_msg f
@@ -191,40 +192,40 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, dc_stack=dcs, curren
     in
 
     -- after calling the function
-    if debug_on settings && debug_close settings then
-        if a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]
-        then if not $ display_leaf_cases settings
-            then (c{dc_stack=dcs}, r)
-            else --myTrace (display_func_stack old_c) $ 
-                myTrace (colorize "green" (f_name ++ " : ") ++
-                "\n  " ++ show_dd settings c a ++
-                " : " ++ show_dd settings c b ++
-                " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
-                "\n") (c, r)
-        else
-        --myTrace (display_func_stack old_c) $ 
-        myTrace (
-        case Map.lookup f_key nc of
-            Just nc' -> case HashMap.lookup (a_id, b_id, dcs) nc' of
-                Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
-                    ++ colorize "green" (f_name ++ " : ") ++
-                    (if not $ debug_shorten_close settings then
-                        "\n  ->   " ++ show_dd settings c a ++
-                        "\n  ->   " ++ show_dd settings c b
-                     else "") ++
-                    "\n  =>   " ++ show_dd settings c r ++
-                    "\n"
-                Nothing ->
-                    colorize "green" (f_name ++ " : ") ++
-                    (if not $ debug_shorten_close settings then
-                        "\n  ->   " ++ show_dd settings c a ++
-                        "\n  ->   " ++ show_dd settings c b
-                    else "") ++
-                    "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
-                    "\n"
-            Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
-        ) (c{dc_stack=dcs}, r)
-    else (c{dc_stack=dcs}, r)
+    if debug_close settings && check_skip_display a_id b_id
+        then if a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]
+            then if not $ display_leaf_cases settings
+                then (c{dc_stack=dcs}, r)
+                else --myTrace (display_func_stack old_c) $ 
+                    myTrace (colorize "green" (f_name ++ " : ") ++
+                    "\n  " ++ show_dd settings c a ++
+                    " : " ++ show_dd settings c b ++
+                    " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+                    "\n") (c, r)
+            else
+            --myTrace (display_func_stack old_c) $ 
+            myTrace (
+            case Map.lookup f_key nc of
+                Just nc' -> case HashMap.lookup (a_id, b_id, dcs) nc' of
+                    Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
+                        ++ colorize "green" (f_name ++ " : ") ++
+                        (if not $ debug_shorten_close settings then
+                            "\n  ->   " ++ show_dd settings c a ++
+                            "\n  ->   " ++ show_dd settings c b
+                        else "") ++
+                        "\n  =>   " ++ show_dd settings c r ++
+                        "\n"
+                    Nothing ->
+                        colorize "green" (f_name ++ " : ") ++
+                        (if not $ debug_shorten_close settings then
+                            "\n  ->   " ++ show_dd settings c a ++
+                            "\n  ->   " ++ show_dd settings c b
+                        else "") ++
+                        "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+                        "\n"
+                Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
+            ) (c{dc_stack=dcs}, r)
+        else (c{dc_stack=dcs}, r)
 
 
     ---------------------------------------------------------
@@ -233,13 +234,13 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, dc_stack=dcs, curren
     let
     start_msg = ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c a) ++
                 ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c b ++ "\\n")
-    (c,r) = if not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)])
+    (c,r) = if check_skip_display a_id b_id
             then myDebugLog "\"inner\":[" f
             else f
     in
     -- debug for after calling the function
 
-    if not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)])
+    if check_skip_display a_id b_id
         then myDebugLog ("{\"" ++ colorize "green" f_name ++"\": {" ++ "\"func_stack before\": [\"" ++ show_dc_stack old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
             case Map.lookup f_key nc of
                 Just nc' -> case HashMap.lookup (a_id, b_id, dcs) nc' of
@@ -251,6 +252,14 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, dc_stack=dcs, curren
                 Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
         else (c{dc_stack=dcs}, r)
     | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a ++ "\n b_id: " ++ show (getDd old_c b_id) ++ " \n b: " ++ show b )
+
+check_skip_display :: NodeId -> NodeId -> Bool
+check_skip_display a_id b_id = 
+    debug_on settings &&
+    not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)]) && -- ez cases 
+    not (a_id == (0,0) && b_id == (0,0)) && -- always returns unkown 
+    not ((a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]) && not (display_leaf_cases settings))
+
 
 debug_func :: String -> (Context, Node) -> (Context, Node)
 debug_func f_name f = if save_logs settings
@@ -276,31 +285,31 @@ display_func_stack' :: Context -> Context -> String
 display_func_stack' old_c@Context{dc_stack = dcs} new_c@Context{dc_stack = new_dcs} = let  
             (dcAs, dcBs, dcRs) = dcs
             (dcAs', dcBs', dcRs') = new_dcs
-            old_dcAs = intercalate separator1 $ map (show_dd settings old_c) dcAs
-            old_dcBs = intercalate separator1 $ map (show_dd settings old_c) dcBs
-            old_dcRs = intercalate separator1 $ map (show_dd settings old_c) dcRs 
-            new_dcAs = intercalate separator1 $ map (show_dd settings new_c) dcAs'
-            new_dcBs = intercalate separator1 $ map (show_dd settings new_c) dcBs'
-            new_dcRs = intercalate separator1 $ map (show_dd settings new_c) dcRs' 
+            old_dcAs = intercalate separator1 $ map (show_dd settings old_c) dcAs 
+            old_dcBs = intercalate separator1 $ map (show_dd settings old_c) dcBs 
+            old_dcRs = intercalate separator1 $ map (show_dd settings old_c) dcRs  
+            new_dcAs = intercalate separator1 $ map (show_dd settings new_c) dcAs' 
+            new_dcBs = intercalate separator1 $ map (show_dd settings new_c) dcBs' 
+            new_dcRs = intercalate separator1 $ map (show_dd settings new_c) dcRs'  
             separator1 = " , \n  " 
         in 
-            colorize "purple" "func stack : " ++ show (current_level old_c) ++ colorize "blue" "func stack : " ++ show (current_level new_c) ++
-            colorize "orange" "\n- DcA old : \n  " ++ old_dcAs ++ colorize "green" "\n  DcA new : \n  " ++ new_dcAs ++ 
-            colorize "orange" "\n- DcB old : \n  " ++ old_dcBs ++ colorize "green" "\n  DcB new : \n  " ++ new_dcBs ++
-            colorize "orange" "\n- DcR old : \n  " ++ old_dcRs ++ colorize "green" "\n  DcR new : \n  " ++ new_dcRs
+            (if display_level settings then colorize "purple" "func stack : " ++ show (current_level old_c) ++ colorize "blue" "func stack : " ++ show (current_level new_c) else "") ++
+            (if display_dcAs settings then colorize "orange" "\n- DcA old : \n  " ++ old_dcAs ++ colorize "green" "\n  DcA new : \n  " ++ new_dcAs else "") ++ 
+            (if display_dcBs settings then colorize "orange" "\n- DcB old : \n  " ++ old_dcBs ++ colorize "green" "\n  DcB new : \n  " ++ new_dcBs else "") ++
+            (if display_dcRs settings then colorize "orange" "\n- DcR old : \n  " ++ old_dcRs ++ colorize "green" "\n  DcR new : \n  " ++ new_dcRs else "") 
 
 display_func_stack :: Context -> String
 display_func_stack c@Context{dc_stack = dcs} = let  
             (dcAs, dcBs, dcRs) = dcs
             dcAs' = intercalate separator1 $ map (show_dd settings c) dcAs
             dcBs' = intercalate separator1 $ map (show_dd settings c) dcBs
-            dcRs' = intercalate separator1 $ map (show_dd settings c) dcRs 
+            dcRs' = intercalate separator1 $ map (show_dd settings c) dcRs
             separator1 = " , \n" 
         in 
-            colorize "purple" "func stack : " ++ show (current_level c) ++
-            colorize "blue" "\n DcA : \n" ++ dcAs' ++
-            colorize "blue" "\n DcB : \n" ++ dcBs' ++ 
-            colorize "blue" "\n DcR : \n" ++ dcRs' ++ "\n"
+            (if display_level settings then colorize "purple" "func level : " ++ show (current_level c) else "") ++
+            (if display_dcAs settings then colorize "blue" "\n DcA : \n" ++ dcAs' else "") ++
+            (if display_dcBs settings then colorize "blue" "\n DcB : \n" ++ dcBs' else "") ++ 
+            (if display_dcRs settings then colorize "blue" "\n DcR : \n" ++ dcRs' else "") ++ "\n"
 
 jsonwrap :: String -> String -> String
 jsonwrap k v = "{ \""++ k ++    "\": \"" ++ v ++ "\" }"
@@ -343,9 +352,13 @@ settings = ShowSetting {
 
             ,   debug_open = True
             ,   debug_close = True
-            ,   debug_shorten_close = False
+            ,   debug_shorten_close = True
+
             ,   debug_dc_stack = True
-            ,   debug_level = True
+            ,   display_level = False
+            ,   display_dcAs = False
+            ,   display_dcBs = False
+            ,   display_dcRs = True
 }
 
 
