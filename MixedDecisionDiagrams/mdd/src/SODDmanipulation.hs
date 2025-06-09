@@ -61,14 +61,18 @@ negation' c u@(_, Unknown) = (c, u)
 
 class Dd1 a where
     leaf_cases :: Context -> String -> Node -> Node -> (Context, Node)
-    dc_leaf_cases :: Context -> String -> Node -> Node -> (Context, Node)
+    dcB_leaf_cases :: Context -> String -> Node -> Node -> (Context, Node)
+    dcA_leaf_cases :: Context -> String -> Node -> Node -> (Context, Node)
     apply :: Context -> String -> NodeId -> NodeId -> (Context, Node)
     apply'' :: Context -> String -> Node -> Node -> (Context, Node)
-    applyDc :: Context -> String -> NodeId -> NodeId -> (Context, Node)
-    applyDc'' :: Context -> String -> Node -> Node -> (Context, Node)
+    applyDcB :: Context -> String -> NodeId -> NodeId -> (Context, Node)
+    applyDcB'' :: Context -> String -> Node -> Node -> (Context, Node)
+    applyDcA :: Context -> String -> NodeId -> NodeId -> (Context, Node)
+    applyDcA'' :: Context -> String -> Node -> Node -> (Context, Node)
 
     apply' :: Context -> String -> Node -> Node -> (Context, Node)
-    applyDc' :: Context -> String -> Node -> Node -> (Context, Node)
+    applyDcB' :: Context -> String -> Node -> Node -> (Context, Node)
+    applyDcA' :: Context -> String -> Node -> Node -> (Context, Node)
     endinf_case :: Context -> String -> NodeId -> NodeId -> NodeId -> NodeId -> (Context, Node)
 
 
@@ -120,59 +124,6 @@ instance (DdF3 a) => Dd1 a where
     apply' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, s) $ absorb $ applyInfA @a c s a b
     apply' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, s) $ absorb $ applyInfB @a c s a b
 
--- | ======================== DC versions ========================
-    -- b is of dc type
-    -- thus applyElimRule' @a (inferNodeB has Dc
-    -- this version is designed not to be working with recursion yet (generalized refactored version needed)
-    -- Unknown handeling should be different. 
-
-    applyDc c s a b = debug_manipulation  (applyDc' @a c s (getNode c a) (getNode c b)) s (s ++ "Dc " ++ to_str @a) c (getNode c a) (getNode c b)
-    applyDc'' c s a b = debug_manipulation  (applyDc' @a c s a b) s (s ++ "Dc ==" ++ to_str @a) c a b
-
-    applyDc' c s a@(_, Leaf _) b = dc_leaf_cases @a c s a b
-    applyDc' c s a b@(_, Leaf _) = dc_leaf_cases @a c s a b
-    applyDc' c s a@(_, Unknown) b = dc_leaf_cases @a c s a b
-    applyDc' c s a b@(_, Unknown) = dc_leaf_cases @a c s a b
-
-    applyDc' c s a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b)
-    applyDc' c s a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b)
-    applyDc' c s a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, (s ++ "Dc")) $
-        endinf_case @a c s a_id b_id ac bc 
-
-    applyDc' c@Context{dc_stack = dcs} s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
-        -- Match
-        | positionA == positionB =
-            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
-                (c', (pos_result, _)) = applyDc @a c_ s pos_childA pos_childB
-
-                c_' = traverse_dc @a "neg child" c'{dc_stack = dcs} neg_childA neg_childB
-                (c'', (neg_result, _)) = applyDc @a c_' s neg_childA neg_childB
-            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result)
-        -- Mismatch, highest position gets an inferred node at position of the lowest
-        | positionA < positionB = applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b)
-        | positionA > positionB = applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b)
-
-    -- -- entering new domains
-    applyDc' c s a@(a_id, InfNodes positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
-                applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b)
-        -- | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
-        --         applyElimRule @a $ applyInfB a b 
-    applyDc' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, InfNodes positionB _ _ _)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-    --     | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
-    --             applyElimRule @a $ applyInfA a b
-        | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
-                applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b)
-    applyDc' c s a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
-        | positionA == positionB = applyInf @a c s a b
-        | positionA < positionB = applyInfB @Dc c s a b 
-        | positionA > positionB = applyInfA @a c s a b
-    applyDc' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, (s ++ "Dc")) $ applyInfA @a c s a b
-    applyDc' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfB @Dc c s a b
-
-
     -- union node cases
     leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s) $ applyElimRule' @a (inferNodeA' @a (apply'' @a) c s a b)
     leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s) $ applyElimRule' @a (inferNodeB' @a (apply'' @a) c s a b )
@@ -195,46 +146,173 @@ instance (DdF3 a) => Dd1 a where
     leaf_cases c s a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos union 
         let (c', dcA) = pop_dcA c 
-        in applyDc'' @a c' s b dcA   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
+        in applyDcA'' @a c' s dcA b   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
     leaf_cases c s a b@(_, Unknown) =
         let (c', dcB) = pop_dcB c 
-        in applyDc'' @a c' s a dcB  -- `debug` ("using dcB to replace Unknown : " ++ show dcB)
+        in applyDcB'' @a c' s a dcB  -- `debug` ("using dcB to replace Unknown : " ++ show dcB)
     --  Unknown is stronger than True in finite + union context    
     leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
     leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a) -- True might be absorbed, then return Unknown
     leaf_cases c s a b = error ("leaf case: " ++ s)
 
+
+
+-- | ======================== DC versions ========================
+    -- b is of dc type
+
+    applyDcB c s a b = debug_manipulation  (applyDcB' @a c s (getNode c a) (getNode c b)) s (s ++ "Dc " ++ to_str @a) c (getNode c a) (getNode c b)
+    applyDcB'' c s a b = debug_manipulation  (applyDcB' @a c s a b) s (s ++ "Dc ==" ++ to_str @a) c a b
+
+    applyDcB' c s a@(_, Leaf _) b = dcB_leaf_cases @a c s a b
+    applyDcB' c s a b@(_, Leaf _) = dcB_leaf_cases @a c s a b
+    applyDcB' c s a@(_, Unknown) b = dcB_leaf_cases @a c s a b
+    applyDcB' c s a b@(_, Unknown) = dcB_leaf_cases @a c s a b
+
+    applyDcB' c s a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeA' @a (applyDcB'' @a) c s a b)
+    applyDcB' c s a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeB' @Dc (applyDcB'' @a) c s a b)
+    applyDcB' c s a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, (s ++ "Dc")) $
+        endinf_case @a c s a_id b_id ac bc 
+
+    applyDcB' c@Context{dc_stack = dcs} s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
+        -- Match
+        | positionA == positionB =
+            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
+                (c', (pos_result, _)) = applyDcB @a c_ s pos_childA pos_childB
+
+                c_' = traverse_dc @a "neg child" c'{dc_stack = dcs} neg_childA neg_childB
+                (c'', (neg_result, _)) = applyDcB @a c_' s neg_childA neg_childB
+            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result)
+        -- Mismatch, highest position gets an inferred node at position of the lowest
+        | positionA < positionB = applyElimRule' @a (inferNodeB' @Dc (applyDcB'' @a) c s a b)
+        | positionA > positionB = applyElimRule' @a (inferNodeA' @a (applyDcB'' @a) c s a b)
+
+    -- -- entering new domains
+    applyDcB' c s a@(a_id, InfNodes positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
+        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
+        | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
+                applyElimRule' @a (inferNodeA' @a (applyDcB'' @a) c s a b)
+        -- | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
+        --         applyElimRule @a $ applyInfB a b 
+    applyDcB' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, InfNodes positionB _ _ _)
+        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
+    --     | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
+    --             applyElimRule @a $ applyInfA a b
+        | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
+                applyElimRule' @a (inferNodeB' @Dc (applyDcB'' @a) c s a b)
+    applyDcB' c s a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
+        | positionA == positionB = applyInf @a c s a b
+        | positionA < positionB = applyInfB @Dc c s a b 
+        | positionA > positionB = applyInfA @a c s a b
+    applyDcB' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, (s ++ "Dc")) $ applyInfA @a c s a b
+    applyDcB' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfB @Dc c s a b
+
     -- infer node cases
-    dc_leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeA' @a (applyDc'' @a) c s a b )
-    dc_leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeB' @Dc (applyDc'' @a) c s a b) 
+    dcB_leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeA' @a (applyDcB'' @a) c s a b )
+    dcB_leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeB' @Dc (applyDcB'' @a) c s a b) 
     -- endinfnode
     -- perform original apply again since we are going out of the Dc environment
     -- todo: even if we do double substitution?? probably not
-    dc_leaf_cases c s a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, s ++ "Dc") $  
+    dcB_leaf_cases c s a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, s ++ "Dc") $  
         endinf_case @a c s a_id b_id (1,0) bc
-    dc_leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, s ++ "Dc") $ 
+    dcB_leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, s ++ "Dc") $ 
         endinf_case @a c s a_id b_id ac (1,0)
-    dc_leaf_cases c s a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, s ++ "Dc") $ 
+    dcB_leaf_cases c s a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, s ++ "Dc") $ 
         endinf_case @a c s a_id b_id (2,0) bc
-    dc_leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, s ++ "Dc") $ 
+    dcB_leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, s ++ "Dc") $ 
         endinf_case @a c s a_id b_id ac (2,0)
     -- add infnode 
-    dc_leaf_cases c s a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, s ++ "Dc") $ 
+    dcB_leaf_cases c s a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, s ++ "Dc") $ 
         applyInfA @a c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc
-    dc_leaf_cases c s a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, s ++ "Dc") $ 
-        applyInfB @a c s a b 
+    dcB_leaf_cases c s a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, s ++ "Dc") $ 
+        applyInfB @Dc c s a b 
 
     --  Unknown is stronger than True in finite + intersectionDc context
-    dc_leaf_cases c s a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
-    dc_leaf_cases c s a b@(_, Unknown) = 
+    dcB_leaf_cases c s a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
+    dcB_leaf_cases c s a b@(_, Unknown) = 
         let (c', dcB) = pop_dcB c
-        in applyDc'' @a c' s a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
+        in applyDcB'' @a c' s a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
     -- if the result is 
-    dc_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
-    dc_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a) -- True might be absorbed, then return Unknown
+    dcB_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
+    dcB_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a) -- True might be absorbed, then return Unknown
 
+-- | ======================== DcA versions (Arguments switched) ========================
+    ---
+     -- a is of dc type
 
+    applyDcA c s a b = debug_manipulation  (applyDcA' @a c s (getNode c a) (getNode c b)) s (s ++ "DcA " ++ to_str @a) c (getNode c a) (getNode c b)
+    applyDcA'' c s a b = debug_manipulation  (applyDcA' @a c s a b) s (s ++ "DcA ==" ++ to_str @a) c a b
 
+    applyDcA' c s a@(_, Leaf _) b = dcA_leaf_cases @a c s a b
+    applyDcA' c s a b@(_, Leaf _) = dcA_leaf_cases @a c s a b
+    applyDcA' c s a@(_, Unknown) b = dcA_leaf_cases @a c s a b
+    applyDcA' c s a b@(_, Unknown) = dcA_leaf_cases @a c s a b
+
+    applyDcA' c s a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeA' @Dc (applyDcA'' @a) c s a b)
+    applyDcA' c s a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyElimRule' @a (inferNodeB' @a (applyDcA'' @a) c s a b)
+    applyDcA' c s a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, (s ++ "Dc")) $
+        endinf_case @a c s a_id b_id ac bc
+
+    applyDcA' c@Context{dc_stack = dcs} s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
+        -- Match
+        | positionA == positionB =
+            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
+                (c', (pos_result, _)) = applyDcA @a c_ s pos_childA pos_childB
+
+                c_' = traverse_dc @a "neg child" c'{dc_stack = dcs} neg_childA neg_childB
+                (c'', (neg_result, _)) = applyDcA @a c_' s neg_childA neg_childB
+            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result)
+        -- Mismatch, highest position gets an inferred node at position of the lowest
+        | positionA < positionB = applyElimRule' @a (inferNodeB' @a (applyDcA'' @a) c s a b)
+        | positionA > positionB = applyElimRule' @a (inferNodeA' @Dc (applyDcA'' @a) c s a b)
+
+    -- -- entering new domains
+    applyDcA' c s a@(a_id, InfNodes positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
+        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
+        | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
+                applyElimRule' @a (inferNodeA' @Dc (applyDcA'' @a) c s a b)
+        -- | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
+        --         applyElimRule @a $ applyInfB a b
+    applyDcA' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, InfNodes positionB _ _ _)
+        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
+    --     | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
+    --             applyElimRule @a $ applyInfA a b
+        | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
+                applyElimRule' @a (inferNodeB' @a (applyDcA'' @a) c s a b)
+    applyDcA' c s a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
+        | positionA == positionB = applyInf @a c s a b
+        | positionA < positionB = applyInfB @a c s a b
+        | positionA > positionB = applyInfA @Dc c s a b
+    applyDcA' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, (s ++ "Dc")) $ applyInfA @Dc c s a b
+    applyDcA' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfB @a c s a b
+
+    -- infer node cases
+    dcA_leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeA' @Dc (applyDcA'' @a) c s a b )
+    dcA_leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s ++ "Dc") $ applyElimRule' @a (inferNodeB' @a (applyDcA'' @a) c s a b)
+    -- endinfnode
+    -- perform original apply again since we are going out of the Dc environment
+    -- todo: even if we do double substitution?? probably not
+    dcA_leaf_cases c s a@(a_id, Leaf True) b@(b_id, EndInfNode bc) = withCache c (a, b, s ++ "Dc") $
+        endinf_case @a c s a_id b_id (1,0) bc
+    dcA_leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf True) = withCache c (a, b, s ++ "Dc") $
+        endinf_case @a c s a_id b_id ac (1,0)
+    dcA_leaf_cases c s a@(a_id, Leaf False) b@(b_id, EndInfNode bc) = withCache c (a, b, s ++ "Dc") $
+        endinf_case @a c s a_id b_id (2,0) bc
+    dcA_leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, s ++ "Dc") $
+        endinf_case @a c s a_id b_id ac (2,0)
+    -- add infnode
+    dcA_leaf_cases c s a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, s ++ "Dc") $
+        applyInfA @Dc c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc
+    dcA_leaf_cases c s a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, s ++ "Dc") $
+        applyInfB @a c s a b
+
+    --  Unknown is stronger than True in finite + intersectionDcA context
+    dcA_leaf_cases c s a@(_, Unknown) b =
+        let (c', dcA) = pop_dcA c
+        in applyDcA'' @a c' s dcA b -- unknown on dc side means that it should be replaced with a dc from an outer level
+    dcA_leaf_cases c s a b@(_, Unknown) = (c, b)
+    -- if the result is
+    dcA_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b)
+    dcA_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a)
     endinf_case c s a_id b_id ac bc = let 
         (c_, inf) = pop_stack' c 
         c' = traverse_dc @a "endinf" c_ a_id b_id -- `debug` (show $ dc_stack c_)

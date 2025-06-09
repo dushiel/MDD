@@ -347,7 +347,7 @@ settings = ShowSetting {
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
-            ,   debug_on = False
+            ,   debug_on = True
             ,   save_logs = False
 
             ,   debug_open = True
@@ -355,10 +355,10 @@ settings = ShowSetting {
             ,   debug_shorten_close = True
 
             ,   debug_dc_stack = True
-            ,   display_level = False
-            ,   display_dcAs = False
-            ,   display_dcBs = False
-            ,   display_dcRs = True
+            ,   display_level = True
+            ,   display_dcAs = True
+            ,   display_dcBs = True
+            ,   display_dcRs = False
 }
 
 
