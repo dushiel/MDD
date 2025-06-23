@@ -45,12 +45,34 @@ get_dcR c@Context{dc_stack = (dcA, dcB, dcR : fs)} = dcR
 get_dcR c@Context{dc_stack = (dcA, dcB, [])} = error "requeated dcR from empty stack"
 
 pop_dcA :: Context -> (Context, Node)
-pop_dcA c@Context{dc_stack = (dcA : fs, dcB, dcR)} = (c{dc_stack = (fs, dcB, dcR)}, dcA) --`debug` "popped dcA"
+pop_dcA c@Context{dc_stack = (dcA : fs, dcB, dcR), current_level = ((i, _) : lvsA, lvB : lvsB)} = 
+    (c{dc_stack = (fs, dcB, dcR), current_level = (lvsA, lvB : lvsB)}, dcA) --`debug` "popped dcA"
 pop_dcA c@Context{dc_stack = ([], dcB, dcR)} = error "requeated dcA from empty stack"
 
 pop_dcB :: Context -> (Context, Node)
-pop_dcB c@Context{dc_stack = (dcA, dcB : fs, dcR)} = (c{dc_stack = (dcA, fs, dcR)}, dcB) 
+pop_dcB c@Context{dc_stack = (dcA, dcB : fs, dcR), current_level = (lvA : lvsA, (i, _) : lvsB)} = 
+    (c{dc_stack = (dcA, fs, dcR), current_level = (lvA : lvsA, lvsB)}, dcB) 
 pop_dcB c@Context{dc_stack = (dcA, [], dcR)} = error "requeated dcB from empty stack"
+
+pop_dcA' :: Context -> (Context, Node)
+pop_dcA' c@Context{dc_stack = (dcA : fs, dcB, dcR), current_level = ((i, _) : lvsA, lvB : lvsB)} = 
+    (c{dc_stack = (fs, dcB, dcR), current_level = ((i, Dc) : lvsA, lvB : lvsB)}, dcA) --`debug` "popped dcA"
+pop_dcA' c@Context{dc_stack = ([], dcB, dcR)} = error "requeated dcA from empty stack"
+
+pop_dcB' :: Context -> (Context, Node)
+pop_dcB' c@Context{dc_stack = (dcA, dcB : fs, dcR), current_level = (lvA : lvsA, (i, _) : lvsB)} = 
+    (c{dc_stack = (dcA, fs, dcR), current_level = (lvA : lvsA, (i, Dc) : lvsB)}, dcB) 
+pop_dcB' c@Context{dc_stack = (dcA, [], dcR)} = error "requeated dcB from empty stack"
+
+pop_dcA'' :: Context -> (Context, Node)
+pop_dcA'' c@Context{dc_stack = (dcA : fs, dcB, dcR), current_level = (_ : (i, _) : lvsA, lvB : lvsB)} = 
+    (c{dc_stack = (fs, dcB, dcR), current_level = ((i, Dc) : lvsA, lvB : lvsB)}, dcA) --`debug` "popped dcA"
+pop_dcA'' c@Context{dc_stack = ([], dcB, dcR)} = error "requeated dcA from empty stack"
+
+pop_dcB'' :: Context -> (Context, Node)
+pop_dcB'' c@Context{dc_stack = (dcA, dcB : fs, dcR), current_level = (lvA : lvsA, _ : (i, _) : lvsB)} = 
+    (c{dc_stack = (dcA, fs, dcR), current_level = (lvA : lvsA, (i, Dc) : lvsB)}, dcB) 
+pop_dcB'' c@Context{dc_stack = (dcA, [], dcR)} = error "requeated dcB from empty stack"
 
 pop_dcR :: Context -> (Context, Node)
 pop_dcR c@Context{dc_stack = (dcA, dcB, dcR : fs)} = (c{dc_stack = (dcA, dcB, fs)}, dcR) 
@@ -58,33 +80,57 @@ pop_dcR c@Context{dc_stack = (dcA, dcB, [])} = error "requeated dcR from empty s
 
 add_to_stack' :: [(Int, Inf)] -> ([Node], [Node], [Node]) -> Context -> Context
 add_to_stack' infs (dcA, dcB, dcR) c@Context{dc_stack = (dcAs, dcBs, dcRs)} = 
-    c{dc_stack = (dcA ++ dcAs, dcB ++ dcBs, dcR ++ dcRs), current_level = infs ++ current_level c}
+    let (lvsA, lvsB) = current_level c in
+    c{dc_stack = (dcA ++ dcAs, dcB ++ dcBs, dcR ++ dcRs), current_level = (infs ++ lvsA, infs ++ lvsB) }
 
 add_to_stack :: (Int, Inf) -> (Node, Node, Node) -> Context -> Context
 add_to_stack inf (dcA, dcB, dcR) c@Context{dc_stack = (dcAs, dcBs, dcRs)} = 
-    c{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = inf : current_level c}
+    let (lvsA, lvsB) = current_level c in
+    c{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = (inf : lvsA, inf : lvsB)}
 
 replace_on_stack :: (Int, Inf) -> (Node, Node, Node) -> Context -> Context
-replace_on_stack inf (dcA, dcB, dcR) c@Context{dc_stack = (_ : dcAs, _ : dcBs, _ : dcRs), current_level = lv : lvs} = 
-    c{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = inf : lvs}
+replace_on_stack inf (dcA, dcB, dcR) c@Context{dc_stack = (_ : dcAs, _ : dcBs, _ : dcRs), current_level = (lvA : lvsA, lvB : lvsB)} = 
+    c{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = (inf : lvsA, inf : lvsB)}
 
-pop_stack1 :: Context -> (Context, (Inf, (Node, Node, Node)))
-pop_stack1 c@Context{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = lv@(_, inf) : lvs} = 
-    (c{dc_stack = (dcAs, dcBs, dcRs), current_level=lvs}, (inf, (dcA, dcB, dcR)))
-
--- removes the current level and returns information about the previous level
--- todo: popping the dcs is naive currently
-pop_stack :: Context -> (Context, (Inf, (Node, Node, Node)))
-pop_stack c@Context{dc_stack = (current_A : dcA : dcAs, current_B : dcB : dcBs, current_R : dcR : dcRs), current_level = _: lv@(_, inf) : lvs} = 
-    (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= lv : lvs}, (inf, (dcA, dcB, dcR)))
-    where n = length $ lv : lvs -- `debug` ("n = " ++ (show $ length $ lv : lvs))
+pop_stack1 :: Context -> (Context, ((Inf, Inf), (Node, Node, Node)))
+pop_stack1 c@Context{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = (lvA@(_, infA) : lvsA, lvB@(_, infB) : lvsB)} = 
+    (c{dc_stack = (dcAs, dcBs, dcRs), current_level=(lvsA, lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
 
 -- removes the current level and returns information about the previous level
 -- todo: popping the dcs is naive currently
-pop_stack' :: Context -> (Context, Inf)
-pop_stack' c@Context{dc_stack = (dcAs, dcBs, dcRs), current_level = _: lv@(_, inf) : lvs} = 
-    (c{dc_stack = (trimListToSize n dcAs, trimListToSize n dcBs , trimListToSize n dcRs ), current_level= lv : lvs}, inf)
-    where n = length $ lv : lvs
+pop_stack :: Context -> (Context, ((Inf, Inf), (Node, Node, Node)))
+pop_stack c@Context{dc_stack = (current_A : dcA : dcAs, current_B : dcB : dcBs, current_R : dcR : dcRs), current_level = (lAs, lBs)} 
+    | length lAs == length lBs = let (_ : lvA@(_, infA) : lvsA, _: lvB@(_, infB) : lvsB) = current_level c in 
+        (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= (lvA : lvsA, lvB : lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
+    | length lAs > length lBs = let (_ : lvA@(_, infA) : lvsA, lvB@(_, infB) : lvsB) = current_level c in 
+        (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= (lvA : lvsA, lvB : lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
+    | length lAs < length lBs = let (lvA@(_, infA) : lvsA, _ : lvB@(_, infB) : lvsB) = current_level c in 
+        (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= (lvA : lvsA, lvB : lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
+        where n = (max (length $ lAs) (length $ lBs)) -1 `debug` ("n = " ++ (show $ (max (length $ lAs) (length $ lBs)) -1) ++ ", " ++ (show $ length lAs)  ++ ", " ++ (show $ length lBs))
+    
+
+
+-- removes the current level and returns information about the previous level
+-- todo: popping the dcs is naive currently
+pop_stack' :: Context -> (Context, (Inf, Inf))
+pop_stack' c@Context{dc_stack = (dcAs, dcBs, dcRs), current_level = (lAs, lBs)} 
+    | length lAs == length lBs = let (_ : lvA@(_, infA) : lvsA, _: lvB@(_, infB) : lvsB) = current_level c in 
+        (c{dc_stack = (trimListToSize n dcAs, trimListToSize n dcBs , trimListToSize n dcRs ), current_level= (lvA : lvsA, lvB : lvsB)}, (infA, infB))
+    | length lAs > length lBs = let (_ : lvA@(_, infA) : lvsA, lvB@(_, infB) : lvsB) = current_level c in 
+        (c{dc_stack = (trimListToSize n dcAs, trimListToSize n dcBs , trimListToSize n dcRs ), current_level= (lvA : lvsA, lvB : lvsB)}, (infA, infB))
+    | length lAs < length lBs = let (lvA@(_, infA) : lvsA, _ : lvB@(_, infB) : lvsB) = current_level c in 
+        (c{dc_stack = (trimListToSize n dcAs, trimListToSize n dcBs , trimListToSize n dcRs ), current_level= (lvA : lvsA, lvB : lvsB)}, (infA, infB))
+        where n = (max (length $ lAs) (length $ lBs)) -1 `debug` ("n' = " ++ (show $ (max (length $ lAs) (length $ lBs)) -1) ++ ", " ++ (show $ length lAs)  ++ ", " ++ (show $ length lBs))
+
+    
+    
+    
+    
+    
+    
+    -- (_ : lvA@(_, infA) : lvsA, _: lvB@(_, infB) : lvsB)} = 
+    -- (c{dc_stack = (trimListToSize n dcAs, trimListToSize n dcBs , trimListToSize n dcRs ), current_level= (lvA : lvsA, lvB : lvsB)}, (infA, infB))
+    -- where n = max (length $ lvA : lvsA) (length $ lvB : lvsB) `debug` ("n' = " ++ (show $ max (length $ lvA : lvsA) (length $ lvB : lvsB)))
 
 trimListToSize :: Int -> [a] -> [a]
 trimListToSize n xs
@@ -93,8 +139,8 @@ trimListToSize n xs
   | otherwise = drop (length xs - n) xs -- `debug` ("dropping to length: " ++ show n ++ " from length " ++ show (length xs))
 
 func_tail :: Context -> Context
-func_tail c@Context{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = lv@(_, inf) : lvs} = 
-    c{dc_stack = (dcAs, dcBs, dcRs), current_level=lvs}
+func_tail c@Context{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = (lvA@(_, infA) : lvsA, lvB@(_, infB) : lvsB)} = 
+    c{dc_stack = (dcAs, dcBs, dcRs), current_level=(lvsA, lvsB)}
 
 reset_stack :: Context -> Context -> Context
 reset_stack new_c old_c = 

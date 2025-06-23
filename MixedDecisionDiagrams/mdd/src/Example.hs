@@ -21,28 +21,51 @@ import qualified Data.HashMap.Lazy as HashMap
 symbols :: Map.Map Char Int
 symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" [0..]
 
-y = ddOf' $ end_of_word 2
-x = ddOf' $ word_to_symbols'' "he"
+word :: [Char] -> Form
+word sl = Var . path c $ word_label $ P' [(s_pos, Neg1, P [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl] -- `And` (end_of_word $ length sl)
 
-word_to_symbols :: [Char] -> Form
-word_to_symbols sl = And (foldr1 And (map (Var . (uncurry $ oldpath c )) (word_to_symbols' sl))) (end_of_word $ length sl)
-
-word_to_symbols'' :: [Char] -> Form
-word_to_symbols'' sl = (foldr1 And (map (Var . (uncurry $ oldpath c )) (word_to_symbols' sl))) 
-
-word_to_symbols' :: [Char] -> [([(Int, InfL)], [Int])] 
-word_to_symbols' sl = [([(2 :: Int, Dc1), (s_pos :: Int, Neg1)], [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl ]
+word_label :: Path -> Path
+word_label c = P' [(2, Neg1, c)]
 
 end_of_word :: Int -> Form
-end_of_word i = (Var . path c) (end_of_word' i) `debug` (show $ end_of_word' i) 
+end_of_word i = Var . path c $ P' [(2, Neg1, P' [(j, Dc1, P [0]) | j <- [1..i]])] 
 
-end_of_word' :: Int -> Path 
-end_of_word' i = P' [(2, Neg1, P' [(j, Dc1, P [0]) | j <- [1..i]])] 
-
--- ddOf' 
 vocabulary :: Form
-vocabulary = foldl1 Or (map word_to_symbols ["h", "he"])--- my", "daniel"]) --, "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."])
+vocabulary = foldl1 Or (map word ["dani", "daniel", "run"]) --, "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."])
 
+shape_label :: Path -> Path
+shape_label c = P' [(3, Dc1, c)]
+
+shapes :: Map.Map String Int
+shapes = Map.fromList $ zip ["rectangular", "round", "line", "face-like", "bear-like", "big", "small"] [1..]
+
+shape :: [String] -> Form 
+shape sl = Var . path c $ shape_label $ P [shapes Map.! s | s <- sl]
+
+
+color_label :: Path -> Path
+color_label c = P' [(4, Dc1, c)]
+
+colors :: Map.Map String Int
+-- dimensions would be the three cone value activations? cluster in which can define colors. once recognizable for the understanding they are given a label below.
+colors = Map.fromList $ zip ["red", "orange", "yellow", "green", "blue", "purple", "white", "grey", "black"] [1..]
+
+color :: [String] -> Form 
+color sl = Var . path c $ color_label $ P [colors Map.! s | s <- sl]
+
+
+feeling_label :: Path -> Path
+feeling_label c = P' [(5, Dc1, c)]
+
+feelings :: Map.Map String Int
+-- dimensions here would be based on neuro science findings, what are core mechanisms that can influence us in such a way that we are open to conceptualizing them
+feelings = Map.fromList $ zip ["danger", "safety", "interesse", "boredom", "friendship", "distance", "admiration-love", "romantic-love", "in-control", "lost", "hot", "cold"] [1..]
+
+feeling :: [String] -> Form 
+feeling sl = Var . path c $ feeling_label $ P [feelings Map.! s | s <- sl]
+
+bear_fear :: Form 
+bear_fear = Impl (shape ["bear-like"]) (And (feeling ["danger"]) (word "run")) -- 
 -- generateAndShow_c 
 
 
@@ -81,7 +104,16 @@ colors = Map.fromList [("green", Order [1,1,1]),("yellow", Order [1,1,2]),("blue
 shapes = Map.fromList [("round", Order [1,2,1]),("square", Order [1,2,2]),("big", Order [1,2,3])]
 feeling = Map.fromList [("friendly", Order [1,3,1]),("dangerous", Order [1,3,2]),("interesting", Order [1,3,3])]
 
+-- L concepts L color L red 
+-- L concepts L senses (1) / imagination (-1)
+-- L concepts L time / timeless L future / present / past 
+-- L concepts L numbers 
+-- L concepts L physical (instance, somewhere a single path through a concept??) / conceptual ()
 
+
+-- todo concept to path map
+-- look up label in mapping, if nested look up net one
+-- 
 
 -- We can be aware of (have a focus on) a finite amount of concepts at once
 -- the propositions are identities of unique concepts (by assumption that we can discern 1 concept from another)

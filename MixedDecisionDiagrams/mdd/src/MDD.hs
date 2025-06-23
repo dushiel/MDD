@@ -110,7 +110,7 @@ data Context = Context {
   cache' :: ShowCache,
   nodelookup:: NodeLookup, -- map of all nodes in the graph
   dc_stack :: ([Node], [Node], [Node]), -- remember on what infnode what dc's there are when unknowns need to be resolved
-  current_level :: Level' -- todo implement this still, so that hashing uses a level instead of position only
+  current_level :: (Level', Level') -- todo implement this still, so that hashing uses a level instead of position only
 }
 
 instance Show Context where
@@ -612,7 +612,7 @@ unionContext ctx1 ctx2 =
           cache'        = mergedCache',
           nodelookup    = mergedNodeLookup,
           dc_stack    = ([],[],[]),
-          current_level = [] 
+          current_level = ([], []) 
         }
   where
     -- Cache merging (prefers ctx1 on collision for HashMap values)

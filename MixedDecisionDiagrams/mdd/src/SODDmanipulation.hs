@@ -91,15 +91,15 @@ instance (DdF3 a) => Dd1 a where
     apply' c s a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, s) $
         endinf_case @a c s a_id b_id ac bc 
 
-    apply' c@Context{dc_stack = dcs} s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
+    apply' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         -- Match
         | positionA == positionB =
             let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
                 (c', (pos_result, _)) = apply @a c_ s pos_childA pos_childB
 
-                c_' = traverse_dc @a "neg child" c'{dc_stack = dcs} neg_childA neg_childB
+                c_' = traverse_dc @a "neg child" (reset_stack c' c) neg_childA neg_childB
                 (c'', (neg_result, _)) = apply @a c_' s neg_childA neg_childB
-            in withCache c (a, b, s) $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result) --`debug` ("apply noide node = " ++ show (Node positionA pos_result neg_result) ++ " .... " ++ show positionA ++ "\n for type elim " ++ to_str @a ++ " ,  elimed: " ++ show (snd $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result))) 
+            in withCache c (a, b, s) $ applyElimRule @a (reset_stack c'' c) (Node positionA pos_result neg_result) --`debug` ("apply noide node = " ++ show (Node positionA pos_result neg_result) ++ " .... " ++ show positionA ++ "\n for type elim " ++ to_str @a ++ " ,  elimed: " ++ show (snd $ applyElimRule @a (reset_stack c'' c) (Node positionA pos_result neg_result))) 
         -- Mismatch, highest position gets an inferred node at position of the lowest
         | positionA < positionB = applyElimRule' @a (inferNodeB' @a (apply'' @a) c s a b)
         | positionA > positionB = applyElimRule' @a (inferNodeA' @a (apply'' @a) c s a b)
@@ -145,10 +145,10 @@ instance (DdF3 a) => Dd1 a where
     leaf_cases c s a@(_, Unknown) b@(_, Unknown) = (c , a)
     leaf_cases c s a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd 
         -- todo! if b is a node (or infnode o.O') perform dc : pos union 
-        let (c', dcA) = pop_dcA c 
+        let (c', dcA) = pop_dcA' c `debug` "dca dc"
         in applyDcA'' @a c' s dcA b   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
     leaf_cases c s a b@(_, Unknown) =
-        let (c', dcB) = pop_dcB c 
+        let (c', dcB) = pop_dcB' c `debug` "dcb dc"
         in applyDcB'' @a c' s a dcB  -- `debug` ("using dcB to replace Unknown : " ++ show dcB)
     --  Unknown is stronger than True in finite + union context    
     leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
@@ -160,8 +160,8 @@ instance (DdF3 a) => Dd1 a where
 -- | ======================== DC versions ========================
     -- b is of dc type
 
-    applyDcB c s a b = debug_manipulation  (applyDcB' @a c s (getNode c a) (getNode c b)) s (s ++ "Dc " ++ to_str @a) c (getNode c a) (getNode c b)
-    applyDcB'' c s a b = debug_manipulation  (applyDcB' @a c s a b) s (s ++ "Dc ==" ++ to_str @a) c a b
+    applyDcB c s a b = debug_manipulation  (applyDcB' @a c s (getNode c a) (getNode c b)) s (s ++ "DcB " ++ to_str @a) c (getNode c a) (getNode c b)
+    applyDcB'' c s a b = debug_manipulation  (applyDcB' @a c s a b) s (s ++ "DcB ==" ++ to_str @a) c a b
 
     applyDcB' c s a@(_, Leaf _) b = dcB_leaf_cases @a c s a b
     applyDcB' c s a b@(_, Leaf _) = dcB_leaf_cases @a c s a b
@@ -173,15 +173,15 @@ instance (DdF3 a) => Dd1 a where
     applyDcB' c s a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, (s ++ "Dc")) $
         endinf_case @a c s a_id b_id ac bc 
 
-    applyDcB' c@Context{dc_stack = dcs} s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
+    applyDcB' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         -- Match
         | positionA == positionB =
             let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
                 (c', (pos_result, _)) = applyDcB @a c_ s pos_childA pos_childB
 
-                c_' = traverse_dc @a "neg child" c'{dc_stack = dcs} neg_childA neg_childB
+                c_' = traverse_dc @a "neg child" (reset_stack c' c) neg_childA neg_childB
                 (c'', (neg_result, _)) = applyDcB @a c_' s neg_childA neg_childB
-            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result)
+            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a (reset_stack c'' c) (Node positionA pos_result neg_result)
         -- Mismatch, highest position gets an inferred node at position of the lowest
         | positionA < positionB = applyElimRule' @a (inferNodeB' @Dc (applyDcB'' @a) c s a b)
         | positionA > positionB = applyElimRule' @a (inferNodeA' @a (applyDcB'' @a) c s a b)
@@ -229,7 +229,7 @@ instance (DdF3 a) => Dd1 a where
     --  Unknown is stronger than True in finite + intersectionDc context
     dcB_leaf_cases c s a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
     dcB_leaf_cases c s a b@(_, Unknown) = 
-        let (c', dcB) = pop_dcB c
+        let (c', dcB) = pop_dcB'' c `debug` "dcb pop"
         in applyDcB'' @a c' s a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
     -- if the result is 
     dcB_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
@@ -252,15 +252,15 @@ instance (DdF3 a) => Dd1 a where
     applyDcA' c s a@(a_id, EndInfNode ac) b@(b_id, EndInfNode bc) = withCache c (a, b, (s ++ "Dc")) $
         endinf_case @a c s a_id b_id ac bc
 
-    applyDcA' c@Context{dc_stack = dcs} s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
+    applyDcA' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         -- Match
         | positionA == positionB =
             let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
                 (c', (pos_result, _)) = applyDcA @a c_ s pos_childA pos_childB
 
-                c_' = traverse_dc @a "neg child" c'{dc_stack = dcs} neg_childA neg_childB
+                c_' = traverse_dc @a "neg child" (reset_stack c' c) neg_childA neg_childB
                 (c'', (neg_result, _)) = applyDcA @a c_' s neg_childA neg_childB
-            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a c''{dc_stack = dcs} (Node positionA pos_result neg_result)
+            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a (reset_stack c'' c) (Node positionA pos_result neg_result)
         -- Mismatch, highest position gets an inferred node at position of the lowest
         | positionA < positionB = applyElimRule' @a (inferNodeB' @a (applyDcA'' @a) c s a b)
         | positionA > positionB = applyElimRule' @a (inferNodeA' @Dc (applyDcA'' @a) c s a b)
@@ -307,19 +307,24 @@ instance (DdF3 a) => Dd1 a where
 
     --  Unknown is stronger than True in finite + intersectionDcA context
     dcA_leaf_cases c s a@(_, Unknown) b =
-        let (c', dcA) = pop_dcA c
+        let (c', dcA) = pop_dcA'' c `debug` "dca pop"
         in applyDcA'' @a c' s dcA b -- unknown on dc side means that it should be replaced with a dc from an outer level
     dcA_leaf_cases c s a b@(_, Unknown) = (c, b)
     -- if the result is
     dcA_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b)
     dcA_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a)
     endinf_case c s a_id b_id ac bc = let 
-        (c_, inf) = pop_stack' c 
+        (c_, (infA, infB)) = pop_stack' c 
         c' = traverse_dc @a "endinf" c_ a_id b_id -- `debug` (show $ dc_stack c_)
-        (c'', (r, _)) = case inf of
-            Dc -> apply @Dc c' s ac bc --`debug` "dc"
-            Neg -> apply @Neg c' s ac bc --`debug` "neg"
-            Pos -> apply @Pos c' s ac bc --`debug` "pos"
+        (c'', (r, _)) = case (infA, infB) of
+            (Dc, Dc) -> apply @Dc c' s ac bc `debug` ("dc ")
+            (Neg, Neg) -> apply @Neg c' s ac bc `debug` ("neg ")
+            (Pos, Pos) -> apply @Pos c' s ac bc `debug` ("pos ")
+            (Neg, Dc) -> applyDcB @Neg c' s ac bc `debug` ("neg dc")
+            (Pos, Dc) -> applyDcB @Pos c' s ac bc `debug` ("pos dc")
+            (Dc, Neg) -> applyDcA @Neg c' s ac bc `debug` ("dc neg ")
+            (Dc, Pos) -> applyDcA @Pos c' s ac bc `debug` ("dc pos ")
+            r'@(_, _) -> error ("weird combination after pop stack: " ++ show r')
         in absorb $ applyElimRule' @a $ (reset_stack c'' c, EndInfNode r) -- todo remove reset stack by removing stack in leaf cases on other places   
 
     -- infnodes_case c s a_id b_id ac bc = let 

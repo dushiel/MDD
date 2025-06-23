@@ -175,6 +175,11 @@ show_dd s c (d_id, d) = case d of
     show_i i c = (if display_node_id's s then (if color s then colorize "blue" ("#" ++ show d_id) else ("#" ++ show d_id)) ++ " " else "")
       ++ (if color s then colorize c (show i) else show i)
 
+check_length :: Context -> Bool
+check_length c@Context{dc_stack=(dcAs, dcBs, _), current_level=(lvAs, lvBs)} 
+    | length dcAs > length lvAs = False  
+    | length dcBs > length lvBs = False
+    | otherwise = True
 
 debug_manipulation :: (Context, Node) -> String -> String -> Context -> Node -> Node -> (Context, Node)
 debug_manipulation f f_key f_name old_c@Context{cache = nc, dc_stack=dcs, current_level=lv} a@(a_id, a_d) b@(b_id, b_d)
@@ -347,18 +352,18 @@ settings = ShowSetting {
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
-            ,   debug_on = True
+            ,   debug_on = False
             ,   save_logs = False
 
             ,   debug_open = True
             ,   debug_close = True
-            ,   debug_shorten_close = True
+            ,   debug_shorten_close = False
 
             ,   debug_dc_stack = True
             ,   display_level = True
             ,   display_dcAs = True
             ,   display_dcBs = True
-            ,   display_dcRs = False
+            ,   display_dcRs = True
 }
 
 
