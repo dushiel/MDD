@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use camelCase" #-}
 {-# LANGUAGE TupleSections #-}
+{-# HLINT ignore "Move brackets to avoid $" #-}
 module Example where
 
 import qualified Data.Map.Strict as Map
@@ -22,13 +23,17 @@ symbols :: Map.Map Char Int
 symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" [0..]
 
 word :: [Char] -> Form
-word sl = Var . path c $ word_label $ P' [(s_pos, Neg1, P [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl] -- `And` (end_of_word $ length sl)
+word sl = Var . path c $ word_label $ P' [
+    if s == '*'
+        then (s_pos, Dc1, P [symbols Map.! ' '])
+        else (s_pos, Neg1, P [symbols Map.! s])
+     | (s_pos, s) <- zip [1.. ] sl]
 
 word_label :: Path -> Path
 word_label c = P' [(2, Neg1, c)]
 
 end_of_word :: Int -> Form
-end_of_word i = Var . path c $ P' [(2, Neg1, P' [(j, Dc1, P [0]) | j <- [1..i]])] 
+end_of_word i = Var . path c $ P' [(2, Neg1, P' [(j, Dc1, P [0]) | j <- [1..i]])]
 
 vocabulary :: Form
 vocabulary = foldl1 Or (map word ["dani", "daniel", "run"]) --, "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."])
@@ -39,7 +44,7 @@ shape_label c = P' [(3, Dc1, c)]
 shapes :: Map.Map String Int
 shapes = Map.fromList $ zip ["rectangular", "round", "line", "face-like", "bear-like", "big", "small"] [1..]
 
-shape :: [String] -> Form 
+shape :: [String] -> Form
 shape sl = Var . path c $ shape_label $ P [shapes Map.! s | s <- sl]
 
 
@@ -50,7 +55,7 @@ colors :: Map.Map String Int
 -- dimensions would be the three cone value activations? cluster in which can define colors. once recognizable for the understanding they are given a label below.
 colors = Map.fromList $ zip ["red", "orange", "yellow", "green", "blue", "purple", "white", "grey", "black"] [1..]
 
-color :: [String] -> Form 
+color :: [String] -> Form
 color sl = Var . path c $ color_label $ P [colors Map.! s | s <- sl]
 
 
@@ -61,12 +66,12 @@ feelings :: Map.Map String Int
 -- dimensions here would be based on neuro science findings, what are core mechanisms that can influence us in such a way that we are open to conceptualizing them
 feelings = Map.fromList $ zip ["danger", "safety", "interesse", "boredom", "friendship", "distance", "admiration-love", "romantic-love", "in-control", "lost", "hot", "cold"] [1..]
 
-feeling :: [String] -> Form 
+feeling :: [String] -> Form
 feeling sl = Var . path c $ feeling_label $ P [feelings Map.! s | s <- sl]
 
-bear_fear :: Form 
-bear_fear = Impl (shape ["bear-like"]) (And (feeling ["danger"]) (word "run")) -- 
--- generateAndShow_c 
+bear_fear :: Form
+bear_fear = Impl (shape ["bear-like"]) (And (feeling ["danger"]) (word "run")) --
+-- generateAndShow_c
 
 
 -- senToDd = ezPath . sentenceToPath
@@ -104,16 +109,16 @@ colors = Map.fromList [("green", Order [1,1,1]),("yellow", Order [1,1,2]),("blue
 shapes = Map.fromList [("round", Order [1,2,1]),("square", Order [1,2,2]),("big", Order [1,2,3])]
 feeling = Map.fromList [("friendly", Order [1,3,1]),("dangerous", Order [1,3,2]),("interesting", Order [1,3,3])]
 
--- L concepts L color L red 
+-- L concepts L color L red
 -- L concepts L senses (1) / imagination (-1)
--- L concepts L time / timeless L future / present / past 
--- L concepts L numbers 
+-- L concepts L time / timeless L future / present / past
+-- L concepts L numbers
 -- L concepts L physical (instance, somewhere a single path through a concept??) / conceptual ()
 
 
 -- todo concept to path map
 -- look up label in mapping, if nested look up net one
--- 
+--
 
 -- We can be aware of (have a focus on) a finite amount of concepts at once
 -- the propositions are identities of unique concepts (by assumption that we can discern 1 concept from another)
@@ -166,12 +171,26 @@ knows :: String -> Form
 
 -}
 
+word_collection_label :: Path -> Path
+word_collection_label c = P' [(2, Dc1, c)]
+
+words_with_prefix :: [Char] -> Form
+words_with_prefix sl = Var . path c $ word_label $ P' [(s_pos, Dc1, P [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl]
+
+test_word :: [Char] -> Form
+test_word sl = (Var . path c $ word_label $ P' [(s_pos, Neg1, P [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl]) `And` (end_of_word $ length sl)
 
 
-
-
-
-
+test_example :: IO ()
+test_example = do
+    mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
+    where
+        results = [
+            -- (snd $ ddOf' (word "was")) == (snd $ ddOf' (test_word "was")) `debug5` "######## test nr 1"
+            -- , (snd $ ddOf' (word "bit")) == (snd $ ddOf' (test_word "bit")) `debug5` "######## test nr 2"
+            -- , (snd $ ddOf' ((word "abc" `Or` word "abd") `And` (word "ab" `Or` word "abd"))) == (snd $ ddOf' (word "abd"))`debug5` "######## test nr 3"
+            (snd $ ddOf' ((words_with_prefix "abc" `Or` words_with_prefix "abd") `And` (words_with_prefix "ab" `Or` words_with_prefix "abd"))) == (snd $ ddOf' (words_with_prefix "abd")) `debug5` "######## test nr 4"
+            ]
 
 
 

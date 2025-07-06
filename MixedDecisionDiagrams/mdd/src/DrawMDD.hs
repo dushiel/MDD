@@ -16,7 +16,7 @@ import System.Process (readProcessWithExitCode)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>))  -- Import for path manipulation
 import System.Directory (getCurrentDirectory)
-import Control.Monad (when) 
+import Control.Monad (when)
 import Data.List (intercalate, sortBy, groupBy, foldl')
 import Data.Function (on)
 import Data.Ord (comparing)
@@ -62,7 +62,7 @@ showTree' c _ (_, Leaf True) = (c, ["[1]"])
 showTree' c _ (_, Leaf False) = (c, ["[0]"])
 showTree' c f d@(id, Node a l r) = withCache' c'' d $
     ("("++ f a ++") " ++ col Dull Blue (show_id id)) :
-    concat (indentChildren [s1, s2]) 
+    concat (indentChildren [s1, s2])
     where
         (c', s1) = showTree' c f (l, getDd c l)
         (c'', s2) = showTree' c' f (r, getDd c r)
@@ -84,7 +84,7 @@ showTree' c f d@(id, InfNodes a dc (0, 0) n) = withCache' c'' d $
     concat (indentInfChildren [s1, r_p1])
     where
         (c', s1) = showTree' c f (dc, getDd c dc)
-        (c'', r_p1) = showTree' c' f (n, getDd c n) 
+        (c'', r_p1) = showTree' c' f (n, getDd c n)
 
 showTree' c f d@(id, InfNodes a dc p n) = withCache' c''' d $
     ("<"++ f a ++ "> dc, p, n " ++ col Dull Blue (show_id id)) : "  ║  " :
@@ -127,7 +127,7 @@ data Show_setting = ShowSetting {
   display_context :: Bool,
   display_leaf_cases :: Bool,
   display_end_infs :: Bool,
-  display_dc_traversal :: Bool, 
+  display_dc_traversal :: Bool,
   debug_on :: Bool,
   save_logs :: Bool,
   debug_open :: Bool,
@@ -176,8 +176,8 @@ show_dd s c (d_id, d) = case d of
       ++ (if color s then colorize c (show i) else show i)
 
 check_length :: Context -> Bool
-check_length c@Context{dc_stack=(dcAs, dcBs, _), current_level=(lvAs, lvBs)} 
-    | length dcAs > length lvAs = False  
+check_length c@Context{dc_stack=(dcAs, dcBs, _), current_level=(lvAs, lvBs)}
+    | length dcAs > length lvAs = False
     | length dcBs > length lvBs = False
     | otherwise = True
 
@@ -201,14 +201,14 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, dc_stack=dcs, curren
         then if a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]
             then if not $ display_leaf_cases settings
                 then (c{dc_stack=dcs}, r)
-                else --myTrace (display_func_stack old_c) $ 
+                else --myTrace (display_func_stack old_c) $
                     myTrace (colorize "green" (f_name ++ " : ") ++
                     "\n  " ++ show_dd settings c a ++
                     " : " ++ show_dd settings c b ++
                     " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
                     "\n") (c, r)
             else
-            --myTrace (display_func_stack old_c) $ 
+            --myTrace (display_func_stack old_c) $
             myTrace (
             case Map.lookup f_key nc of
                 Just nc' -> case HashMap.lookup (a_id, b_id, dcs) nc' of
@@ -259,10 +259,10 @@ debug_manipulation f f_key f_name old_c@Context{cache = nc, dc_stack=dcs, curren
     | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a ++ "\n b_id: " ++ show (getDd old_c b_id) ++ " \n b: " ++ show b )
 
 check_skip_display :: NodeId -> NodeId -> Bool
-check_skip_display a_id b_id = 
+check_skip_display a_id b_id =
     debug_on settings &&
-    not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)]) && -- ez cases 
-    not (a_id == (0,0) && b_id == (0,0)) && -- always returns unkown 
+    not (a_id `elem` [(1,0), (2,0)] && b_id `elem` [(1,0), (2,0)]) && -- ez cases
+    not (a_id == (0,0) && b_id == (0,0)) && -- always returns unkown
     not ((a_id `elem` [(1,0), (2,0)] || b_id `elem` [(1,0), (2,0)]) && not (display_leaf_cases settings))
 
 
@@ -276,7 +276,7 @@ debug_func f_name f = if save_logs settings
 
 debug_dc_traverse :: String -> Context -> NodeId -> NodeId -> Context -> Context
 debug_dc_traverse s c a b f = if display_dc_traversal settings && debug_on settings
-    then myTrace (colorize "purple" "dc_traverse" ++ ", for arguments: " ++ s ++ " a: " ++ show_dd settings c (getNode c a) ++ "  b: " ++ show_dd settings c (getNode c b)) 
+    then myTrace (colorize "purple" "dc_traverse" ++ ", for arguments: " ++ s ++ " a: " ++ show_dd settings c (getNode c a) ++ "  b: " ++ show_dd settings c (getNode c b))
         (myTrace (display_func_stack' c f ++ "\n\n") f)
     else f
     -- then myDebugLog ("{\"" ++ colorize "orange" "dc_traverse" ++ "\" : [") (myDebugLog ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (f) ++ "\"]}\n]},") f)
@@ -287,33 +287,33 @@ debug_dc_traverse s c a b f = if display_dc_traversal settings && debug_on setti
 
 
 display_func_stack' :: Context -> Context -> String
-display_func_stack' old_c@Context{dc_stack = dcs} new_c@Context{dc_stack = new_dcs} = let  
+display_func_stack' old_c@Context{dc_stack = dcs} new_c@Context{dc_stack = new_dcs} = let
             (dcAs, dcBs, dcRs) = dcs
             (dcAs', dcBs', dcRs') = new_dcs
-            old_dcAs = intercalate separator1 $ map (show_dd settings old_c) dcAs 
-            old_dcBs = intercalate separator1 $ map (show_dd settings old_c) dcBs 
-            old_dcRs = intercalate separator1 $ map (show_dd settings old_c) dcRs  
-            new_dcAs = intercalate separator1 $ map (show_dd settings new_c) dcAs' 
-            new_dcBs = intercalate separator1 $ map (show_dd settings new_c) dcBs' 
-            new_dcRs = intercalate separator1 $ map (show_dd settings new_c) dcRs'  
-            separator1 = " , \n  " 
-        in 
+            old_dcAs = intercalate separator1 $ map (show_dd settings old_c) dcAs
+            old_dcBs = intercalate separator1 $ map (show_dd settings old_c) dcBs
+            old_dcRs = intercalate separator1 $ map (show_dd settings old_c) dcRs
+            new_dcAs = intercalate separator1 $ map (show_dd settings new_c) dcAs'
+            new_dcBs = intercalate separator1 $ map (show_dd settings new_c) dcBs'
+            new_dcRs = intercalate separator1 $ map (show_dd settings new_c) dcRs'
+            separator1 = " , \n  "
+        in
             (if display_level settings then colorize "purple" "func stack : " ++ show (current_level old_c) ++ colorize "blue" "func stack : " ++ show (current_level new_c) else "") ++
-            (if display_dcAs settings then colorize "orange" "\n- DcA old : \n  " ++ old_dcAs ++ colorize "green" "\n  DcA new : \n  " ++ new_dcAs else "") ++ 
+            (if display_dcAs settings then colorize "orange" "\n- DcA old : \n  " ++ old_dcAs ++ colorize "green" "\n  DcA new : \n  " ++ new_dcAs else "") ++
             (if display_dcBs settings then colorize "orange" "\n- DcB old : \n  " ++ old_dcBs ++ colorize "green" "\n  DcB new : \n  " ++ new_dcBs else "") ++
-            (if display_dcRs settings then colorize "orange" "\n- DcR old : \n  " ++ old_dcRs ++ colorize "green" "\n  DcR new : \n  " ++ new_dcRs else "") 
+            (if display_dcRs settings then colorize "orange" "\n- DcR old : \n  " ++ old_dcRs ++ colorize "green" "\n  DcR new : \n  " ++ new_dcRs else "")
 
 display_func_stack :: Context -> String
-display_func_stack c@Context{dc_stack = dcs} = let  
+display_func_stack c@Context{dc_stack = dcs} = let
             (dcAs, dcBs, dcRs) = dcs
             dcAs' = intercalate separator1 $ map (show_dd settings c) dcAs
             dcBs' = intercalate separator1 $ map (show_dd settings c) dcBs
             dcRs' = intercalate separator1 $ map (show_dd settings c) dcRs
-            separator1 = " , \n" 
-        in 
+            separator1 = " , \n"
+        in
             (if display_level settings then colorize "purple" "func level : " ++ show (current_level c) else "") ++
             (if display_dcAs settings then colorize "blue" "\n DcA : \n" ++ dcAs' else "") ++
-            (if display_dcBs settings then colorize "blue" "\n DcB : \n" ++ dcBs' else "") ++ 
+            (if display_dcBs settings then colorize "blue" "\n DcB : \n" ++ dcBs' else "") ++
             (if display_dcRs settings then colorize "blue" "\n DcR : \n" ++ dcRs' else "") ++ "\n"
 
 jsonwrap :: String -> String -> String
@@ -352,7 +352,7 @@ settings = ShowSetting {
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
-            ,   debug_on = False
+            ,   debug_on = True
             ,   save_logs = False
 
             ,   debug_open = True
@@ -370,14 +370,6 @@ settings = ShowSetting {
 
 -- |====================================== Dot stuff
 
--- write_to_dot :: (Context, Node) -> IO()
--- write_to_dot (c, rootNode) = do 
---     let dotGraphString = createDotGraph c rootNode
---     writeFile "mygraph.dot" dotGraphString
---     putStrLn "DOT graph written to mygraph.dot"
---     system "dot -Tpng mygraph.dot -o mygraph.png"
---     -- dot -Tsvg mygraph.dot -o mygraph.svg
-
 
 generateGraphImage :: Context -> Node -> Bool -> IO (Bool, String, FilePath)
 generateGraphImage context rootNode color = do
@@ -389,10 +381,11 @@ generateGraphImage context rootNode color = do
     let imageFilePath = currentDir </> pngFileName
 
     let dotGraphString = createDotGraph context rootNode color
-    writeFile dotFilePath dotGraphString 
+    writeFile dotFilePath dotGraphString
+    let dotExecutable = "C:\\Program Files\\Graphviz\\bin\\dot.exe"
 
-    (exitCode, stdout, stderr) <- readProcessWithExitCode "dot" ["-Tpng", "-o", pngFileName, dotFileName] ""
-    (exitCode, stdout, stderr) <- readProcessWithExitCode "dot" ["-Tsvg", "-o", svgFileName, dotFileName] ""
+    -- (exitCode, stdout, stderr) <- readProcessWithExitCode "dot" ["-Tpng", "-o", pngFileName, dotFileName] ""
+    (exitCode, stdout, stderr) <- readProcessWithExitCode dotExecutable ["-Tsvg", "-o", svgFileName, dotFileName] ""
 
     case exitCode of
         ExitSuccess -> return (True, "Image generated successfully.", imageFilePath)
@@ -525,7 +518,7 @@ processChildrenForHierarchy context childNodeIds childLevel initialVisited =
 
       (directMemberIds_rev, nestedClusters_rev, finalVisited) =
           foldl' folder ([], [], initialVisited) childNodeIds
-      
+
       groupedNested = if null nestedClusters_rev
                       then []
                       else groupBy ((==) `on` hPosition) $ sortBy (comparing hPosition) (reverse nestedClusters_rev)
