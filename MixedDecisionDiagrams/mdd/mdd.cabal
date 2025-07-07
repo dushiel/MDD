@@ -26,6 +26,7 @@ library
       MDD
       MDDi
       SODDmanipulation
+      DotDD
       Example
       SupportMDD
   other-modules:
