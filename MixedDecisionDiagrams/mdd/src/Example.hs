@@ -18,14 +18,23 @@ import qualified Data.HashMap.Lazy as HashMap
 -- conceptLabels = Map.fromList $ zip [1 ..] (map (\x -> labelClass ++ [x]) [1..])
 
 
+
+assocs :: [([Int], [Char])]
+assocs = [([0, 2], "word"), ([0, 3], "shape"), ([0, 3, 5], "bear-like"), ([0,5], "feeling"), ([0,5,1], "danger")] ++ zip [[0, 2, i, j] | i <- [1..7], j <- [0..70]] (map (:[]) (cycle " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-"))
+
+
+-- Create the map from the list of pairs
+myNamingMap :: Map.Map [Int] String
+myNamingMap = Map.fromList assocs
+
+
 -- Implicit ordinals, responsibility of the use for correct formatting
 symbols :: Map.Map Char Int
 symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" [0..]
 
 word :: [Char] -> Form
 word sl = Var . path c $ word_label $ P' [
-    if s == '*'
-        then (s_pos, Dc1, P [symbols Map.! ' '])
+        if s == '*' then (s_pos, Dc1, P [0])
         else (s_pos, Neg1, P [symbols Map.! s])
      | (s_pos, s) <- zip [1.. ] sl]
 
@@ -64,7 +73,7 @@ feeling_label c = P' [(5, Dc1, c)]
 
 feelings :: Map.Map String Int
 -- dimensions here would be based on neuro science findings, what are core mechanisms that can influence us in such a way that we are open to conceptualizing them
-feelings = Map.fromList $ zip ["danger", "safety", "interesse", "boredom", "friendship", "distance", "admiration-love", "romantic-love", "in-control", "lost", "hot", "cold"] [1..]
+feelings = Map.fromList $ zip ["danger", "safety", "interesse", "boredom", "friendship", "distance", "admiration", "disdain",  "love", "hate",  "in-control", "lost", "hot", "cold"] [1..]
 
 feeling :: [String] -> Form
 feeling sl = Var . path c $ feeling_label $ P [feelings Map.! s | s <- sl]

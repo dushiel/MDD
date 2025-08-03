@@ -210,7 +210,7 @@ to_static_form':: Context -> Node -> (Context, NodeStatic)
 to_static_form' c d@(node_id, Node position pos_child neg_child)  = let
     (c1, (posR, _)) = to_static_form' c (pos_child, getDd c pos_child)
     (c2, (negR, _)) = to_static_form' c1 (neg_child, getDd c1 neg_child)
-    in insert_static c2 $ Node' (position : get_static_lv c) posR negR `debug` ("node: " ++ (show $ position : get_static_lv c) )
+    in insert_static c2 $ Node' (get_static_lv c ++ [position]) posR negR `debug` ("node: " ++ (show $  get_static_lv c ++ [position]) )
 to_static_form' c d@(node_id, InfNodes position dc p n) =  let
     c_ = add_to_level (position, Dc) c
     (c1, (r_dc, _)) = to_static_form' c_ (dc, getDd c dc)
@@ -218,9 +218,14 @@ to_static_form' c d@(node_id, InfNodes position dc p n) =  let
     (c2, (r_n, _)) = to_static_form' c2_ (n, getDd c n)
     c3_ = add_to_level (position, Neg) (reset_stack c2 c)
     (c3, (r_p, _)) = to_static_form' c3_ (p, getDd c p)
-        in insert_static (reset_stack c3 c) $ InfNodes' (position : get_static_lv c) r_dc r_p r_n `debug` ("infnodes: " ++ (show $ position : get_static_lv c))
+        in insert_static (reset_stack c3 c) $ InfNodes' (get_static_lv c ++ [position]) r_dc r_p r_n `debug` ("infnodes: " ++ (show $  get_static_lv c ++ [position]))
 to_static_form' c d@(node_id, EndInfNode a) =  let
-    (c1, (result, _)) = to_static_form' c (a, getDd c a)
+    c' = pop_current_level c
+    (c1, (result, _)) = to_static_form' c' (a, getDd c a)
     in insert_static c1 $ EndInfNode' result
 to_static_form' c (_, Leaf b) = insert_static c (Leaf' b)
 to_static_form' c (_, Unknown) = insert_static c Unknown'
+
+
+pop_current_level :: Context -> Context
+pop_current_level c@Context{current_level = ( _ : lvsA, lvsB)} = c{current_level = (lvsA, lvsB)}

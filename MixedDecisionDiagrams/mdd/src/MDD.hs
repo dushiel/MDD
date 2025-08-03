@@ -127,7 +127,7 @@ instance Hashable Level where
 -- hashLevel l (EndInfNode d) = s `hashLevel` fst d `hashLevel` (2::NodeId)
 
 get_static_lv :: Context -> [Int]
-get_static_lv c = map fst (fst $ current_level c)
+get_static_lv c = reverse (map fst (fst $ current_level c))
 
 data Context = Context {
   cache :: Cache,
