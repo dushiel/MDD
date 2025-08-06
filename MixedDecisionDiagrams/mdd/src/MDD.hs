@@ -6,6 +6,7 @@
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE TupleSections #-}
 module MDD where
 
 import Debug.Trace ( trace )
@@ -15,49 +16,82 @@ import qualified Data.Map as Map
 import System.Console.ANSI
 import GHC.Generics (Generic)
 import Data.List (sortBy)
-import Data.Ord (Down(..)) -- Used for easily specifying descending sort order
-import Data.Function (on)  -- Often useful, though not strictly needed if using Down directly with compare
+import Data.Ord (Down(..))
 
 
--- proof of concept GenDDs where no merging of isomorphic nodes happen and no cashing / moization of results during traversal.
--- GenDDs can model check second order logic formulas containing variables in multiple (disjointed and/or nested) infinite domains.
+-- ==========================================================================================================
+-- * definition + initialization of manager
+-- ==========================================================================================================
 
 
--- |======================================== Data Types + Explanation ==============================================
+data Context = Context {
+  nodelookup:: NodeLookup, -- hashmap of all nodes in the graph
 
-type NodeId = (HashedId, Int)
+  -- process manager for binary operations
+  cache :: Cache,
+  dc_stack :: ([Node], [Node], [Node]), -- remember on what infnode what dc's there are when unknowns need to be resolved
+  current_level :: (Level', Level'), -- todo implement this still, so that hashing uses a level instead of position only
 
-show_id' :: Node -> String
-show_id' (id, _) = show_id id
+  -- process manager for unary operations
+  cache_ :: SingleCache,
+  dc_stack_ :: ([Node], [Node]), -- remember on what infnode what dc's there are when unknowns need to be resolved for single
+  current_level_ :: Level',
 
-show_id :: NodeId -> String
-show_id (k, alt) = "#" ++ show k ++ ":" ++ show alt
+  -- hashmap for static version of Decision Diagram
+  nodelookup_static:: NodeLookupStatic,
 
-type HashedId = Int
+  -- manager for drawing functions
+  cache' :: ShowCache
+}
+
+init_manager :: Context
+init_manager = Context{
+    nodelookup = defaultNodeMap,
+
+    cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId) ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId),
+    dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)], [((0,0), Unknown)]),
+    current_level = ([(0, Dc)], [(0, Dc)]),
+
+    cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
+    dc_stack_ = ([((0,0), Unknown)], [((0,0), Unknown)]),
+    current_level_ = [(0, Dc)],
+
+    nodelookup_static = defaultNodeMapStatic,
+    cache' = HashMap.empty
+    }
+
+defaultNodeMap :: NodeLookup
+defaultNodeMap = HashMap.fromList [
+    (0, Map.fromList [(0, Entry{dd = Unknown, reference_count=1})] :: LookupEntry),
+    (1, Map.fromList [(0, Entry{dd = Leaf True, reference_count=1})] :: LookupEntry),
+    (2, Map.fromList [(0, Entry{dd = Leaf False, reference_count=1})] :: LookupEntry)]
+
+defaultNodeMapStatic :: NodeLookupStatic
+defaultNodeMapStatic = HashMap.fromList [
+    (0, Map.fromList [(0, Entry'{ddStatic = Unknown', reference_count'=1})] :: LookupEntryStatic),
+    (1, Map.fromList [(0, Entry'{ddStatic = Leaf' True, reference_count'=1})] :: LookupEntryStatic),
+    (2, Map.fromList [(0, Entry'{ddStatic = Leaf' False, reference_count'=1})] :: LookupEntryStatic)]
+
+
+
+-- ==========================================================================================================
+-- * definitions and hashmap methods for nodes
+-- ==========================================================================================================
+
 
 data Inf = Dc | Neg | Pos
     deriving (Eq, Show, Generic, Hashable)
+
 data Dd =  Node Int NodeId NodeId               -- left = pos (solid line in graph), right = neg (dotted line in graph)
                 | InfNodes Int NodeId NodeId NodeId -- in order of types Dc, Neg, Pos
                 | EndInfNode NodeId
                 | Leaf Bool
                 | Unknown
     deriving (Eq)
-data DdStatic =  Node' [Int] NodeId NodeId               -- left = pos (solid line in graph), right = neg (dotted line in graph)
-                | InfNodes' [Int] NodeId NodeId NodeId -- in order of types Dc, Neg, Pos
-                | EndInfNode' NodeId
-                | Leaf' Bool
-                | Unknown'
-    deriving (Eq)
 
-data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
-    deriving (Eq, Show)
+type NodeId = (HashedId, Int)
+type HashedId = Int
 
-
- -- sets the inference type when traversing through the tree depending which literal type is inf. We place them at the top (of each sub path of infinite domain). We can have multiple branches due to the multiple possible contexts.
-
-
--- type Dd' = (NodeId, Dd)
 
 -- | The level a given node resides on
 -- e.g. [(3, dc), (1, n)] 4 =
@@ -65,11 +99,6 @@ data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
 -- apply abs on the Int if its a pure level, instead of a level used for construction of a node
 type Level' = [(Int, Inf)]
 data Level = L [(Int, Inf)] Int deriving (Eq, Show)
-data LevelL = Ll [(Int, InfL)] Int deriving (Eq, Show)
-
--- newtype NLevel = L' [([(Int, Inf)], Int)] deriving (Eq, Show)
-
--- data NLevelL = Ll' [([(Int, InfL)], Int)] Int deriving (Eq, Show)
 
 instance Hashable Dd where
   -- Leaf True : 1
@@ -87,23 +116,6 @@ instance Hashable Dd where
   hashWithSalt s (Node idx l r) = s `hashWithSalt` idx `hashWithSalt` fst l `hashWithSalt` fst r
   hashWithSalt s (InfNodes idx dc n p) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n `hashWithSalt` fst p
   hashWithSalt s (EndInfNode d) = s `hashWithSalt` fst d `hashWithSalt` (3::Int)
-
-instance Hashable DdStatic where
-  -- Leaf True : 1
-  -- Leaf False : 2
-  -- endIfnode : 3
-  hash :: DdStatic -> HashedId
-  hash Unknown' = 0
-  hash (Leaf' b) = if b then 1 else 2
-  hash (Node' idx l r) = (last idx) `hashWithSalt` fst l `hashWithSalt` fst r --`debug` (" hashing " ++ show (Node idx l r) ++ " -> " ++ show (idx `hashWithSalt` fst l `hashWithSalt` fst r))
-  hash (InfNodes' idx dc p n) = (last idx) `hashWithSalt` fst dc `hashWithSalt` fst p `hashWithSalt` fst n
-  hash (EndInfNode' d) = fst d `hashWithSalt` (3::Int)
-  hashWithSalt :: Int -> DdStatic -> HashedId
-  hashWithSalt _ Unknown' = 0
-  hashWithSalt _ (Leaf' b) = if b then 1 else 2
-  hashWithSalt s (Node' idx l r) = s `hashWithSalt` idx `hashWithSalt` fst l `hashWithSalt` fst r
-  hashWithSalt s (InfNodes' idx dc n p) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n `hashWithSalt` fst p
-  hashWithSalt s (EndInfNode' d) = s `hashWithSalt` fst d `hashWithSalt` (3::Int)
 
 -- i should not implement this before fixing all the bugs, else i would not know whether this has a bug
 -- todo add speedup by storing the hashed level up until this point and using that to recompute the current level.
@@ -126,34 +138,6 @@ instance Hashable Level where
 -- hashLevel l (InfNodes idx dc n1 n p1 p) = s `hashLevel` idx `hashLevel` fst dc `hashLevel` fst n1 `hashLevel` fst n `hashLevel` fst p1 `hashLevel` fst p
 -- hashLevel l (EndInfNode d) = s `hashLevel` fst d `hashLevel` (2::NodeId)
 
-get_static_lv :: Context -> [Int]
-get_static_lv c = reverse (map fst (fst $ current_level c))
-
-data Context = Context {
-  cache :: Cache,
-  cache_ :: SingleCache,
-  cache' :: ShowCache,
-  nodelookup:: NodeLookup, -- map of all nodes in the graph
-  nodelookup_static:: NodeLookupStatic,
-  dc_stack :: ([Node], [Node], [Node]), -- remember on what infnode what dc's there are when unknowns need to be resolved
-  current_level :: (Level', Level') -- todo implement this still, so that hashing uses a level instead of position only
-}
-
-instance Show Context where
-    show c = "Context {nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
-             "\n\t, cache keys = " ++ show (Map.map HashMap.size (cache c)) ++
-             "\n\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "}\n"
-
-show_context :: Context -> [Char]
-show_context c = "Context nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
-             "\\n\\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "\\n"
-
-show_dc_stack :: Context -> String
-show_dc_stack Context{dc_stack = fs} = "\\n" ++ show fs
-
-data FType = Union | Inter | MixedIntersection | MixedIntersection2 | MixedUnion | MixedUnion2 | Absorb | Remove | T_and_r
-    deriving (Eq, Show)
-
 
 type NodeLookup =  HashMap.HashMap HashedId LookupEntry
 type LookupEntry = Map.Map Int TableEntry
@@ -161,12 +145,10 @@ data TableEntry = Entry {
   dd :: Dd,
   reference_count :: Int
 }
-type NodeLookupStatic =  HashMap.HashMap HashedId LookupEntryStatic
-type LookupEntryStatic = Map.Map Int TableEntryStatic
-data TableEntryStatic = Entry' {
-  ddStatic :: DdStatic,
-  reference_count' :: Int
-}
+type Node = (NodeId, Dd)
+
+insert :: Context -> Dd -> (Context, Node)
+insert c@Context{nodelookup = nm} d = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, (new_id, d)) --`debug` ("about to insert " ++ show d  ++ "  ,  " ++ (show new_id))
 
 getDd :: Context -> NodeId -> Dd
 getDd c@Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm of
@@ -182,12 +164,6 @@ getNode c@Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) n
           Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with context:" ++ show c
        Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with context:" ++ show c
 
-getNodeStatic :: Context -> NodeId -> NodeStatic
-getNodeStatic c@Context{nodelookup_static  = nm} node_id = case HashMap.lookup (fst node_id) nm of
-       Just result -> case Map.lookup (snd node_id) result of
-          Just result2 -> (node_id, ddStatic result2)
-          Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with context:" ++ show c
-       Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with context:" ++ show c
 
 getDd_ :: NodeLookup -> NodeId -> Dd
 getDd_ nm node_id = case HashMap.lookup (fst node_id) nm of
@@ -204,11 +180,6 @@ getEntry Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm
           Nothing -> error "Node adress without Alternative in NodeLookup"
        Nothing -> error "Node adress without Node in NodeLookup table/map"
 
-getEntry' :: HashedId -> NodeLookup -> LookupEntry
-getEntry' node_id nm = case HashMap.lookup node_id nm of
-       Just result -> result
-       Nothing -> error "Node adress without Node in NodeLookup table/map"
-
 
 -- | finds the alternative in the lookupentry which matches the given dd
 -- nice-to-have: could add small speed up by checking if the length is 1 before matching
@@ -216,13 +187,6 @@ match_alternative :: Dd -> LookupEntry -> Maybe (Int, TableEntry)
 match_alternative targetDD = Map.foldrWithKey' check Nothing
   where
     check k entry acc = if dd entry == targetDD
-                        then Just (k, entry)
-                        else acc
-
-match_alternative_static :: DdStatic -> LookupEntryStatic -> Maybe (Int, TableEntryStatic)
-match_alternative_static targetDD = Map.foldrWithKey' check Nothing
-  where
-    check k entry acc = if ddStatic entry == targetDD
                         then Just (k, entry)
                         else acc
 
@@ -248,6 +212,95 @@ insert_id k v nm = case HashMap.lookup k nm of
         ((k, 0) :: NodeId, HashMap.insert k (Map.insert 0 Entry{dd = v, reference_count=1} Map.empty) nm)
         -- `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
 
+
+
+-- todo add referencing and dereferencing of nodes in manager
+-- -- | reduce count (and maybe remove) of a node in the nodelookup table
+-- dereference :: Context -> Node -> Context
+-- dereference c@Context{nodelookup=nm} (node_id@(key, alt_key), _)  =
+--   if reference_count e == 1
+--     -- find alternatives map in hashmap, delete entry in alternatives map, update in hashmap
+--    then c{nodelookup= HashMap.adjust (Map.delete alt_key) key nm}
+--     -- reduce the reference count by 1
+--    else c{nodelookup= HashMap.adjust (Map.insert alt_key (e{reference_count= reference_count e - 1})) key nm}
+--   where
+--     e = getEntry c node_id
+
+
+-- recursive :: Context -> Node -> (Context, Node)
+-- recursive c d@(_, Node _ pos_child neg_child) = withCache_ c d $ let
+--     (c', _) = recursive c (pos_child, getDd c pos_child)
+--     (c'', _) = recursive c' (neg_child, getDd c' neg_child)
+--     c''' = dereference c'' d
+--     in (c''', d)
+-- recursive c d@(_, InfNodes _ dc p n)  = withCache_ c d $ let
+--     (c', _) = recursive c (dc, getDd c dc)
+--     (c'', _) = recursive c (p, getDd c' p )
+--     (c''', _) = recursive c (n, getDd c'' n )
+--     c'''' = dereference c''' d
+--     in (c'''', d)
+-- recursive c d@(_, EndInfNode a) = withCache_ c d $ let
+--     (c', _) = recursive c (a, getDd c a)
+--     c'' = dereference c' d
+--     in (c'', d)
+
+-- -- | as opposed to insert, this will do a recursive/deep call adding a refence for each node
+-- reference :: Node -> NodeLookup
+-- reference dd = undefined
+
+-- -- | deep equality check
+-- deep_equality :: Node -> Node -> Bool
+-- deep_equality = undefined
+
+
+data DdStatic =  Node' [Int] NodeId NodeId               -- left = pos (solid line in graph), right = neg (dotted line in graph)
+                | InfNodes' [Int] NodeId NodeId NodeId -- in order of types Dc, Neg, Pos
+                | EndInfNode' NodeId
+                | Leaf' Bool
+                | Unknown'
+    deriving (Eq)
+
+type NodeLookupStatic =  HashMap.HashMap HashedId LookupEntryStatic
+type LookupEntryStatic = Map.Map Int TableEntryStatic
+data TableEntryStatic = Entry' {
+  ddStatic :: DdStatic,
+  reference_count' :: Int
+}
+type NodeStatic = (NodeId, DdStatic)
+
+getNodeStatic :: Context -> NodeId -> NodeStatic
+getNodeStatic c@Context{nodelookup_static  = nm} node_id = case HashMap.lookup (fst node_id) nm of
+       Just result -> case Map.lookup (snd node_id) result of
+          Just result2 -> (node_id, ddStatic result2)
+          Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with context:" ++ show c
+       Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with context:" ++ show c
+
+
+instance Hashable DdStatic where
+  -- Leaf True : 1
+  -- Leaf False : 2
+  -- endIfnode : 3
+  hash :: DdStatic -> HashedId
+  hash Unknown' = 0
+  hash (Leaf' b) = if b then 1 else 2
+  hash (Node' idx l r) = (last idx) `hashWithSalt` fst l `hashWithSalt` fst r --`debug` (" hashing " ++ show (Node idx l r) ++ " -> " ++ show (idx `hashWithSalt` fst l `hashWithSalt` fst r))
+  hash (InfNodes' idx dc p n) = (last idx) `hashWithSalt` fst dc `hashWithSalt` fst p `hashWithSalt` fst n
+  hash (EndInfNode' d) = fst d `hashWithSalt` (3::Int)
+  hashWithSalt :: Int -> DdStatic -> HashedId
+  hashWithSalt _ Unknown' = 0
+  hashWithSalt _ (Leaf' b) = if b then 1 else 2
+  hashWithSalt s (Node' idx l r) = s `hashWithSalt` idx `hashWithSalt` fst l `hashWithSalt` fst r
+  hashWithSalt s (InfNodes' idx dc n p) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n `hashWithSalt` fst p
+  hashWithSalt s (EndInfNode' d) = s `hashWithSalt` fst d `hashWithSalt` (3::Int)
+
+
+match_alternative_static :: DdStatic -> LookupEntryStatic -> Maybe (Int, TableEntryStatic)
+match_alternative_static targetDD = Map.foldrWithKey' check Nothing
+  where
+    check k entry acc = if ddStatic entry == targetDD
+                        then Just (k, entry)
+                        else acc
+
 insert_id_static :: HashedId -> DdStatic -> NodeLookupStatic -> (NodeId, NodeLookupStatic)
 insert_id_static k v nm = case HashMap.lookup k nm of
        Just result -> case match_alternative_static v result of -- there is something inserted at this key
@@ -262,86 +315,37 @@ insert_id_static k v nm = case HashMap.lookup k nm of
         ((k, 0) :: NodeId, HashMap.insert k (Map.insert 0 Entry'{ddStatic = v, reference_count'=1} Map.empty) nm)
         -- `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
 
--- show_dd :: NodeLookup -> NodeId -> String
--- -- show_dd c d = show c ++ show_dd s{display_context=False} c d
--- -- show_dd ShowSetting{draw_tree=True} c d = showTree c (getDd c d)
--- show_dd _ (0,0) = "[" ++ colorize "soft red" "0" ++ "]"
--- show_dd _ (1,0) = "[" ++ colorize "soft green" "1" ++ "]"
--- show_dd c d = case getDd_ c d of
---   Node i rC lC -> show_i i "orange" ++ " (" ++ show_dd c rC ++ ") (" ++ show_dd c lC ++ ")"
---   InfNodes i dc n1 n p1 p -> show_i i "chill blue" ++ " <{dc: " ++ show_dd c dc ++ "} {n1: " ++ show_dd c n1 ++ "} {n: " ++ show_dd c n ++ "} {p1: " ++ show_dd c p1 ++ "} {p: " ++ show_dd c p ++ "}>"
---   EndInfNode child -> colorize "chill blue" "<>" ++ show_dd c child
---   _ -> error "should not be possible"
---   where
---     show_i i c =  colorize "blue" ("#" ++ show d) ++ " "
---       ++ show i
-
-type Node = (NodeId, Dd)
-type NodeStatic = (NodeId, DdStatic)
-
-insert :: Context -> Dd -> (Context, Node)
-insert c@Context{nodelookup = nm} d = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, (new_id, d)) --`debug` ("about to insert " ++ show d  ++ "  ,  " ++ (show new_id))
-
-insert' :: (Context, Dd) -> (Context, Node)
-insert' (c@Context{nodelookup = nm}, d) = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, (new_id, d)) --`debug` ("about to insert " ++ show d  ++ "  ,  " ++ (show new_id))
 
 insert_static :: Context -> DdStatic -> (Context, NodeStatic)
 insert_static c@Context{nodelookup_static = nm} d = let (new_id, rnm) = insert_id_static (hash d) d nm in (c{nodelookup_static = rnm}, (new_id, d))
 
-merge_rule :: (Context -> Dd -> Dd -> (Context, Dd)) -> Context -> Dd -> Dd -> (Context, Node)
-merge_rule f c a b = let
-  (rc, result) = f c a b
-  in insert rc result
-
-merge_rule_ :: (Context -> Dd -> (Context, Dd)) -> Context -> Dd -> (Context, Node)
-merge_rule_ f c a = let
-  (rc, result) = f c a
-  in insert rc result
-
--- | reduce count (and maybe remove) of a node in the nodelookup table
-dereference :: Context -> Node -> Context
-dereference c@Context{nodelookup=nm} (node_id@(key, alt_key), _)  =
-  if reference_count e == 1
-    -- find alternatives map in hashmap, delete entry in alternatives map, update in hashmap
-   then c{nodelookup= HashMap.adjust (Map.delete alt_key) key nm}
-    -- reduce the reference count by 1
-   else c{nodelookup= HashMap.adjust (Map.insert alt_key (e{reference_count= reference_count e - 1})) key nm}
-  where
-    e = getEntry c node_id
 
 
-recursive :: Context -> Node -> (Context, Node)
-recursive c d@(_, Node _ pos_child neg_child) = withCache_ c d $ let
-    (c', _) = recursive c (pos_child, getDd c pos_child)
-    (c'', _) = recursive c' (neg_child, getDd c' neg_child)
-    c''' = dereference c'' d
-    in (c''', d)
-recursive c d@(_, InfNodes _ dc p n)  = withCache_ c d $ let
-    (c', _) = recursive c (dc, getDd c dc)
-    (c'', _) = recursive c (p, getDd c' p )
-    (c''', _) = recursive c (n, getDd c'' n )
-    c'''' = dereference c''' d
-    in (c'''', d)
-recursive c d@(_, EndInfNode a) = withCache_ c d $ let
-    (c', _) = recursive c (a, getDd c a)
-    c'' = dereference c' d
-    in (c'', d)
 
--- | as opposed to insert, this will do a recursive/deep call adding a refence for each node
-reference :: Node -> NodeLookup
-reference dd = undefined
-
--- | deep equality check
-deep_equality :: Node -> Node -> Bool
-deep_equality = undefined
-
-
+-- ==========================================================================================================
 -- * functions for Caching / Memoization of results during traversal
+-- ==========================================================================================================
 
 type Cache =  Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId)
 type SingleCache =  HashMap.HashMap NodeId NodeId
 type ShowCache =  HashMap.HashMap NodeId [String]
 
+
+-- A higher-order function for handling cache lookup and update
+withCache :: Context -> (Node, Node, String) -> (Context, Node) -> (Context, Node)
+withCache c@Context{cache = nc, dc_stack = dck} ((keyA, _), (keyB, _), keyFunc) func_with_args =
+  case Map.lookup keyFunc nc of
+    Just nc' -> case HashMap.lookup (keyA, keyB, dck) nc' of
+      Just result -> (c, getNode c result) `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
+      Nothing -> let
+        (updatedContext, r@(result, _)) = func_with_args
+        -- x = case getDd updatedContext result of
+        --   --(EndInfNode d) -> error ("EndInf to be inserted in func cache" ++ show d)
+        --   _ -> updatedContext
+        new_dck = dc_stack updatedContext
+        updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB, new_dck) result nc') nc
+        in (updatedContext { cache = updatedCache }, r) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
+    Nothing -> error ("function not in map, bad initialisation?: " ++ show keyFunc)
 
 withCache_ :: Context -> Node -> (Context, Node) -> (Context, Node)
 withCache_ c@Context { cache_ = nc } (key, _) func_with_args =
@@ -366,24 +370,10 @@ withCache' c@Context { cache' = nc } (key, _) func_with_args =
       in (c{ cache' = updatedCache }, result)
 
 
--- A higher-order function for handling cache lookup and update
-withCache :: Context -> (Node, Node, String) -> (Context, Node) -> (Context, Node)
-withCache c@Context{cache = nc, dc_stack = dck} ((keyA, _), (keyB, _), keyFunc) func_with_args =
-  case Map.lookup keyFunc nc of
-    Just nc' -> case HashMap.lookup (keyA, keyB, dck) nc' of
-      Just result -> (c, getNode c result) `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
-      Nothing -> let
-        (updatedContext, r@(result, _)) = func_with_args
-        -- x = case getDd updatedContext result of
-        --   --(EndInfNode d) -> error ("EndInf to be inserted in func cache" ++ show d)
-        --   _ -> updatedContext
-        new_dck = dc_stack updatedContext
-        updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB, new_dck) result nc') nc
-        in (updatedContext { cache = updatedCache }, r) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
-    Nothing -> error ("function not in map, bad initialisation?: " ++ show keyFunc)
+-- ==========================================================================================================
+-- * Basic construction of nodes and paths
+-- ==========================================================================================================
 
-
--- * Basic construction of nodes
 
 -- At the variable class given represented by the ordinal, create a path containing the specified nodes from the list with the given inference rule.
 -- We assume fixed variable classes, it is the responsibility of the user to give the correct ordinal
@@ -393,19 +383,6 @@ withCache c@Context{cache = nc, dc_stack = dck} ((keyA, _), (keyB, _), keyFunc) 
 -- used for e.g. [2::Neg, 1::Neg, 3::Neg]
 -- possible to give an empty list for the nodes to be set to positive
 -- place a minus sign before a node nr to set it to negative.
-
-
-defaultNodeMap :: NodeLookup
-defaultNodeMap = HashMap.fromList [
-    (0, Map.fromList [(0, Entry{dd = Unknown, reference_count=1})] :: LookupEntry),
-    (1, Map.fromList [(0, Entry{dd = Leaf True, reference_count=1})] :: LookupEntry),
-    (2, Map.fromList [(0, Entry{dd = Leaf False, reference_count=1})] :: LookupEntry)]
-
-defaultNodeMapStatic :: NodeLookupStatic
-defaultNodeMapStatic = HashMap.fromList [
-    (0, Map.fromList [(0, Entry'{ddStatic = Unknown', reference_count'=1})] :: LookupEntryStatic),
-    (1, Map.fromList [(0, Entry'{ddStatic = Leaf' True, reference_count'=1})] :: LookupEntryStatic),
-    (2, Map.fromList [(0, Entry'{ddStatic = Leaf' False, reference_count'=1})] :: LookupEntryStatic)]
 
 
 top :: Dd
@@ -424,8 +401,9 @@ l1 =(1, 0)
 l0 = (2, 0)
 u = (0, 0)
 
--- top_level_dc_stack :: [(Inf, (Node, Node, Node))]
--- top_level_dc_stack = [(Dc, ((u, Unknown), (u, Unknown), (u, Unknown)))]
+data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
+    deriving (Eq, Show)
+data LevelL = Ll [(Int, InfL)] Int deriving (Eq, Show)
 
 makeNode :: Context -> LevelL -> (Context, Node)
 makeNode _ (Ll [] _) = error "empty context"
@@ -469,60 +447,6 @@ makeNode c (Ll ((i, inf):cs) nodePosition)
         -- close = (!! l) . iterate EndInfNode
 
 
-
-
-oldpath :: Context -> [(Int, InfL)] -> [Int] -> (Context, Node)
-oldpath = makeLocalPath
-
-makeLocalPath :: Context -> [(Int, InfL)] -> [Int] -> (Context, Node)
-makeLocalPath = makeLocalPath'
-
--- unpackEndInf :: Dd -> Dd
--- unpackEndInf (EndInfNode d) = d
--- unpackEndInf _ = error "not possible"
--- < 0:dc > 3' 4' <2: n1>
-
-makeLocalPath' :: Context -> [(Int, InfL)] -> [Int] -> (Context, Node)
-makeLocalPath' _ [] _ = error "empty path"
-
-makeLocalPath' c [(i, inf)] nodeList
-    | inf == Dc1 = let (c', (rid, _)) = loopDc c True nodeList in insert c' (InfNodes i rid u u )
-    | inf == Pos1 = let (c', (rid, _)) = loopPos c True nodeList in insert c' (InfNodes i l0 rid u )
-    | inf == Neg1 = let (c', (rid, _)) = loopNeg c True nodeList in insert c' (InfNodes i l0 u rid )
-    | inf == Dc0 = let (c', (rid, _)) = loopDc c False nodeList in insert c' (InfNodes i rid u u )
-    | inf == Pos0 = let (c', (rid, _)) = loopPos c False nodeList in insert c' (InfNodes i l1 rid u )
-    | inf == Neg0 = let (c', (rid, _)) = loopNeg c False nodeList in insert c' (InfNodes i l1 u rid )
-    where
-        loopDc c b (n:ns) = let
-          (c', (next_iter,_)) = loopDc c b ns in
-            if n ==0  then (c, leaf b)
-            else if n >= 0
-                  then insert c' (Node n next_iter (leafid $ not b))
-                  else insert c' (Node (abs n) (leafid $ not b) next_iter)
-        loopDc c b [] = (c, leaf b)
-
-        loopPos c b [] = (c, leaf b)
-        loopPos c b (n:ns) = let
-          r@(c', (next_iter,_)) = loopPos c b ns in
-            if n ==0  then (c, leaf b)
-            else if n >= 0
-                  then insert c' (Node n next_iter u )
-                      else insert c' (Node (abs n) u next_iter )
-        loopNeg c b [] = (c, leaf b)
-        loopNeg c b (n:ns) = let
-          r@(c', (next_iter,_)) = loopNeg c b ns in
-            if n ==0  then (c, leaf b)
-            else if n >= 0
-                  then insert c' (Node n next_iter u)
-                      else insert c' (Node (abs n) u next_iter)
-
-makeLocalPath' c ((i, inf):ns) nodeList
-    | inf == Dc1 || inf == Dc0 = let ( c',(rid,_)) = makeLocalPath' c ns nodeList in insert c' (InfNodes i rid u u)
-    | inf == Pos1 = let ( c',(rid,_)) = makeLocalPath' c ns nodeList in insert c' (InfNodes i l0 rid u)
-    | inf == Neg1 = let ( c',(rid,_)) = makeLocalPath' c ns nodeList in insert c' (InfNodes i l0 u rid)
-    | inf == Pos0 = let ( c',(rid,_)) = makeLocalPath' c ns nodeList in insert c' (InfNodes i l1 rid u)
-    | inf == Neg0 = let ( c',(rid,_)) = makeLocalPath' c ns nodeList in insert c' (InfNodes i l1 u rid)
-
 data Path = P [Int]
             | P' [(Int, InfL, Path)] deriving Show
 
@@ -530,8 +454,18 @@ data Path = P [Int]
 path :: Context -> Path -> (Context, Node)
 path c p = path' (-1) (c, ((0,0), Node (-5) (0,0) (0,0))) (sortPathDesc p)
 
-
-
+-- Function to sort the Path data structure in a depth-first manner
+-- from highest to lowest on the integers.
+sortPathDesc :: Path -> Path
+sortPathDesc (P ints) =
+    -- Do not sort the list of integers in descending order
+    P ints
+sortPathDesc (P' taggedPaths) =
+    -- Step 1: Recursively sort the Path in each tuple's second element
+    let sortedInnerPaths = map (\(tag, inf, p) -> (tag, inf, sortPathDesc p)) taggedPaths
+    -- Step 2: Sort the list of tuples based on the tag (the Int) in descending order
+        sortedTaggedPaths = sortBy (\(tagA, _, _) (tagB, _, _) -> compare (Down tagA) (Down tagB)) sortedInnerPaths
+    in P' sortedTaggedPaths
 
 l0' b
   | b == 0 = u
@@ -609,18 +543,26 @@ localpath' (c, n) inf nodeList
 
         initNode = ((0,0), Node (-5) (0,0) (0,0)) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout
 
--- Function to sort the Path data structure in a depth-first manner
--- from highest to lowest on the integers.
-sortPathDesc :: Path -> Path
-sortPathDesc (P ints) =
-    -- Do not sort the list of integers in descending order
-    P ints
-sortPathDesc (P' taggedPaths) =
-    -- Step 1: Recursively sort the Path in each tuple's second element
-    let sortedInnerPaths = map (\(tag, inf, p) -> (tag, inf, sortPathDesc p)) taggedPaths
-    -- Step 2: Sort the list of tuples based on the tag (the Int) in descending order
-        sortedTaggedPaths = sortBy (\(tagA, _, _) (tagB, _, _) -> compare (Down tagA) (Down tagB)) sortedInnerPaths
-    in P' sortedTaggedPaths
+
+
+
+instance Show Context where
+  show c = "Context {nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
+            "\n\t, cache keys = " ++ show (Map.map HashMap.size (cache c)) ++
+            "\n\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "}\n"
+
+show_context :: Context -> [Char]
+show_context c = "Context nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
+             "\\n\\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "\\n"
+
+show_dc_stack :: Context -> String
+show_dc_stack Context{dc_stack = fs} = "\\n" ++ show fs
+
+show_id' :: Node -> String
+show_id' (id, _) = show_id id
+
+show_id :: NodeId -> String
+show_id (k, alt) = "#" ++ show k ++ ":" ++ show alt
 
 
 instance Show Dd where
@@ -676,13 +618,18 @@ resetColor = "\ESC[0m"
 unionContext :: Context -> Context -> Context
 unionContext ctx1 ctx2 =
     Context
-        { cache         = mergedCache,
-          cache_        = mergedCache_,
-          cache'        = mergedCache',
-          nodelookup    = mergedNodeLookup,
-          nodelookup_static = mergedNodeLookupStatic,
+        { nodelookup    = mergedNodeLookup,
+
+          cache         = mergedCache,
           dc_stack    = ([],[],[]),
-          current_level = ([], [])
+          current_level = ([], []),
+
+          cache_        = mergedCache_,
+          dc_stack_    = ([],[]),
+          current_level_ = [],
+
+          nodelookup_static = mergedNodeLookupStatic,
+          cache'        = mergedCache'
         }
   where
     -- Cache merging (prefers ctx1 on collision for HashMap values)
@@ -703,11 +650,6 @@ unionContext ctx1 ctx2 =
           nl2 = nodelookup ctx2
       in HashMap.foldlWithKey' mergeHashedIdEntryFromNL2IntoAcc nl1 nl2
 
-    mergedNodeLookupStatic :: NodeLookupStatic
-    mergedNodeLookupStatic =
-      let nl1s = nodelookup_static ctx1
-          nl2s = nodelookup_static ctx2
-      in HashMap.foldlWithKey' mergeHashedIdEntryFromNL2IntoAccStatic nl1s nl2s
 
     -- This function is called for each (HashedId, LookupEntry) pair from nl2.
     -- It merges all Dds within lookupEntryFromNL2 into accNL under hIdFromNL2.
@@ -716,12 +658,6 @@ unionContext ctx1 ctx2 =
       -- Fold over the alternatives (TableEntry) within lookupEntryFromNL2.
       -- The 'accNL' is passed through and updated by 'processSingleTableEntry'.
       Map.foldlWithKey' (processSingleTableEntry hIdFromNL2) accNL lookupEntryFromNL2
-
-    mergeHashedIdEntryFromNL2IntoAccStatic :: NodeLookupStatic -> HashedId -> LookupEntryStatic -> NodeLookupStatic
-    mergeHashedIdEntryFromNL2IntoAccStatic accNL hIdFromNL2 lookupEntryFromNL2 =
-      -- Fold over the alternatives (TableEntry) within lookupEntryFromNL2.
-      -- The 'accNL' is passed through and updated by 'processSingleTableEntry'.
-      Map.foldlWithKey' (processSingleTableEntryStatic hIdFromNL2) accNL lookupEntryFromNL2
 
     -- This function processes a single TableEntry (containing a Dd) from nl2.
     -- hIdFromNL2 is the HashedId under which this Dd was found in nl2.
@@ -743,6 +679,21 @@ unionContext ctx1 ctx2 =
           let newEntry = Entry { dd = ddToMerge, reference_count = refCountToMerge }
           -- Create a new LookupEntry (Map Int TableEntry) with the Dd as alternative 0.
           in HashMap.insert hIdFromNL2 (Map.singleton 0 newEntry) accNL
+
+
+    mergedNodeLookupStatic :: NodeLookupStatic
+    mergedNodeLookupStatic =
+      let nl1s = nodelookup_static ctx1
+          nl2s = nodelookup_static ctx2
+      in HashMap.foldlWithKey' mergeHashedIdEntryFromNL2IntoAccStatic nl1s nl2s
+
+
+
+    mergeHashedIdEntryFromNL2IntoAccStatic :: NodeLookupStatic -> HashedId -> LookupEntryStatic -> NodeLookupStatic
+    mergeHashedIdEntryFromNL2IntoAccStatic accNL hIdFromNL2 lookupEntryFromNL2 =
+      -- Fold over the alternatives (TableEntry) within lookupEntryFromNL2.
+      -- The 'accNL' is passed through and updated by 'processSingleTableEntry'.
+      Map.foldlWithKey' (processSingleTableEntryStatic hIdFromNL2) accNL lookupEntryFromNL2
 
 
     processSingleTableEntryStatic :: HashedId -> NodeLookupStatic -> Int -> TableEntryStatic -> NodeLookupStatic

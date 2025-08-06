@@ -7,7 +7,6 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# HLINT ignore "Use camelCase" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
-{-# LANGUAGE TupleSections #-}
 {-# HLINT ignore "Eta reduce" #-}
 module MDDi where
 import MDD
@@ -73,15 +72,7 @@ infixl 4 -.
 -- |======================================== Setup for constructing DD's from a given input ==============================================
 
 -- base context
-c = Context{
-    nodelookup = defaultNodeMap,
-    nodelookup_static = defaultNodeMapStatic,
-    cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId) ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId),
-    cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
-    dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)], [((0,0), Unknown)]),
-    current_level = ([(0, Dc)], [(0, Dc)]),
-    cache' = HashMap.empty
-    }
+c = init_manager
 
 data Form
     = Top
