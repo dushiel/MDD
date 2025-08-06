@@ -99,6 +99,7 @@ type HashedId = Int
 -- apply abs on the Int if its a pure level, instead of a level used for construction of a node
 type Level' = [(Int, Inf)]
 data Level = L [(Int, Inf)] Int deriving (Eq, Show)
+type Position = [Int]
 
 instance Hashable Dd where
   -- Leaf True : 1
@@ -385,11 +386,14 @@ withCache' c@Context { cache' = nc } (key, _) func_with_args =
 -- place a minus sign before a node nr to set it to negative.
 
 
-top :: Dd
-top = Leaf True
+top :: Node
+top = ((1, 0), Leaf True)
 
-bot :: Dd
-bot = Leaf False
+bot :: Node
+bot = ((2, 0), Leaf False)
+
+unk :: Node
+unk = ((0, 0), Unknown)
 
 leaf :: Bool -> Node
 leaf b = ((hash $ Leaf b, 0), Leaf b)
@@ -397,7 +401,7 @@ leaf b = ((hash $ Leaf b, 0), Leaf b)
 leafid :: Bool -> NodeId
 leafid b = (hash $ Leaf b, 0)
 
-l1 =(1, 0)
+l1 = (1, 0)
 l0 = (2, 0)
 u = (0, 0)
 

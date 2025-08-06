@@ -29,6 +29,7 @@ library
       DotDD
       Example
       SupportMDD
+      TestMDD
   other-modules:
   -- Correctly indented section
   hs-source-dirs:

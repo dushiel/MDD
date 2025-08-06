@@ -44,18 +44,18 @@ negation = negation'
 
 negation' :: Context -> Node -> (Context, Node)
 negation' c d@(node_id, Node position pos_child neg_child)  = withCache_ c d $ let
-    (c1, (posR, _)) = negation' c (pos_child, getDd c pos_child)  --`debug` ("negation' pos child: " ++ show_dd settings c pos_child ++ " , " ++ " -> " ++ show (getDd c pos_child) )
-    (c2, (negR, _)) = negation' c1 (neg_child, getDd c1 neg_child)  --`debug` ("negation' neg child: " ++ show_dd settings c neg_child ++ " , " ++ "-> " ++ show (getDd c' neg_child))
-    in insert c2 $ Node position posR negR -- `debug` (" inserted: " ++ show (insert c'' $ Node position posR negR))
+    (c1, (posR, _)) = negation' c (pos_child, getDd c pos_child)
+    (c2, (negR, _)) = negation' c1 (neg_child, getDd c1 neg_child)
+    in insert c2 $ Node position posR negR
 negation' c d@(node_id, InfNodes position dc p n) = withCache_ c d $ let
     (c1, (r_dc, _)) = negation' c (dc, getDd c dc)
     (c2, (r_n, _)) = negation' c1 (n, getDd c n)
     (c3, (r_p, _)) = negation' c2 (p, getDd c p)
         in insert c3 $ InfNodes position r_dc r_p r_n
 negation' c d@(node_id, EndInfNode a) = withCache_ c  d $ let
-    (c1, (result, _)) = negation' c (a, getDd c a) --`debug` ("negation' endinf child: " ++ show_dd settings c a )
+    (c1, (result, _)) = negation' c (a, getDd c a)
     in insert c1 $ EndInfNode result
-negation' c (_, Leaf b) = (c, leaf $ not b) --`debug` ("returning : " ++ show (c, leaf $ not b))
+negation' c (_, Leaf b) = (c, leaf $ not b)
 negation' c u@(_, Unknown) = (c, u)
 
 
@@ -344,8 +344,6 @@ class DdF3 a where
     applyInfA :: Context -> String -> Node -> Node -> (Context, Node)
     applyInfB :: Context -> String -> Node -> Node -> (Context, Node)
     to_str :: String
-    -- interLeaf :: Context -> Node -> Node -> (Context, Node)
-    -- unionLeaf :: Context -> Node -> Node -> (Context, Node)
     catchup :: String -> Context -> Node -> Int -> Node
 
     inferNode :: Context -> Int -> Node -> (Context, Node)
@@ -690,13 +688,12 @@ type DdUnary :: Inf -> Constraint
 
 class DdUnary a where
     --todo add speedup: function cache
-    swap_node_set :: Context -> [NodeAdress] -> Node -> (Context, Node)
-    swap_node_set' :: Context -> [NodeAdress] -> Node -> (Context, Node)
-    restrict_node_set :: Context -> [NodeAdress] -> Bool -> Node -> (Context, Node)
-    restrict_node_set' :: Context -> [NodeAdress] -> Bool -> Node -> (Context, Node)
+    swap_node_set :: Context -> [Position] -> Node -> (Context, Node)
+    swap_node_set' :: Context -> [Position] -> Node -> (Context, Node)
+    restrict_node_set :: Context -> [Position] -> Bool -> Node -> (Context, Node)
+    restrict_node_set' :: Context -> [Position] -> Bool -> Node -> (Context, Node)
 
 
-type NodeAdress = [Int]
 
 instance (DdF3 a) => DdUnary a where
     swap_node_set c (na : nas) d@(node_id, Node position pos_child neg_child)  = let
