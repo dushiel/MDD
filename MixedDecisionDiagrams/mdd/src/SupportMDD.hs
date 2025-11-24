@@ -222,11 +222,11 @@ to_static_form' c d@(node_id, Node position pos_child neg_child)  = let
     (c2, (negR, _)) = to_static_form' c1 (neg_child, getDd c1 neg_child)
     in insert_static c2 $ Node' (get_static_lv c ++ [position]) posR negR
 to_static_form' c d@(node_id, InfNodes position dc p n) =  let
-    c_ = add_to_level (position, Dc) c
+    c_ = add_to_level_ (position, Dc) c
     (c1, (r_dc, _)) = to_static_form' c_ (dc, getDd c dc)
-    c2_ = add_to_level (position, Neg) (reset_stack c1 c)
+    c2_ = add_to_level_ (position, Neg) (reset_stack c1 c)
     (c2, (r_n, _)) = to_static_form' c2_ (n, getDd c n)
-    c3_ = add_to_level (position, Pos) (reset_stack c2 c)
+    c3_ = add_to_level_ (position, Pos) (reset_stack c2 c)
     (c3, (r_p, _)) = to_static_form' c3_ (p, getDd c p)
         in insert_static (reset_stack c3 c) $ InfNodes' (get_static_lv c ++ [position]) r_dc r_p r_n
 to_static_form' c d@(node_id, EndInfNode a) =  let
@@ -242,3 +242,18 @@ pop_current_level c@Context{current_level = ( _ : lvsA, lvsB)} = c{current_level
 
 pop_current_level_ :: Context -> Context
 pop_current_level_ c@Context{current_level_ = (_ : lvs) } = c{current_level_ = lvs}
+
+
+allVars :: (Context, Node) -> [Position]
+allVars (c, d@(node_id, Node position pos_child neg_child))  =
+  [get_static_lv c ++ [position]] ++
+   allVars (c, (pos_child, getDd c pos_child)) ++ allVars (c, (neg_child, getDd c neg_child))
+allVars (c, d@(node_id, InfNodes position dc p n)) =  let
+    c_ = add_to_level_ (position, Dc) c
+    c2_ = add_to_level_ (position, Neg) c
+    c3_ = add_to_level_ (position, Pos) c
+    in [get_static_lv c ++ [position]] ++
+        allVars (c_, (dc, getDd c dc)) ++ allVars (c2_, (n, getDd c n)) ++ allVars (c3_, (p, getDd c p))
+allVars (c, d@(node_id, EndInfNode a)) = allVars ((pop_current_level_ c), (a, getDd c a))
+allVars (c, (_, Leaf b)) = []
+allVars (c, (_, Unknown)) = []

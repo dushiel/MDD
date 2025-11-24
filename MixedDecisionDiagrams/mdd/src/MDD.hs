@@ -19,6 +19,9 @@ import Data.List (sortBy)
 import Data.Ord (Down(..))
 
 
+-- Base module for Mixed Decision Diagrams
+-- These mix 3 types of inference / elimination rules in one Decision Diagram
+
 -- ==========================================================================================================
 -- * definition + initialization of manager
 -- ==========================================================================================================
@@ -376,24 +379,6 @@ withCache' c@Context { cache' = nc } (key, _) func_with_args =
 -- ==========================================================================================================
 
 
--- At the variable class given represented by the ordinal, create a path containing the specified nodes from the list with the given inference rule.
--- We assume fixed variable classes, it is the responsibility of the user to give the correct ordinal
--- give empty list to create empty ZDD, e.g. : makePath (Order [1,2]) [] Neg
-
--- For making paths that take multiple Infnodes through finite types.
--- used for e.g. [2::Neg, 1::Neg, 3::Neg]
--- possible to give an empty list for the nodes to be set to positive
--- place a minus sign before a node nr to set it to negative.
-
-
-top :: Node
-top = ((1, 0), Leaf True)
-
-bot :: Node
-bot = ((2, 0), Leaf False)
-
-unk :: Node
-unk = ((0, 0), Unknown)
 
 leaf :: Bool -> Node
 leaf b = ((hash $ Leaf b, 0), Leaf b)
@@ -408,6 +393,10 @@ u = (0, 0)
 data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
     deriving (Eq, Show)
 data LevelL = Ll [(Int, InfL)] Int deriving (Eq, Show)
+
+
+-- given a LevelL create a Mixed Decision Diagram path
+-- place a minus sign before a node nr to set it to negative.
 
 makeNode :: Context -> LevelL -> (Context, Node)
 makeNode _ (Ll [] _) = error "empty context"
@@ -451,7 +440,7 @@ makeNode c (Ll ((i, inf):cs) nodePosition)
         -- close = (!! l) . iterate EndInfNode
 
 
-data Path = P [Int]
+data Path = P'' [Int]
             | P' [(Int, InfL, Path)] deriving Show
 
 
@@ -461,9 +450,9 @@ path c p = path' (-1) (c, ((0,0), Node (-5) (0,0) (0,0))) (sortPathDesc p)
 -- Function to sort the Path data structure in a depth-first manner
 -- from highest to lowest on the integers.
 sortPathDesc :: Path -> Path
-sortPathDesc (P ints) =
+sortPathDesc (P'' ints) =
     -- Do not sort the list of integers in descending order
-    P ints
+    P'' ints
 sortPathDesc (P' taggedPaths) =
     -- Step 1: Recursively sort the Path in each tuple's second element
     let sortedInnerPaths = map (\(tag, inf, p) -> (tag, inf, sortPathDesc p)) taggedPaths
@@ -480,7 +469,7 @@ l1' b
 
 
 path' :: Int -> (Context, Node) -> Path -> (Context, Node)
-path' b (c, n) (P' ((i, inf, P nodelist) : pl))
+path' b (c, n) (P' ((i, inf, P'' nodelist) : pl))
     | inf == Dc1 || inf == Dc0 = path' b (insert c' (InfNodes i rid u u)) (P' pl) -- breadth step
     | inf == Pos1 = path' b (insert c' (InfNodes i (l0' b) rid u)) (P' pl) -- breadth step
     | inf == Neg1 = path' b (insert c' (InfNodes i (l0' b) u rid)) (P' pl) -- breadth step
