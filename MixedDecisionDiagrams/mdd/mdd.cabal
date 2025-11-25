@@ -32,11 +32,11 @@ library
       TestMDD
       -- SMCDEL.Internal.Help
       -- SMCDEL.Internal.TexDisplay
-      -- SMCDEL.Language
+      SMCDEL.Language
       Bool_MDD
-      -- SMCDEL.Symbolic.S5_MDD
+      SMCDEL.Symbolic.S5_MDD
       -- SMCDEL.Symbolic.K_MDD
-      -- SMCDEL.Examples.MuddyChildren
+      SMCDEL.Examples.MuddyChildren
       -- SMCDEL.Experiments.Muddychildren
   other-modules:
   -- Correctly indented section

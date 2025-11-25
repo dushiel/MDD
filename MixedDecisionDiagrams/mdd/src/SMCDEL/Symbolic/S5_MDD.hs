@@ -54,7 +54,6 @@ boolMddOf  f            = error $ "boolMddOf failed: Not a boolean formula:" ++ 
 mddOf :: KnowStruct -> Form -> MDD
 mddOf kns Top           = top
 mddOf kns Bot           = bot
--- Corrected to use P'' for path construction
 mddOf kns (PrpF (P n))  = var' n
 mddOf kns (Neg form)    = (-.) $ mddOf kns form
 mddOf kns (Conj forms)  = conSet $ map (mddOf kns) forms
@@ -62,57 +61,81 @@ mddOf kns (Disj forms)  = disSet $ map (mddOf kns) forms
 mddOf kns (Xor  forms)  = xorSet $ map (mddOf kns) forms
 mddOf kns (Impl f g)    = mddOf kns f .->. mddOf kns g
 mddOf kns (Equi f g)    = mddOf kns f .<->. mddOf kns g
--- Corrected lambda to use the Prp constructor 'P'
 mddOf kns (Forall ps f) = forallSet (map toOrdinal ps) (mddOf kns f)
 mddOf kns (Exists ps f) = existSet (map toOrdinal ps) (mddOf kns f)
+
+-- Knowledge Operator: Agent i knows phi if phi is true in all worlds considered possible by i.
+-- In S5, this means phi must be true regardless of the values of variables i cannot observe.
+-- Implemented as universal quantification over unobservable variables on (Law -> Phi).
 mddOf kns@(KnS allprops lawmdd obs) (K i form) =
   forallSet (map toOrdinal otherps) (lawmdd .->. mddOf kns form)
   where
     otherps = allprops \\ apply obs i
+
+-- Knowing Whether: K i phi or K i (not phi)
 mddOf kns@(KnS allprops lawmdd obs) (Kw i form) =
   disSet [ forallSet (map toOrdinal otherps) (lawmdd .->. mddOf kns f) | f <- [form, Neg form] ]
   where
     otherps = allprops \\ apply obs i
+
+-- Common Knowledge: Greatest Fixed Point of Everyone Knows.
+-- Z = Phi AND E_G Z
 mddOf kns@(KnS allprops lawmdd obs) (Ck ags form) =
   let
     initial_guess = top
+    -- E_G Z = AND_{i in ags} K_i Z
+    -- K_i Z = forall unobs. (law -> Z)
     operator z = conSet (mddOf kns form : [ forallSet (map toOrdinal (otherps i)) (lawmdd .->. z) | i <- ags ])
     otherps i = allprops \\ apply obs i
-    gfp op g = if snd g == snd (op g) then g else gfp op (op g)
+
+    -- Fixed point iteration
+    gfp op g =
+        let next = op g
+        in if snd g == snd next then g else gfp op next
   in gfp operator initial_guess
--- Corrected to use the .+. operator for proper context handling
+
 mddOf kns (Ckw ags form) = mddOf kns (Ck ags form) .+. mddOf kns (Ck ags (Neg form))
+
+-- Announcement: Private announcement to group 'ags'
 mddOf kns@(KnS props _ _) (Announce ags form1 form2) =
   let
       form1_mdd = mddOf kns form1
       kns' = announce kns ags form1
       form2_mdd = mddOf kns' form2
-      p = toOrdinal $ freshp props
+      p = toOrdinal $ freshp props []
   in form1_mdd .->. restrict p True form2_mdd
+
+-- Announcement Whether
 mddOf kns@(KnS props _ _) (AnnounceW ags form1 form2) =
   let
       form1_mdd = mddOf kns form1
       form2a_mdd = mddOf (announce kns ags form1) form2
       form2b_mdd = mddOf (announce kns ags (Neg form1)) form2
-      p = toOrdinal $ freshp props
+      p = toOrdinal $ freshp props []
   in ite form1_mdd (restrict p True form2a_mdd) (restrict p False form2b_mdd)
+
+-- Public Announcement: [!phi] psi
+-- psi is evaluated in the restricted model where phi is true.
 mddOf kns (PubAnnounce form1 form2) =
     mddOf kns form1 .->. mddOf (pubAnnounce kns form1) form2
+
+-- Public Announcement Whether
 mddOf kns (PubAnnounceW form1 form2) =
     ite (mddOf kns form1) (mddOf (pubAnnounce kns form1) form2) (mddOf (pubAnnounce kns (Neg form1)) form2)
+
 mddOf _ (Dia _ _) = error "Dynamic operators are not implemented in S5_MDD."
 
 
 -- | Publicly announces a formula, updating the knowledge structure.
+-- The law is restricted by the announcement.
 pubAnnounce :: KnowStruct -> Form -> KnowStruct
 pubAnnounce kns@(KnS props lawmdd obs) psi = KnS props (lawmdd .*. mddOf kns psi) obs
 
 -- | Announces a formula to a group of agents.
--- Corrected to handle contexts properly throughout the function.
 announce :: KnowStruct -> [Agent] -> Form -> KnowStruct
 announce kns@(KnS props lawmdd obs) ags psi =
   let
-    proppsi@(P k) = freshp props
+    proppsi@(P k) = freshp props []
     newprops = proppsi:props
     psi_mdd = mddOf kns psi
     k_mdd = var' k
@@ -131,47 +154,35 @@ mddEval n f =
         Leaf True -> True
         _ -> False
 
--- -- | Returns all satisfying assignments for a given MDD.
--- -- todo! work with Level
--- statesOf :: KnowStruct -> [KnState]
--- statesOf (KnS allprops lawmdd _) =
---     map (map P . map fst . filter snd) (findModels [] lawmdd)
---   where
---     findModels :: Context -> [(Level, Bool)] -> Node -> [[(Level, Bool)]]
---     findModels path (ctx, (nodeId, dd)) = case dd of
---         Leaf True ->
---             let
---                 allPropInts = map fromEnum allprops
---                 assigned = map fst path
---                 unassigned = allPropInts \\ assigned
---             in map (\subset -> path ++ subset) (powerset (map (,True) unassigned))
---         Leaf False -> []
---         Unknown -> []
---         Node var posId negId ->
---             findModels ctx ((var, True):path) (getNode ctx posId) ++
---             findModels ctx ((var, False):path) (getNode ctx negId)
---         InfNodes {} -> error "InfNodes not supported in statesOf for S5 models"
---         EndInfNode childId -> findModels ctx path (getNode ctx childId)
-
-
 -- | Evaluate a formula in a given state (scene).
+-- A formula is true in a pointed model (M, s) if the formula holds at s.
+-- For MDD, this means evaluating the MDD of the formula against the assignment defined by 's'.
+-- Additionally, we verify if 's' itself is consistent with the law (though strictly, pointed models usually assume s is valid).
 evalViaMdd :: KnowScene -> Form -> Bool
-evalViaMdd (kns@(KnS allprops _ _), s) f =
-    let result_mdd = mddOf kns f
-        assignments = [(fromEnum p, p `elem` s) | p <- allprops]
-        final_node = foldl (\(ctx, node) (var, val) -> restrict [var] val (ctx, node)) result_mdd assignments
-    in case snd final_node of
-        top'  -> True
-        _     -> False
+evalViaMdd (kns@(KnS allprops lawmdd _), s) f =
+    let
+        -- Helper to check if a prop is in the state 's'
+        assignment (P l) = (extractIntsFromLevelL l) `elem` (map (\(P x) -> extractIntsFromLevelL x) s)
+
+        -- Check if state itself is valid under the law (optional, but good for debugging)
+        stateValid = mddEval lawmdd (toOrdinalPredicate s)
+
+        -- The MDD representing the formula
+        formMdd = mddOf kns f
+
+    in if not stateValid
+       then error ("evalViaMdd: State " ++ show s ++ " is not consistent with the Law.")
+       else mddEval formMdd (toOrdinalPredicate s)
+
+-- Helper to convert state list to predicate
+toOrdinalPredicate :: [Prp] -> (Position -> Bool)
+toOrdinalPredicate s pos =
+    pos `elem` (map toOrdinal s)
 
 -- | Check if a formula is valid in a knowledge structure.
+-- Validity means: Law -> Form is a tautology (Top).
 validViaMdd :: KnowStruct -> Form -> Bool
 validViaMdd kns@(KnS _ lawmdd _) f = (snd $ lawmdd .->. (mddOf kns f)) == top'
-
--- -- | Find all states where a formula is true.
--- whereViaMdd :: KnowStruct -> Form -> [KnState]
--- whereViaMdd kns f = statesOf (kns `update` f)
-
 
 instance Semantics KnowScene where
   isTrue = evalViaMdd
@@ -182,7 +193,6 @@ instance Semantics KnowStruct where
 instance Update KnowStruct Form where
   checks = [ ] -- unpointed structures can be updated with anything
   unsafeUpdate kns@(KnS props lawmdd obs) psi = KnS props (lawmdd .*. mddOf kns psi) obs
-
 
 -- * Visualisation functions
 

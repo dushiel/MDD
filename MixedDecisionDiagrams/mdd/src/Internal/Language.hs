@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
 module Internal.Language where
 
-import Data.List (nub,intercalate,(\\))
+import Data.List (nub,intercalate,(\\), inits)
 import Data.Dynamic
 import Data.Maybe (fromMaybe)
 
@@ -12,13 +12,25 @@ import SMCDEL.Internal.TexDisplay
 
 
 newtype Prp = P LevelL deriving (Eq,Show)
+
+-- | Helper to create a Prp from a Int index and a given domain
+-- The domain (prefix of LevelL) should be known / determined in the logic module.
+-- We assume the domain parts default to Dc1 (Don't Care 1) for this construction.
+intToPrp :: [Int] -> Int -> Prp
+intToPrp domainInts i = P (Ll [(j, Dc1) | j <- domainInts] i)
+
 toOrdinal :: Prp -> [Int]
 toOrdinal (P i) = extractIntsFromLevelL i
 
-freshp :: [Prp] -> Prp
-freshp []   = P [(Dc1, 1)]
-freshp prps = let ps = (maximum (map extractIntsFromLevelL prps))
-  in P (inits ps ++ (last ps + 1))
+-- | Generates a fresh proposition not present in the given list.
+-- Finds the maximum integer used in a given domain and increments it.
+freshp :: [Prp] -> [(Int, InfL)] -> Prp
+freshp prps domain =
+  let
+    -- Filter props that have the exact same domain structure
+    usedIndices = [ i | P (Ll d i) <- prps, d == domain ]
+    nextIdx = if null usedIndices then 1 else maximum usedIndices + 1
+  in P (Ll domain nextIdx)
 
 extractIntsFromLevelL :: LevelL -> [Int]
 extractIntsFromLevelL (Ll pairs finalInt) = (map fst pairs) ++ [finalInt]

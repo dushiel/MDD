@@ -6,50 +6,76 @@ import Data.Map.Strict (fromList)
 import SMCDEL.Internal.Help (seteq)
 import Internal.Language
 import SMCDEL.Symbolic.S5_MDD
--- import SMCDEL.Symbolic.K_MDD
 
+-- | Initialize a Muddy Children scene with n children, m of whom are muddy.
 mudScnInit :: Int -> Int -> KnowScene
 mudScnInit n m = (KnS vocab law obs, actual) where
-  vocab  = [P 1 .. P n]
+  -- Use intToPrp with empty domain [] as established in Phase 2
+  vocab  = [intToPrp [] i | i <- [1..n]]
   law    = boolMddOf Top
-  obs    = [ (show i, delete (P i) vocab) | i <- [1..n] ]
-  actual = [P 1 .. P m]
+  -- Observables: Agent i sees all variables except intToPrp [] i
+  obs    = [ (show i, delete (intToPrp [] i) vocab) | i <- [1..n] ]
+  -- Actual world: The first m children are muddy
+  actual = [intToPrp [] i | i <- [1..m]]
 
-
--- todo:
--- Int to path
--- init manager
--- update Language
 
 myMudScnInit :: KnowScene
 myMudScnInit = mudScnInit 3 3
 
+-- | Agent i knows whether they are muddy
 knows :: Int -> Form
-knows i = Kw (show i) (PrpF $ P i)
+knows i = Kw (show i) (PrpF $ intToPrp [] i)
 
+-- | "Nobody knows whether they are muddy"
 nobodyknows :: Int -> Form
 nobodyknows n = Conj [ Neg $ knows i | i <- [1..n] ]
 
+-- | Father says: "At least one child is muddy"
 father :: Int -> Form
-father n = Disj (map PrpF [P 1 .. P n])
-mudScn0 :: KnowScene
-mudScn0 = update myMudScnInit (father 3)
+father n = Disj [ PrpF (intToPrp [] i) | i <- [1..n] ]
 
-mudScn1 :: KnowScene
-mudScn1 = update mudScn0 (nobodyknows 3)
+-- | Example Scenes
+-- mudScn0 :: KnowScene
+-- mudScn0 = update myMudScnInit (father 3)
 
-mudScn2 :: KnowScene
-mudKns2 :: KnowStruct
-mudScn2@(mudKns2,_) = update mudScn1 (nobodyknows 3)
+-- mudScn1 :: KnowScene
+-- mudScn1 = update mudScn0 (nobodyknows 3)
 
-empty :: Int -> KnowScene
-empty n = (KnS [] (boolMddOf Top) obs,[]) where
-  obs    = [ (show i, []) | i <- [1..n] ]
+-- mudScn2 :: KnowScene
+-- mudScn2 = update mudScn1 (nobodyknows 3)
 
--- buildMC :: Int -> Int -> Event
--- buildMC n m = (noChange KnTrf vocab Top obs, map P [1..m]) where
---   obs = [ (show i, delete (P i) vocab) | i <- [1..n] ]
---   vocab = map P [1..n]
+-- | Run the simulation in GHCi.
+-- n: Total children
+-- m: Muddy children
+-- Example usage: runMuddy 10 5
+runMuddy :: Int -> Int -> IO ()
+runMuddy n m = do
+  putStrLn $ "Initializing puzzle with " ++ show n ++ " children, " ++ show m ++ " muddy."
 
--- buildResult :: KnowScene
--- buildResult = empty 3 `update` buildMC 3 3
+  -- 1. Initialize State
+  let startState = mudScnInit n m
+
+  -- 2. Father speaks ("At least one is muddy")
+  let afterFather = update startState (father n)
+  putStrLn "Round 0: Father announces 'At least one child is muddy'."
+
+  -- 3. Loop rounds asking "Do you know?"
+  loop 1 afterFather
+
+  where
+    loop :: Int -> KnowScene -> IO ()
+    loop round currentScene = do
+      -- Check if any child knows they are muddy in the current scene
+      -- We check 'knows i' for every agent i
+      let knowledgeCheck = [ (i, isTrue currentScene (knows i)) | i <- [1..n] ]
+      let someoneKnows = any snd knowledgeCheck
+
+      if someoneKnows
+        then do
+          putStrLn $ "SUCCESS: In Round " ++ show round ++ ", the following children know their status:"
+          print [ i | (i, known) <- knowledgeCheck, known ]
+        else do
+          putStrLn $ "Round " ++ show round ++ ": Nobody knows. Announcing 'Nobody knows'..."
+          -- Update the scene with the fact that nobody knew
+          let nextScene = update currentScene (nobodyknows n)
+          loop (round + 1) nextScene
