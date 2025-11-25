@@ -10,7 +10,7 @@
 {-# HLINT ignore "Eta reduce" #-}
 module Bool_MDD where
 
-import MDDi ( top, bot, neg, con, dis, var, var', MDD )
+import MDDi ( top, bot, neg, con, dis, var, var', MDD, top', bot' )
 import MDD ( Context, LevelL, makeNode, unionContext )
 
 data Form
@@ -26,8 +26,8 @@ data Form
     -- | F Form
 
 ddOf :: Context -> Form -> MDD
-ddOf _ Top = top
-ddOf _ Bot = bot
+ddOf c Top = (c, top')
+ddOf c Bot = (c, bot')
 -- ddOf c Unknown = (c, unk)
 ddOf c (Negate a) =
                 let

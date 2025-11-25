@@ -10,7 +10,6 @@ import SMCDEL.Internal.Help (apply, powerset)
 import Internal.Language hiding (ite)
 import SMCDEL.Internal.TexDisplay
 
--- Assuming Path constructor is P'' to avoid conflicts as per user note.
 import MDD hiding (Neg)
 import MDDi hiding (Form, Impl, PrpF, Bot, Top)
 import SupportMDD (allVars)

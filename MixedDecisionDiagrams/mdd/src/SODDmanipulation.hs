@@ -146,10 +146,10 @@ instance (DdF3 a) => Dd1 a where
     leaf_cases c s a@(_, Unknown) b@(_, Unknown) = (c , a)
     leaf_cases c s a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd
         -- todo! if b is a node (or infnode o.O') perform dc : pos union
-        let (c', dcA) = pop_dcA' c `debug` "dca dc"
+        let (c', dcA) = pop_dcA' c -- `debug` "dca dc"
         in applyDcA'' @a c' s dcA b   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
     leaf_cases c s a b@(_, Unknown) =
-        let (c', dcB) = pop_dcB' c `debug` "dcb dc"
+        let (c', dcB) = pop_dcB' c -- `debug` "dcb dc"
         in applyDcB'' @a c' s a dcB  -- `debug` ("using dcB to replace Unknown : " ++ show dcB)
     --  Unknown is stronger than True in finite + union context
     leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
@@ -230,7 +230,7 @@ instance (DdF3 a) => Dd1 a where
     --  Unknown is stronger than True in finite + intersectionDc context
     dcB_leaf_cases c s a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
     dcB_leaf_cases c s a b@(_, Unknown) =
-        let (c', dcB) = pop_dcB'' c `debug` "dcb pop"
+        let (c', dcB) = pop_dcB'' c --`debug` "dcb pop"
         in applyDcB'' @a c' s a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
     -- if the result is
     dcB_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
@@ -308,7 +308,7 @@ instance (DdF3 a) => Dd1 a where
 
     --  Unknown is stronger than True in finite + intersectionDcA context
     dcA_leaf_cases c s a@(_, Unknown) b =
-        let (c', dcA) = pop_dcA'' c `debug` "dca pop"
+        let (c', dcA) = pop_dcA'' c --`debug` "dca pop"
         in applyDcA'' @a c' s dcA b -- unknown on dc side means that it should be replaced with a dc from an outer level
     dcA_leaf_cases c s a b@(_, Unknown) = (c, b)
     -- if the result is

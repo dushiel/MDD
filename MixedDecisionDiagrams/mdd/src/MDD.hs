@@ -505,7 +505,7 @@ localpath' (c, n) inf nodeList
           (c', (next_iter,_)) = loopDc c b ns consequence in
             if n ==0 then
               if consequence == initNode then (c, leaf b)
-                else insert c $ EndInfNode $ fst consequence
+                else insert c' $ EndInfNode $ fst consequence -- todo: figure out what the order is here, why did i have c instead of c' before this and why did that work..
             else if n >= 0
                   then insert c' (Node n next_iter (leafid $ not b))
                   else insert c' (Node (abs n) (leafid $ not b) next_iter)
@@ -517,7 +517,7 @@ localpath' (c, n) inf nodeList
           r@(c', (next_iter,_)) = loopPos c b ns consequence in
             if n ==0  then
               if consequence == initNode then (c, leaf b)
-                else insert c $ EndInfNode $ fst consequence
+                else insert c' $ EndInfNode $ fst consequence
             else if n >= 0
                   then insert c' (Node n next_iter u )
                       else insert c' (Node (abs n) u next_iter )
@@ -529,7 +529,7 @@ localpath' (c, n) inf nodeList
           r@(c', (next_iter,_)) = loopNeg c b ns consequence in
             if n ==0  then
               if consequence == initNode then (c, leaf b)
-                else insert c $ EndInfNode $ fst consequence
+                else insert c' $ EndInfNode $ fst consequence
             else if n >= 0
                   then insert c' (Node n next_iter u)
                       else insert c' (Node (abs n) u next_iter)
@@ -537,12 +537,30 @@ localpath' (c, n) inf nodeList
         initNode = ((0,0), Node (-5) (0,0) (0,0)) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout
 
 
+-- | Helper function to nicely format the NodeLookup table
+showNodeLookupDetails :: NodeLookup -> String
+showNodeLookupDetails nl = unlines $ concatMap formatHashedEntry sortedEntries
+  where
+    -- Sort by HashedId for consistent/stable output reading
+    sortedEntries = sortBy (\(k1, _) (k2, _) -> compare k1 k2) (HashMap.toList nl)
 
+    formatHashedEntry :: (HashedId, LookupEntry) -> [String]
+    formatHashedEntry (hid, entries) =
+        map (formatEntry hid) (Map.toList entries)
+
+    formatEntry :: HashedId -> (Int, TableEntry) -> String
+    formatEntry hid (altIdx, entry) =
+        "    " ++ show_id (hid, altIdx) ++ " -> " ++ show (dd entry) ++
+        " " ++ colorize "dark" ("[refs: " ++ show (reference_count entry) ++ "]")
 
 instance Show Context where
-  show c = "Context {nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
-            "\n\t, cache keys = " ++ show (Map.map HashMap.size (cache c)) ++
-            "\n\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "}\n"
+  show c = "Context {\n" ++
+           "  -- Node Lookup Table (" ++ show (HashMap.size (nodelookup c)) ++ " keys) --\n" ++
+           showNodeLookupDetails (nodelookup c) ++
+           "\n  -- Process Managers --" ++
+           "\n  cache keys  = " ++ show (Map.map HashMap.size (cache c)) ++
+           "\n  cache_ keys = " ++ show (HashMap.size (cache_ c)) ++
+           "\n}\n"
 
 show_context :: Context -> [Char]
 show_context c = "Context nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++

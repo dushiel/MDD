@@ -4,7 +4,7 @@ import Data.List
 import Data.Map.Strict (fromList)
 
 import SMCDEL.Internal.Help (seteq)
-import SMCDEL.Language
+import Internal.Language
 import SMCDEL.Symbolic.S5_MDD
 -- import SMCDEL.Symbolic.K_MDD
 
@@ -15,6 +15,8 @@ mudScnInit n m = (KnS vocab law obs, actual) where
   obs    = [ (show i, delete (P i) vocab) | i <- [1..n] ]
   actual = [P 1 .. P m]
 
+
+-- todo:
 -- Int to path
 -- init manager
 -- update Language
