@@ -35,14 +35,14 @@ father :: Int -> Form
 father n = Disj [ PrpF (intToPrp [] i) | i <- [1..n] ]
 
 -- | Example Scenes
--- mudScn0 :: KnowScene
--- mudScn0 = update myMudScnInit (father 3)
+mudScn0 :: KnowScene
+mudScn0 = update myMudScnInit (father 3)
 
--- mudScn1 :: KnowScene
--- mudScn1 = update mudScn0 (nobodyknows 3)
+mudScn1 :: KnowScene
+mudScn1 = update mudScn0 (nobodyknows 3)
 
--- mudScn2 :: KnowScene
--- mudScn2 = update mudScn1 (nobodyknows 3)
+mudScn2 :: KnowScene
+mudScn2 = update mudScn1 (nobodyknows 3)
 
 -- | Run the simulation in GHCi.
 -- n: Total children

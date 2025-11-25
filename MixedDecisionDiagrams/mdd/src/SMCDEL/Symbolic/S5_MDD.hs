@@ -190,9 +190,17 @@ instance Semantics KnowScene where
 instance Semantics KnowStruct where
   isTrue = validViaMdd
 
+-- | Instance for updating unpointed structures (just restrictions/announcements)
 instance Update KnowStruct Form where
   checks = [ ] -- unpointed structures can be updated with anything
-  unsafeUpdate kns@(KnS props lawmdd obs) psi = KnS props (lawmdd .*. mddOf kns psi) obs
+  unsafeUpdate kns psi = pubAnnounce kns psi
+
+-- | Instance for updating pointed scenes (KnS + State)
+instance Update KnowScene Form where
+  -- check if the update formula is true in the current state
+  checks = [ preCheck ]
+  -- update the structure, keep the state same
+  unsafeUpdate (kns, s) psi = (unsafeUpdate kns psi, s)
 
 -- * Visualisation functions
 
