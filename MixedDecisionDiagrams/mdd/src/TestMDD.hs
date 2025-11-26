@@ -357,3 +357,67 @@ test = do
             -- ,   (snd $ ddOf t_c $ (Or (Var nn1) (Var n'n1))) == (snd $ ddOf t_c Top)
 
             ]
+
+
+-- |======================================== Advanced operations tests ==============================================
+
+-- Helper positions based on the variables defined in TestMDD
+-- dc2  uses P' [(1, Dc1, P'' [2])] -> Position [1, 2]
+-- dc3  uses P' [(1, Dc1, P'' [3])] -> Position [1, 3]
+pos2 = [1, 2]
+pos3 = [1, 3]
+pos4 = [1, 4] -- Hypothetical position for shifting
+
+-- Compound MDDs for testing
+-- Note: We use the shared context t_c for combining
+(c_23    , node_and_23) = (t_c, snd dc2) .*. (t_c, snd dc3) -- (2 AND 3)
+(c_or , node_or_23)  = (c_23, snd dc2) .+. (c_23, snd dc3) -- (2 OR 3)
+(c_34    , node_and_34) = (c_or, snd dc3) .*. (path c_or (P' [(1, Dc1, P'' [4])])) -- (3 AND 4) using a fresh var 4
+
+testAdvancedOps :: IO ()
+testAdvancedOps = do
+    putStrLn "Running Advanced Operations Tests..."
+    mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
+    where
+
+
+        results = [
+            -- 1. Simple Substitutions (Existing)
+              (snd $ substitSimul [(pos2, snd dc3)] (t_c, snd dc2)) == (snd dc3) `debug5` "substitSimul 2->3"
+            , (snd $ substitSimul [(pos2, top')] (t_c, snd dc2)) == (snd $ ddOf t_c Top) `debug5` "substitSimul 2->Top"
+
+            -- 2. Simultaneous Substitution (Swap)
+            -- Swap 2->3 and 3->2 in (2 AND 3). Result should still be (2 AND 3) / (3 AND 2)
+            , (snd $ substitSimul [(pos2, snd dc3), (pos3, snd dc2)] (c_23, node_and_23)) == node_and_23 `debug5` "substitSimul Swap (2<->3) in (2 AND 3)"
+
+            -- Swap 2->3 and 3->2 in (2) -> Result (3)
+            , (snd $ substitSimul [(pos2, snd dc3), (pos3, snd dc2)] (t_c, snd dc2)) == (snd dc3) `debug5` "substitSimul Swap (2<->3) in (2)"
+
+            -- 3. Relabeling
+            -- Simple: Rename 2 to 3
+            , (snd $ relabelWith [(pos2, pos3)] (t_c, snd dc2)) == (snd dc3) `debug5` "relabelWith 2->3"
+
+            -- Complex Relabel: Shift (2 AND 3) to (3 AND 4)
+            -- Note: We need to define pos4 and a node for it to verify exact equality,
+            -- or we just check if it matches the manually constructed (3 AND 4)
+            , (snd $ relabelWith [(pos2, pos3), (pos3, pos4)] (c_34, node_and_23)) == node_and_34 `debug5` "relabelWith Shift (2->3, 3->4) in (2 AND 3)"
+
+            -- 5. RestrictLaw
+            -- Identity: Restricting with Top
+        --     , (snd $ restrictLaw [pos2] (t_c, snd dc2) (t_c, top')) == (snd dc2) `debug5` "restrictLaw Top"
+
+        --     -- Vacuous: Restricting with Bot -> Top
+        --     , (snd $ restrictLaw [pos2] (t_c, snd dc2) (t_c, bot')) == (snd $ ddOf t_c Top) `debug5` "restrictLaw Bot"
+
+        --     -- Implication: Restrict (2 AND 3) with Law (2=True). Result should be (3).
+        --     , (snd $ restrictLaw [pos2] (c_23, node_and_23) (t_c, snd dc2)) == (snd dc3) `debug5` "restrictLaw (2 AND 3) | 2=True -> 3"
+
+        --     -- Implication: Restrict (2 OR 3) with Law (2=True). Result should be (True).
+        --     , (snd $ restrictLaw [pos2] (c_or, node_or_23) (t_c, snd dc2)) == (snd $ ddOf t_c Top) `debug5` "restrictLaw (2 OR 3) | 2=True -> True"
+
+        --     -- Implication: Restrict (2 OR 3) with Law (2=False). Result should be (3).
+        --     -- We assume restrictLaw handles negations correctly if we pass the negated atom as law,
+        --     -- or if we assume the law implies the valuation.
+        --     -- Here we use (Neg 2) as law.
+        --     , (snd $ restrictLaw [pos2] (c_or, node_or_23) ((-.) (t_c, snd dc2))) == (snd dc3) `debug5` "restrictLaw (2 OR 3) | 2=False -> 3"
+            ]

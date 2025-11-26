@@ -82,7 +82,7 @@ infixl 1 .<->.
 (.<->.) a b = (a .*. b) .+. ((-.) a .*. (-.) b)
 
 ite :: (Context, Node) -> (Context, Node) -> (Context, Node) -> (Context, Node)
-ite x y z = (x .+. y) .*. ((-.) x .+. z)
+ite x y z = (x .*. y) .+. ((-.) x .*. z)
 
 xor :: (Context, Node) -> (Context, Node) -> (Context, Node)
 xor a b = (a .*. (-.) b) .+. ((-.) a .*. b)
@@ -160,6 +160,7 @@ position_as_BDD ([]) _ = error "no list provided"
 position_as_BDD ([n]) b = if b then P'' [n] else P'' [-n]
 position_as_BDD (n : ns) b = P' [(n, Dc1, position_as_BDD ns b)]
 
+-- | needs to have full vocab as first argument
 restrictLaw :: [Position] -> (Context, Node) -> (Context, Node) -> (Context, Node)
 restrictLaw v (mgr, d) law = loop (getDependentVars mgr v d) (mgr, d) law where
   loop (n:ns) d@(_, dd) l@(_, law)
@@ -199,41 +200,6 @@ ddSwapVars mgr z (n1:ns1) (n2:ns2) =
       a01 = restrict n2 True (restrict n1 False (mgr, z))
       a00 = restrict n2 False (restrict n1 False (mgr, z))
 ddSwapVars _ _ _ _ = error "lists for ZddSwapVar are not of equal length"
-
-
-
-
--- | Relabel a DD with a function. Assumption: no int is mapped to itself by rF.
-relabelFun :: [Position] -> (Position -> Position) -> (Context, Node) -> (Context, Node)
-relabelFun v rF (mgr, dd) = loop (mgr, dd) disjointListOfLists
-  where
-
-  --get indexes of "overlapping" positions positions (positions in l2 that also occur in L1)
-  --and use that to return the corresponding elements in a tuple
-  getOverlap l1 l2 = (map ((l1 !!) . fromJust) (indexesOverlap l1 l2), l1 `intersect` l2)
-  indexesOverlap l1 l2 = map (`elemIndex` l2) (l1 `intersect` l2)
-  indexesNotOverlap l1 l2 = map (`elemIndex` l1) (l1 `intersect` l2)
-
-  -- swap the (overlapping l1 ints with the corresponding l1 ints)
-  -- in the not overlapping l1 values we look for the overlapping l2 values
-
-  newOverlap l1 l2 = (fst $ getOverlap l1 l2, map ((l1 !!) . fromJust) (indexesNotOverlap l1 l2))
-
-  -- get a list of tuples containing 2 equal length, disjointed lists of vars to be swapped
-  -- by removing the "overlapping" variables and performing a recursive call with them
-  splitCompare [] [] = []
-  splitCompare [] _ = error "varlists used for relabeling do not have equal length."
-  splitCompare _ [] = error "varlists used for relabeling do not have equal length."
-  splitCompare l1 l2 = (l1\\fst (getOverlap l1 l2), l2\\snd (getOverlap l1 l2)) : uncurry splitCompare (newOverlap l1 l2)
-
-  -- apply the function above to the support variable positions and the resulting positions from applying rf (the Remapping Function)
-  -- and turn the positions into DD nodes (as ddSwapVars requires this)
-  disjointListOfLists = splitCompare support (map rF support)
-  support = getDependentVars mgr v dd
-
-  -- loop and uncurry ddSwapVars so that it can be applied to the disjointListOfNodeLists
-  loop (mgr, dd) (n:ns) = loop (uncurry (ddSwapVars mgr dd) n) ns
-  loop d [] = d
 
 
 -- | Relabel a DD with a list of pairs.
