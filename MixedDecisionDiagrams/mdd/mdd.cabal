@@ -32,7 +32,7 @@ library
       TestMDD
       -- SMCDEL.Internal.Help
       -- SMCDEL.Internal.TexDisplay
-      SMCDEL.Language
+      Internal.Language
       Bool_MDD
       SMCDEL.Symbolic.S5_MDD
       -- SMCDEL.Symbolic.K_MDD

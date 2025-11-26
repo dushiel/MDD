@@ -9,15 +9,21 @@ import MDD hiding (Neg)
 -- import Test.QuickCheck
 import SMCDEL.Internal.Help (powerset)
 import SMCDEL.Internal.TexDisplay
+import Debug.Trace (trace, traceShow)
 
-
-newtype Prp = P LevelL deriving (Eq,Show)
+newtype Prp = P LevelL deriving (Eq)
+instance Show Prp where
+    -- We use showsPrec to handle parentheses correctly when Prp is nested
+    showsPrec d (P (Ll xs i)) = showParen (d > 10) $
+        showString " P" .
+        shows xs .        -- Shows the list [(Int, InfL)]
+        showString " " .
+        shows i           -- Shows the In
 
 -- | Helper to create a Prp from a Int index and a given domain
 -- The domain (prefix of LevelL) should be known / determined in the logic module.
--- We assume the domain parts default to Dc1 (Don't Care 1) for this construction.
-intToPrp :: [Int] -> Int -> Prp
-intToPrp domainInts i = P (Ll [(j, Dc1) | j <- domainInts] i)
+intToPrp :: [(Int, InfL)] -> Int -> Prp
+intToPrp domain i = P (Ll domain i)
 
 toOrdinal :: Prp -> [Int]
 toOrdinal (P i) = extractIntsFromLevelL i

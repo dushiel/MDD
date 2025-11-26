@@ -31,6 +31,7 @@ import Data.Maybe (fromJust)
 
 type MDD = (Context, Node)
 
+c :: Context
 c = init_manager
 
 top' :: Node
@@ -120,7 +121,7 @@ existSet (n : ns) d = (restrict n False (existSet ns d)) .+. (restrict n True (e
 -- |======================================== Dd Manipulation operators ==============================================
 
 restrict :: Position -> Bool -> (Context, Node) -> (Context, Node)
-restrict n b (c, d) = restrict_node_set @Dc c [n] b d
+restrict n b (c, d) = restrict_node_set @Dc c [0 : n] b d
 
 neg :: Context -> Node -> (Context, Node)
 neg c' a = negation (reset_stack c' c) a
@@ -275,30 +276,3 @@ substitSimul ((n, psi) : ns) (mgr, dd) =
         (recurs (restrict n False (mgr, dd)))
   where
         recurs = substitSimul ns
-
-
-
-
-
-
-
-
-
-
-
-
-
--- todo future:  write a parser :: String -> Form
--- "[dc:5, n1:3, 4]" -> Pr L [(5, Dc), (3, Neg1)] 4
--- "([dc:1, 2] + [p0:2, 1]) * Top" ->  And (Or (Pr L [(1, Dc) 2) (Pr L [(2, Pos0)] 1)) Top
-
--- {-}
--- dc = (path (Order [0]) [2] Dc) .*. (path (Order [1]) [2] Dc)
--- b = path (Order [1]) [2] Neg1
-
--- (dc .*. a) .+. dc == dc
--- (dc .+. a) .*. dc == dc
-
--- (dc .*. a) .+. a == a
--- (dc .+. a) .*. a == a
--- -}

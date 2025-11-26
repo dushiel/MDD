@@ -12,19 +12,23 @@ import SMCDEL.Internal.TexDisplay
 
 import MDD hiding (Neg)
 import MDDi hiding (Form, Impl, PrpF, Bot, Top)
+import DrawMDD
 import SupportMDD (allVars)
 import Bool_MDD (ddOf')
 import DotDD (generateGraphImage, createDotGraph) -- For Tex rendering
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Monad (when)
 
+import Debug.Trace (trace, traceShow)
 
 -- | Knowledge structures using a Mixed Decision Diagram.
 data KnowStruct =
   KnS [Prp] MDD [(Agent,[Prp])]
   deriving (Show)
 
-type KnState = [Prp]
+-- | A state is represented in a single Neg1 or Pos1 MDD path
+-- For now there is no specific type contrain for this
+type KnState = MDD
 type KnowScene = (KnowStruct, KnState)
 
 instance HasAgents KnowStruct where
@@ -74,9 +78,19 @@ mddOf kns@(KnS allprops lawmdd obs) (K i form) =
 
 -- Knowing Whether: K i phi or K i (not phi)
 mddOf kns@(KnS allprops lawmdd obs) (Kw i form) =
-  disSet [ forallSet (map toOrdinal otherps) (lawmdd .->. mddOf kns f) | f <- [form, Neg form] ]
+  -- trace ("K" ++ show i ++ " cannot observe : " ++ show otherps ++
+        -- "for restrict false \n" ++
+        -- "\n " ++ show_dd settings c d ++
+        -- "\n for restrict true " ++ show ( form) ++
+        -- "\n " ++ show_dd settings c2 d2 ++
+        -- "\n  of formula "  ++
+        -- "\n " ++ show_dd settings c3 d3)
+  disSet [ forallSet otherps (lawmdd .->. mddOf kns f) | f <- [form, Neg form] ]
   where
-    otherps = allprops \\ apply obs i
+    otherps = map toOrdinal $ allprops \\ apply obs i
+    -- (c, d) = (restrict (head otherps) False (lawmdd .->. mddOf kns form))
+    -- (c2, d2) = (restrict (head otherps) True (lawmdd .->. mddOf kns form))
+    -- (c3, d3) = lawmdd .->. mddOf kns ( form)
 
 -- Common Knowledge: Greatest Fixed Point of Everyone Knows.
 -- Z = Phi AND E_G Z
@@ -102,7 +116,11 @@ mddOf kns@(KnS props _ _) (Announce ags form1 form2) =
       form1_mdd = mddOf kns form1
       kns' = announce kns ags form1
       form2_mdd = mddOf kns' form2
-      p = toOrdinal $ freshp props []
+      -- Fix: Use a valid default domain for fresh proposition
+      domain = case props of
+                  (P (Ll d _):_) -> d
+                  [] -> [(0, Dc1)]
+      p = toOrdinal $ freshp props domain
   in form1_mdd .->. restrict p True form2_mdd
 
 -- Announcement Whether
@@ -111,17 +129,20 @@ mddOf kns@(KnS props _ _) (AnnounceW ags form1 form2) =
       form1_mdd = mddOf kns form1
       form2a_mdd = mddOf (announce kns ags form1) form2
       form2b_mdd = mddOf (announce kns ags (Neg form1)) form2
-      p = toOrdinal $ freshp props []
+      -- Fix: Use a valid default domain for fresh proposition
+      domain = case props of
+                  (P (Ll d _):_) -> d
+                  [] -> [(0, Dc1)]
+      p = toOrdinal $ freshp props domain
   in ite form1_mdd (restrict p True form2a_mdd) (restrict p False form2b_mdd)
 
 -- Public Announcement: [!phi] psi
 -- psi is evaluated in the restricted model where phi is true.
-mddOf kns (PubAnnounce form1 form2) =
-    mddOf kns form1 .->. mddOf (pubAnnounce kns form1) form2
+mddOf kns (PubAnnounce form1 form2) = mddOf kns form1 .->. mddOf (pubAnnounce kns form1) form2
 
 -- Public Announcement Whether
-mddOf kns (PubAnnounceW form1 form2) =
-    ite (mddOf kns form1) (mddOf (pubAnnounce kns form1) form2) (mddOf (pubAnnounce kns (Neg form1)) form2)
+mddOf kns (PubAnnounceW form1 form2) = trace ("PubannounceW, form1: " ++ show form1 ++ " \n , form2: " ++ show form2) (
+    ite (mddOf kns form1) (mddOf (pubAnnounce kns form1) form2) (mddOf (pubAnnounce kns (Neg form1)) form2))
 
 mddOf _ (Dia _ _) = error "Dynamic operators are not implemented in S5_MDD."
 
@@ -135,7 +156,11 @@ pubAnnounce kns@(KnS props lawmdd obs) psi = KnS props (lawmdd .*. mddOf kns psi
 announce :: KnowStruct -> [Agent] -> Form -> KnowStruct
 announce kns@(KnS props lawmdd obs) ags psi =
   let
-    proppsi@(P k) = freshp props []
+    -- Fix: Use a valid default domain for fresh proposition
+    domain = case props of
+                (P (Ll d _):_) -> d
+                [] -> [(0, Dc1)]
+    proppsi@(P k) = freshp props domain
     newprops = proppsi:props
     psi_mdd = mddOf kns psi
     k_mdd = var' k
@@ -144,40 +169,17 @@ announce kns@(KnS props lawmdd obs) ags psi =
     newobs = [(i, apply obs i ++ [proppsi | i `elem` ags]) | i <- map fst obs]
   in KnS newprops law_new newobs
 
--- | Evaluates an MDD against a variable assignment.
-mddEval :: MDD -> (Position -> Bool) -> Bool
-mddEval n f =
-    let vars = allVars n
-        assignment = map (\v -> (v, f v)) vars
-        result_node = foldl (\node (var, val) -> restrict var val node) n assignment
-    in case snd $ snd result_node of
-        Leaf True -> True
-        _ -> False
-
 -- | Evaluate a formula in a given state (scene).
 -- A formula is true in a pointed model (M, s) if the formula holds at s.
--- For MDD, this means evaluating the MDD of the formula against the assignment defined by 's'.
--- Additionally, we verify if 's' itself is consistent with the law (though strictly, pointed models usually assume s is valid).
+-- For MDD S5 knowstructs, this means that the Neg1 state 's' should imply the statelaw.
 evalViaMdd :: KnowScene -> Form -> Bool
 evalViaMdd (kns@(KnS allprops lawmdd _), s) f =
     let
-        -- Helper to check if a prop is in the state 's'
-        assignment (P l) = (extractIntsFromLevelL l) `elem` (map (\(P x) -> extractIntsFromLevelL x) s)
-
-        -- Check if state itself is valid under the law (optional, but good for debugging)
-        stateValid = mddEval lawmdd (toOrdinalPredicate s)
-
-        -- The MDD representing the formula
-        formMdd = mddOf kns f
-
+      stateValid = snd (s .->. lawmdd) == top'
+      formValid = snd (s .->. mddOf kns f) == top'
     in if not stateValid
        then error ("evalViaMdd: State " ++ show s ++ " is not consistent with the Law.")
-       else mddEval formMdd (toOrdinalPredicate s)
-
--- Helper to convert state list to predicate
-toOrdinalPredicate :: [Prp] -> (Position -> Bool)
-toOrdinalPredicate s pos =
-    pos `elem` (map toOrdinal s)
+       else formValid
 
 -- | Check if a formula is valid in a knowledge structure.
 -- Validity means: Law -> Form is a tautology (Top).
@@ -193,7 +195,7 @@ instance Semantics KnowStruct where
 -- | Instance for updating unpointed structures (just restrictions/announcements)
 instance Update KnowStruct Form where
   checks = [ ] -- unpointed structures can be updated with anything
-  unsafeUpdate kns psi = pubAnnounce kns psi
+  unsafeUpdate kns psi = (pubAnnounce kns psi)
 
 -- | Instance for updating pointed scenes (KnS + State)
 instance Update KnowScene Form where

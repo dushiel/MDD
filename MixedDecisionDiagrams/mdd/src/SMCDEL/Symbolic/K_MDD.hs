@@ -10,7 +10,7 @@ import Data.Map.Strict ((!))
 
 import SMCDEL.Internal.Help (apply, lfp, powerset)
 import SMCDEL.Internal.TexDisplay
-import SMCDEL.Language hiding (ite)
+import Internal.Language hiding (ite)
 import SMCDEL.Symbolic.S5_MDD (KnState, texMdd, getSupport) -- Reusing some types and functions
 
 import MDD hiding (Neg)

@@ -340,7 +340,7 @@ withCache :: Context -> (Node, Node, String) -> (Context, Node) -> (Context, Nod
 withCache c@Context{cache = nc, dc_stack = dck} ((keyA, _), (keyB, _), keyFunc) func_with_args =
   case Map.lookup keyFunc nc of
     Just nc' -> case HashMap.lookup (keyA, keyB, dck) nc' of
-      Just result -> (c, getNode c result) `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
+      Just result -> (c, getNode c result) --`debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
       Nothing -> let
         (updatedContext, r@(result, _)) = func_with_args
         -- x = case getDd updatedContext result of

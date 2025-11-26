@@ -34,6 +34,7 @@ import Data.Kind
 
 import DrawMDD (debug_manipulation, debug_dc_traverse)
 import Data.Bimap ()
+import Debug.Trace (trace)
 
 type DdManipulation = Context -> Node -> Node -> (Context, Node)
 type DdManipulation' = Context -> String -> Node -> Node -> (Context, Node)
@@ -697,13 +698,23 @@ class DdUnary a where
 
 instance (DdF3 a) => DdUnary a where
     swap_node_set c (na : nas) d@(node_id, Node position pos_child neg_child)  = let
-        (b, nas') = if (map fst $ current_level_ c) ++ [position] == na
+        (b, nas') = if (reverse $ map fst $ current_level_ c) ++ [position] == na
             then (True, nas)
             else (False, na : nas)
+
+        (c1, posR) = if nas' /= []
+            then (fst traverse_pos, fst $ snd traverse_pos)
+            else (c, pos_child) -- terinal case, all vars have been replaced
+        traverse_pos = swap_node_set @a c_ nas' (pos_child, getDd c pos_child)
         c_ = traverse_dc_ @a "pos child" c pos_child
-        (c1, (posR, _)) = swap_node_set @a c_ nas' (pos_child, getDd c pos_child)
+
+
+        (c2, negR) = if nas' /= []
+            then (fst traverse_neg, fst $ snd traverse_neg)
+            else (c, neg_child) -- terinal case, all vars have been replaced
+        traverse_neg = swap_node_set @a c1_ nas' (neg_child, getDd c1 neg_child)
         c1_ = traverse_dc_ @a "neg child" (reset_stack c1 c) neg_child
-        (c2, (negR, _)) = swap_node_set @a c1_ nas' (neg_child, getDd c1 neg_child)
+
         in if b
             then applyElimRule @a c2 $ Node position negR posR
             else applyElimRule @a c2 $ Node position posR negR
@@ -733,11 +744,11 @@ instance (DdF3 a) => DdUnary a where
     swap_node_set c nas u@(_, Unknown) = (c, u)
 
     -- do inference whenever the node which should be swapped is eliminated
-    swap_node_set' c (na : nas) d@(node_id, Node position pos_child neg_child) = if (map fst $ current_level_ c) ++ [position] > na
+    swap_node_set' c (na : nas) d@(node_id, Node position pos_child neg_child) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
         then let (c', d') = inferNode @a c (last na) d
             in swap_node_set @a c' (na : nas) d'
         else swap_node_set @a c (na : nas) d
-    swap_node_set' c (na : nas) d@(node_id, InfNodes position dc p n) = if (map fst $ current_level_ c) ++ [position] > na
+    swap_node_set' c (na : nas) d@(node_id, InfNodes position dc p n) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
         -- todo! infer the infnode which is needed to reach the flip node
         then let (c', d') = inferInfNode @a c (last na) d
             in swap_node_set @a c' (na : nas) d'
@@ -745,20 +756,30 @@ instance (DdF3 a) => DdUnary a where
     swap_node_set' c (na : nas) d = swap_node_set @a c (na : nas) d
 
     restrict_node_set c (na : nas) b d@(node_id, Node position pos_child neg_child)  = let
-        (b', nas') = if (map fst $ current_level_ c) ++ [position] == na
+        (b', nas') = if (reverse $ map fst $ current_level_ c) ++ [position] == na -- check whether the current traversal depth plus current node together are equal to the target position na
             then (True, nas)
             else (False, na : nas)
+
+        (c1, posR) = if nas' /= []
+            then (fst traverse_pos, fst $ snd traverse_pos)
+            else (c, pos_child) -- terminal case, all vars have been replaced
+        traverse_pos = restrict_node_set @a c_ nas' b (pos_child, getDd c pos_child)
         c_ = traverse_dc_ @a "pos child" c pos_child
-        (c1, (posR, _)) = restrict_node_set @a c_ nas' b (pos_child, getDd c pos_child)
+
+        (c2, negR) = if nas' /= []
+            then (fst traverse_neg, fst $ snd traverse_neg)
+            else (c, neg_child) -- terminal case, all vars have been replaced
+        traverse_neg = restrict_node_set @a c1_ nas' b (neg_child, getDd c1 neg_child)
         c1_ = traverse_dc_ @a "neg child" (reset_stack c1 c) neg_child
-        (c2, (negR, _)) = restrict_node_set @a c1_ nas' b (neg_child, getDd c1 neg_child)
-        in if b'
-            then if b
+
+        in if b' -- hit, so remove na from nas and
+            then if b -- depending on b, take positive or negative evaluation
                 then applyElimRule @a c2 $ Node position posR posR
                 else applyElimRule @a c2 $ Node position negR negR
-            else applyElimRule @a c2 $ Node position posR negR
+            else applyElimRule @a c2 $ Node position posR negR -- otherwise continue with original nas and no quantification
 
-    restrict_node_set c nas b d@(node_id, InfNodes position dc p n) =  let
+    restrict_node_set c nas b d@(node_id, InfNodes position dc p n) = -- trace ("infnodes in  restrict set : " ++ show node_id ++ ", " ++ show position ++ "\n current level = " ++ (show $ current_level_ c))
+        let
         c_ = add_to_stack_ (position, Dc) ((u, Unknown), (u, Unknown)) c
         (c1, dcR) = restrict_node_set @Dc (traverse_dc_ @a "inf dc" c_ dc) nas b (dc, getDd c dc)
         c2_ = add_to_stack_ (position, Neg) (getNode c1 dc, dcR) (reset_stack c1 c)
@@ -780,12 +801,13 @@ instance (DdF3 a) => DdUnary a where
     restrict_node_set c nas _ b@(_, Leaf _) = absorb (c, b)
     restrict_node_set c nas _ u@(_, Unknown) = (c, u)
 
+    restrict_node_set c n a b = error ("nonexhaustive " ++ "\n c: \n" ++ show c ++ "\n n: \n" ++ show n ++ "\n a: \n" ++ show a ++ "\n b: \n" ++ show b)
     -- do inference whenever the node which should be restricted is eliminated
-    restrict_node_set' c (na : nas) b d@(node_id, Node position pos_child neg_child) = if (map fst $ current_level_ c) ++ [position] > na
+    restrict_node_set' c (na : nas) b d@(node_id, Node position pos_child neg_child) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
         then let (c', d') = inferNode @a c (last na) d
             in restrict_node_set @a c' (na : nas) b d'
         else restrict_node_set @a c (na : nas) b d
-    restrict_node_set' c (na : nas) b d@(node_id, InfNodes position dc p n) = if (map fst $ current_level_ c) ++ [position] > na
+    restrict_node_set' c (na : nas) b d@(node_id, InfNodes position dc p n) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
         -- todo! infer the infnode which is needed to reach the flip node
         then let (c', d') = inferInfNode @a c (last na) d
             in restrict_node_set @a c' (na : nas) b d'
