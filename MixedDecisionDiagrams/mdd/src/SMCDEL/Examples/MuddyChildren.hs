@@ -2,17 +2,18 @@ module SMCDEL.Examples.MuddyChildren where
 
 import Data.List
 import Data.Map.Strict (fromList)
+import qualified Data.Map.Strict as M
 
 import SMCDEL.Internal.Help (seteq)
 import Internal.Language
 import SMCDEL.Symbolic.S5_MDD
+import qualified SMCDEL.Symbolic.K_MDD as K
+import Data.Tagged (Tagged(..), untag)
 import MDD hiding (Neg)
 import MDDi
 import DrawMDD
 
 -- | The default domain index for variables in this puzzle.
--- Logic formulas are by default written in the Dc1 inference rule:
--- not mentioned propositions are considered to be dont-care literals resulting in a True evaluation
 vocabAsPropsDomain :: [(Int, InfL)]
 vocabAsPropsDomain = [(0, Dc1)]
 
@@ -22,11 +23,7 @@ mudScnInit :: Int -> Int -> KnowScene
 mudScnInit n m = (KnS vocab law obs, actual) where
   vocab  = [intToPrp vocabAsPropsDomain i | i <- [1..n]]
   law    = boolMddOf Top
-  -- Observables: Agent i sees all variables except their own
   obs    = [ (show i, delete (intToPrp vocabAsPropsDomain i) vocab) | i <- [1..n] ]
-  -- Actual world: The first m children are muddy
-  -- usually a list of propositions which are true, and all other propositions should be false
-  -- this corresponds to a path with the Neg1 (ZDD) Inference rule
   actual = var (P' [(0, Neg1, P'' [1..m])])
 
 
@@ -55,31 +52,20 @@ mudScn1 = update mudScn0 (nobodyknows 3)
 mudScn2 :: KnowScene
 mudScn2 = update mudScn1 (nobodyknows 3)
 
--- | Run the simulation in GHCi.
--- n: Total children
--- m: Muddy children
--- Example usage: runMuddy 10 5
 runMuddy :: Int -> Int -> IO ()
 runMuddy n m = do
   putStrLn $ "Initializing puzzle with " ++ show n ++ " children, " ++ show m ++ " muddy."
 
-  -- 1. Initialize State
   let startState = mudScnInit n m
 
-  -- 2. Father speaks ("At least one is muddy")
   let afterFather@(KnS _ law _, _) = update startState (father n)
   putStrLn "Round 0: Father announces 'At least one child is muddy'."
-  -- to view law after update use:
-  -- drawTree3 law
 
-  -- 3. Loop rounds asking "Do you know?"
   loop 1 afterFather
 
   where
     loop :: Int -> KnowScene -> IO ()
     loop round currentScene = do
-      -- Check if any child knows they are muddy in the current scene
-      -- We check 'knows i' for every agent i
       let knowledgeCheck = [ (i, isTrue currentScene (knows i)) | i <- [1..n] ]
       let someoneKnows = any snd knowledgeCheck
 
@@ -89,6 +75,95 @@ runMuddy n m = do
           print [ i | (i, known) <- knowledgeCheck, known ]
         else do
           putStrLn $ "Round " ++ show round ++ ": Nobody knows. Announcing 'Nobody knows'..."
-          -- Update the scene with the fact that nobody knew
           let nextScene = update currentScene (nobodyknows n)
           loop (round + 1) nextScene
+
+-- =============================================================================
+-- * Phase 3: K-Logic Implementation
+-- =============================================================================
+
+-- | Helper to create an explicit equivalence relation MDD for K-logic.
+makeEquivRel :: [Prp] -> [Prp] -> K.RelMDD
+makeEquivRel vocab obsVars = Tagged final_mdd
+  where
+    -- Start with Top in the relational context
+    topRel = top
+    combine mdd_acc p =
+        let
+             mdd_std = boolMddOf (PrpF p)
+             Tagged (mdd_mv) = K.mvMdd vocab mdd_std
+             Tagged (mdd_cp) = K.cpMdd vocab mdd_std
+             mdd_eq = mdd_mv .<->. mdd_cp
+             mdd_res = mdd_acc .*. mdd_eq
+
+        in mdd_res
+
+    final_mdd = foldl combine topRel obsVars
+
+-- | Initialize K-logic Muddy Children Scene
+mudScnInitK :: Int -> Int -> K.BelScene
+mudScnInitK n m = (K.BlS vocab law obs_map, actual)
+  where
+    vocab  = [intToPrp vocabAsPropsDomain i | i <- [1..n]]
+    law = top
+    actual = var (P' [(0, Neg1, P'' [1..m])])
+    buildObs i =
+        let
+            my_obs_vars = delete (intToPrp vocabAsPropsDomain i) vocab
+            rel = makeEquivRel vocab my_obs_vars
+        in (show i, rel)
+    obs_list = map buildObs [1..n]
+    obs_map = fromList obs_list
+
+
+-- | Run the simulation in GHCi using K-Logic structures.
+runMuddyK :: Int -> Int -> IO ()
+runMuddyK n m = do
+  putStrLn $ "Initializing K-puzzle with " ++ show n ++ " children, " ++ show m ++ " muddy."
+
+  -- 1. Initialize K-State
+  let startState = mudScnInitK n m
+
+  -- 2. Father speaks
+  let afterFather@(K.BlS _ statelaw obs_laws, _) = unsafeUpdate startState (father n)
+  putStrLn "Round 0: Father announces 'At least one child is muddy'."
+
+  -- putStrLn "State Law first one:"
+  -- drawTree3 statelaw
+
+
+  -- putStrLn "Observation Laws:"
+  -- mapM_ (\(agent, rel) -> do
+  --     putStrLn $ "Agent " ++ agent
+  --     drawTree3 (untag rel)
+  --   ) (M.toList obs_laws)
+  -- putStrLn "==================================="
+
+  -- 3. Loop
+  loopK 1 afterFather
+
+  where
+    loopK :: Int -> K.BelScene -> IO ()
+    loopK round currentScene = do
+        let knowledgeCheck = [ (i, K.evalViaMdd currentScene (knows i)) | i <- [1..n] ]
+        let someoneKnows = any snd knowledgeCheck
+
+        if someoneKnows
+            then do
+                putStrLn $ "SUCCESS: In Round " ++ show round ++ ", the following children know their status:"
+                print [ i | (i, known) <- knowledgeCheck, known ]
+            else do
+                putStrLn $ "Round " ++ show round ++ ": Nobody knows. Announcing 'Nobody knows'..."
+                let nextScene@(K.BlS _ law obs_laws, _) = unsafeUpdate currentScene (nobodyknows n)
+
+                -- putStrLn "State Law: ---------------- "
+                -- drawTree3 law
+
+                -- putStrLn "Observation Laws:"
+                -- mapM_ (\(agent, rel) -> do
+                --     putStrLn $ "Agent " ++ agent
+                --     drawTree3 (untag rel)
+                --   ) (M.toList obs_laws)
+
+                -- error "stop"
+                loopK (round + 1) nextScene

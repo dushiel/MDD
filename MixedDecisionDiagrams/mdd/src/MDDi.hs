@@ -25,6 +25,7 @@ import DrawMDD
 import SupportMDD
 import Data.List
 import Data.Maybe (fromJust)
+import Debug.Trace (trace)
 
 
 -- |======================================== Dd Manipulation operators interactive ==============================================
@@ -180,7 +181,7 @@ restrictLaw v (mgr, d) law = loop (getDependentVars mgr v d) (mgr, d) law where
 
 
 ddSwapVars :: Context -> Node -> [Position] -> [Position] -> (Context, Node) -- assumes no overlapping in lists
-ddSwapVars mgr z [n1] [n2] =
+ddSwapVars mgr z [n1] [n2] = -- trace ("terminal case, : \n" ++ (intercalate "\n, " (map (\x -> show_dd settings (fst x) (snd x)) [a11, a10, a01, a00])))
         ite (path mgr $ position_as_BDD n2 True)
         (ite (path mgr $ position_as_BDD n1 True) a11 a10)
         (ite (path mgr $ position_as_BDD n1 True) a01 a00)
@@ -193,18 +194,32 @@ ddSwapVars mgr z (n1:ns1) (n2:ns2) =
         let (c', r) = ite (path mgr $ position_as_BDD n2 True)
                 (ite (path mgr $ position_as_BDD n1 True) a11 a10)
                 (ite (path mgr $ position_as_BDD n1 True) a01 a00)
-        in ddSwapVars c' r ns1 ns2
+            r'' = (ddSwapVars c' r ns1 ns2)
+        in  r'' --trace ("\nrecursive call for: " ++ show ns1 ++ ", " ++ show ns2 ++ "\n = " ++ show_dd settings (mgr) (z))
     where
       a11 = restrict n2 True (restrict n1 True (mgr, z))
       a10 = restrict n2 False (restrict n1 True (mgr, z))
       a01 = restrict n2 True (restrict n1 False (mgr, z))
       a00 = restrict n2 False (restrict n1 False (mgr, z))
-ddSwapVars _ _ _ _ = error "lists for ZddSwapVar are not of equal length"
+ddSwapVars mgr z n1 n2 = error $ "not covered case? \n" ++ intercalate ", \n" [show_dd settings mgr z, show n1, show n2]
 
 
 -- | Relabel a DD with a list of pairs.
 relabelWith ::  [(Position, Position)] -> (Context, Node) -> (Context, Node)
-relabelWith r d = loop d disjointListOfLists where
+relabelWith r d = -- trace ("relabeling with " ++ show r ++ "\n on dd: \n" ++ show_dd settings (fst d) (snd d))
+  loop d disjointListOfLists where
+
+  -- Normalize the input to remove symmetric cycles (A->B, B->A)
+  -- If we have (A,B) and (B,A), we only keep the one where A < B.
+  -- This breaks the cycle and treats it as a single atomic swap.
+  normalize [] = []
+  normalize ((src, dst):xs)
+    | (dst, src) `elem` xs = (src, dst) : normalize (filter (/= (dst, src)) xs)
+    | otherwise            = (src, dst) : normalize xs
+  -- prepare input
+  normalizedR = normalize . sort . filter (uncurry (/=)) $ r
+  (listVars1, listVars2) = unzip normalizedR
+
   --get indexes of "overlapping" positions positions (positions in l2 that also occur in L1)
   --and use that to return the corresponding elements in a tuple
   getOverlap l1 l2 = (map ((l1 !!) . fromJust) (indexes l1 l2), l1 `intersect` l2)
@@ -213,7 +228,6 @@ relabelWith r d = loop d disjointListOfLists where
 
   -- swap the (overlapping l1 ints with the corresponding l1 ints)
   -- in the non overlapping l1 values we look for the overlapping l2 values
-
   newOverlap l1 l2 = (fst $ getOverlap l1 l2, map ((l1 !!) . fromJust) (indexesNotOverlap l1 l2))
 
   -- get a list of tuples containing 2 equal length, disjointed lists of vars to be swapped
@@ -230,7 +244,6 @@ relabelWith r d = loop d disjointListOfLists where
   loop (mgr, dd) (n:ns) = loop (uncurry (ddSwapVars mgr dd) n) ns
   loop d [] = d
 
-  (listVars1, listVars2) = unzip . sort . filter (uncurry (/=)) $ r
 
 -- | Simultaneous substitution.
 -- Implemented via `ifte` and `restrict`.

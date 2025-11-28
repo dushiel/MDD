@@ -319,7 +319,7 @@ instance (DdF3 a) => Dd1 a where
         (c_, (infA, infB)) = pop_stack' c
         c' = traverse_dc @a "endinf" c_ a_id b_id -- `debug` (show $ dc_stack c_)
         (c'', (r, _)) = case (infA, infB) of
-            (Dc, Dc) -> apply @Dc c' s ac bc `debug` ("dc ")
+            (Dc, Dc) -> apply @Dc c' s ac bc --`debug` ("dc ")
             (Neg, Neg) -> apply @Neg c' s ac bc `debug` ("neg ")
             (Pos, Pos) -> apply @Pos c' s ac bc `debug` ("pos ")
             (Neg, Dc) -> applyDcB @Neg c' s ac bc `debug` ("neg dc")
