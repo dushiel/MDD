@@ -398,46 +398,12 @@ data LevelL = Ll [(Int, InfL)] Int deriving (Eq, Show)
 -- given a LevelL create a Mixed Decision Diagram path
 -- place a minus sign before a node nr to set it to negative.
 
+levelLtoPath :: LevelL -> Path
+levelLtoPath (Ll ((i, inf) : ns) int) = P' [(i, inf, levelLtoPath (Ll ns int))]
+levelLtoPath (Ll [] int) = P'' [int]
+
 makeNode :: Context -> LevelL -> (Context, Node)
-makeNode _ (Ll [] _) = error "empty context"
-makeNode c (Ll [(i, inf)] nodePosition)
-    -- since we want the identity law in all our models,
-    -- we set the default of dc to Leaf False (or leaf not end) instead of Unknown
-    -- instead of manually applying the first order statement of
-    -- forall paths a: -.(a ^ -. a)  (law of contradiction)
-    | inf == Dc1 = let (c', (rid, _)) = loopDc True nodePosition in ins' c' (InfNodes i rid u u)
-    | inf == Pos1 = let (c', (rid, _)) = loopPos True nodePosition in ins' c' (InfNodes i (leafid True) rid u)
-    | inf == Neg1 = let (c', (rid, _)) = loopNeg True nodePosition in ins' c' (InfNodes i (leafid True) u rid)
-    | inf == Dc0 = let (c', (rid, _)) = loopDc False nodePosition in ins' c' (InfNodes i rid u u)
-    | inf == Pos0 = let (c', (rid, _)) = loopPos False nodePosition in ins' c' (InfNodes i (leafid False) rid u)
-    | inf == Neg0 = let (c', (rid, _)) = loopNeg False nodePosition in ins' c' (InfNodes i (leafid False) u rid)
-    where
-        ins' c d = insert c d
-        ins d = insert c d
-        -- 0 is for the InfNodes position, vars start from 1
-        loopDc b n
-          | n ==0 = (c, leaf b)
-          | n >= 0 = ins (Node n (leafid b) (leafid $ not b))
-          | otherwise = ins (Node (abs n) (leafid $ not b) (leafid b))
-        loopPos b n
-          | n ==0 = (c, leaf b)
-          | n >= 0 = ins (Node n u (leafid b))
-          | otherwise = ins (Node (abs n) (leafid b) u)
-        loopNeg b n
-          | n ==0 = (c, leaf b)
-          | n >= 0 = ins (Node n (leafid b) u)
-          | otherwise = ins (Node (abs n) u (leafid b))
-        -- close = (!! l) . iterate EndInfNode
-makeNode c (Ll ((i, inf):cs) nodePosition)
-    | inf == Dc1 = let (c', (rid, _)) = makeNode c (Ll cs nodePosition) in ins' c' (InfNodes i rid u u)
-    | inf == Neg1 = let (c', (rid, _)) = makeNode c (Ll cs nodePosition) in ins' c' (InfNodes i (leafid True) u rid)
-    | inf == Pos1 = let (c', (rid, _)) = makeNode c (Ll cs nodePosition) in ins' c' (InfNodes i (leafid True) rid u)
-    | inf == Dc0 = let (c', (rid, _)) = makeNode c (Ll cs nodePosition) in ins' c' (InfNodes i rid u u)
-    | inf == Neg0 = let (c', (rid, _)) = makeNode c (Ll cs nodePosition) in ins' c' (InfNodes i (leafid False) u rid)
-    | inf == Pos0 = let (c', (rid, _)) = makeNode c (Ll cs nodePosition) in ins' c' (InfNodes i (leafid False) rid u)
-    where
-        ins' c d = insert c d
-        -- close = (!! l) . iterate EndInfNode
+makeNode c l = path c (levelLtoPath l)
 
 
 data Path = P'' [Int]

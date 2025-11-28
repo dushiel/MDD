@@ -35,9 +35,9 @@ library
       Internal.Language
       Bool_MDD
       SMCDEL.Symbolic.S5_MDD
-      -- SMCDEL.Symbolic.K_MDD
+      SMCDEL.Symbolic.K_MDD
       SMCDEL.Examples.MuddyChildren
-      -- SMCDEL.Experiments.Muddychildren
+      SMCDEL.Examples.SallyAnne
   other-modules:
   -- Correctly indented section
   hs-source-dirs:

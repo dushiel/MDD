@@ -83,7 +83,7 @@ instance HasVocab BelStruct where
   vocabOf (BlS voc _ _) = voc
 
 instance HasAgents BelStruct where
-  agentsOf (BlS _ _ obdds) = M.keys obdds
+  agentsOf (BlS _ _ omdds) = M.keys omdds
 
 instance Pointed BelStruct KnState
 instance Pointed BelStruct Node
@@ -105,7 +105,7 @@ mddOf bls (Equi f g)    = mddOf bls f .<->. mddOf bls g
 mddOf bls (Forall ps f) = forallSet (map toOrdinal ps) (mddOf bls f)
 mddOf bls (Exists ps f) = existSet (map toOrdinal ps) (mddOf bls f)
 
-mddOf bls@(BlS allprops lawmdd obdds) (K i form) =
+mddOf bls@(BlS allprops lawmdd omdds) (K i form) =
   let
     -- 1. Shift Law to Target (cp)
     law_cp = untag $ cpMdd allprops lawmdd
@@ -116,7 +116,7 @@ mddOf bls@(BlS allprops lawmdd obdds) (K i form) =
     form_cp = untag $ cpMdd allprops form_node
 
     -- 3. Get Relation
-    omega_i = untag $ obdds ! i
+    omega_i = untag $ omdds ! i
 
     -- 5. Implication Chain: Law(t) -> (Rel(s,t) -> Phi(t))
     imp_res = law_cp .->. (omega_i .->. form_cp)
@@ -135,12 +135,12 @@ mddOf bls (Kw i form) =
       -- k_neg_form = mddOf bls (K i (Neg form))
   in k_form -- .+. k_neg_form
 
-mddOf bls@(BlS voc lawmdd obdds) (Ck ags form) =
+mddOf bls@(BlS voc lawmdd omdds) (Ck ags form) =
   let
     initial_guess = top
     ps_target = map toOrdinal (cp voc)
 
-    agent_rels = map (\agent -> untag $ obdds ! agent) ags
+    agent_rels = map (\agent -> untag $ omdds ! agent) ags
     rels_disj = disSet agent_rels -- Union of relations
 
     lambda z =
@@ -178,7 +178,31 @@ mddOf bls (Ckw ags form) =
         ck_neg_form = mddOf bls (Ck ags (Neg form))
     in ck_form .+. ck_neg_form
 
-mddOf _ (Announce _ _ _) = error "Private Announce not yet implemented for K_MDD"
+mddOf bls@(BlS props _ _) (Announce ags f g) =
+  let
+    domain = case props of
+                (P (Ll d _):_) -> d
+                [] -> [(0, Dc1)]
+    p_k = freshp props domain
+    k_pos = toOrdinal p_k
+    bls' = announce bls ags f
+  in
+    mddOf bls f .->. restrict k_pos True (mddOf bls' g)
+
+mddOf bls@(BlS props _ _) (AnnounceW ags f g) =
+  let
+    domain = case props of
+                (P (Ll d _):_) -> d
+                [] -> [(0, Dc1)]
+    p_k = freshp props domain
+    k_pos = toOrdinal p_k
+
+    lhs = mddOf bls f
+    rhs_true = restrict k_pos True (mddOf (announce bls ags f) g)
+    rhs_false = restrict k_pos True (mddOf (announce bls ags (Neg f)) g)
+  in
+    ite (mddOf bls f) rhs_true rhs_false
+
 mddOf _ (Dia _ _) = error "Dynamic operators not yet implemented for K_MDD"
 
 mddOf bls (PubAnnounce form1 form2) =
@@ -207,7 +231,9 @@ evalViaMdd (bls@(BlS _ lawmdd _), s) f =
         -- 2. State 's' is the actual world MDD
         check_node = s .->. f_node
     in
-        snd check_node == top'
+        trace ("evalvia mdd: checking state : " ++ show_dd settings (fst s) (snd s)
+            ++ "\n against law: " ++  show_dd settings (fst lawmdd) (snd lawmdd)
+            ) (snd check_node == top')
 
 instance Semantics BelStruct where
   isTrue = validViaMdd
@@ -229,5 +255,40 @@ instance Update BelStruct Form where
 instance Update BelScene Form where
   unsafeUpdate (kns,s) psi = (unsafeUpdate kns psi, s)
 
+getLevelL :: Prp -> LevelL
+getLevelL (P l) = l
+
 announce :: BelStruct -> [Agent] -> Form -> BelStruct
-announce bls@(BlS props lawmdd obdds) ags psi = error "Private Announcement not implemented"
+announce bls@(BlS props lawmdd omdds) ags psi =
+  let
+    -- 1. Generate fresh proposition k
+    domain = case props of
+                (P (Ll d _):_) -> d
+                [] -> [(0, Dc1)]
+    p_k = (freshp props domain)
+    k_level = getLevelL p_k
+    k_mdd = var' k_level
+
+    -- 2. Update Properties
+    newprops = p_k : props
+
+    -- 3. Update State Law: law AND (k -> psi)
+    psi_mdd = mddOf bls psi
+    newlaw = lawmdd .*. (k_mdd .->. psi_mdd)
+
+    -- 4. Update Relations
+    -- Agents in ags distinguish k (mv_k <-> cp_k)
+    -- Agents not in ags do not see k (cp_k is false)
+    mv_k = var' (getLevelL $ mvP p_k)
+    cp_k = var' (getLevelL $ cpP p_k)
+
+    newOfor i rel_tagged =
+        let rel = untag rel_tagged
+        in if i `elem` ags
+           then Tagged $ rel .*. (mv_k .<->. cp_k)
+           else Tagged $ rel .*. ((-.) cp_k)
+
+    newomdds = M.mapWithKey newOfor omdds
+
+  in --trace ("\n private announce to : " ++ (show ags) ++ "\n for formula: " ++ show psi ++ "\n newlaw: " ++ show_dd settings (fst newlaw) (snd newlaw) ++ "\n added freshp : " ++ show p_k ++ "\n knowledge laws: \n " ++ intercalate "\n , " (map (\(agent, rel) -> "Agent " ++ agent ++ " : " ++ show_dd settings (fst $ untag rel ) (snd $ untag rel )) (M.toList newomdds)) ++ " \n " )
+  (BlS newprops newlaw newomdds)
