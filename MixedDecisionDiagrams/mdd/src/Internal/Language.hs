@@ -12,6 +12,9 @@ import SMCDEL.Internal.TexDisplay
 import Debug.Trace (trace, traceShow)
 
 newtype Prp = P LevelL deriving (Eq)
+instance Ord Prp where
+    compare (P a) (P b) = compare a b
+
 instance Show Prp where
     -- We use showsPrec to handle parentheses correctly when Prp is nested
     showsPrec d (P (Ll xs i)) = showParen (d > 10) $

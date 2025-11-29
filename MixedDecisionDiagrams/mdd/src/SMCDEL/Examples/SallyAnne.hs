@@ -2,115 +2,201 @@ module SMCDEL.Examples.SallyAnne where
 
 import Data.Map.Strict (fromList)
 import qualified Data.Map.Strict as M
+import Data.Tagged (Tagged(..), untag)
 
 import Internal.Language
-import SMCDEL.Symbolic.K_MDD -- Importing the MDD K implementation
-import SMCDEL.Symbolic.S5_MDD (boolMddOf) -- Helper to make MDDs from formulas
-import MDD
-import MDDi (top, bot, var)
-import Data.Tagged (Tagged(..))
+import SMCDEL.Symbolic.K_MDD
+import SMCDEL.Symbolic.S5_MDD (boolMddOf)
+import MDD (Context, Node, InfL(..), Path(..))
+import MDDi
+
+-- import MDDi (top, bot, var)
 import DrawMDD
 import Debug.Trace (trace)
 
 -- =============================================================================
--- * Setup: Vocabulary and Helpers
+-- * Setup
 -- =============================================================================
 
--- We use a simpler domain setup for MDDs (Default Domain 0)
--- pp: Sally is Present
--- tt: Marble is in the Basket
 domain :: [(Int, InfL)]
 domain = [(0, Dc1)]
 
-statedomain = [(0, Neg1)]
+-- Vocabulary
+pp, tt, qq :: Prp
+pp = intToPrp domain 1 -- Sally Present
+tt = intToPrp domain 2 -- Marble in Basket
+qq = intToPrp domain 3 -- Event Variable (for Anne moves marble)
 
-pp, tt :: Prp
-pp = intToPrp domain 1 -- Variable 1
-tt = intToPrp domain 2 -- Variable 2
+-- Helper for Total Relation (Ignorance)
+totalRelMdd :: RelMDD
+totalRelMdd = Tagged top
 
+-- Helper for Identity Relation (Distinguishes p)
+-- Relation: mv(p) <-> cp(p)
+allsameMdd :: [Prp] -> RelMDD
+allsameMdd ps =
+    let
+        mddList = map (\p ->
+            let
+                mv_node = mddOf undefined (PrpF $ mvP p) -- context doesn't matter for single var
+                cp_node = mddOf undefined (PrpF $ cpP p)
+            in mv_node .<->. cp_node
+            ) ps
+    in Tagged (conSet mddList)
 
-
--- Helper to create a total relation (Ignorance)
--- In K_MDD, a Total relation means the agent connects every world to every other world.
--- Since the Logic is S5-like for the start, we can just use Top (connect everything).
-totalRelMdd :: [Prp] -> RelMDD
-totalRelMdd vocab =
-    -- We construct a relation that allows any transition between source (mv) and target (cp)
-    -- This effectively is just "Top" in the relational domain.
-    Tagged top
+-- Helper for Copy Relation (Copies p's value)
+cpRelMdd :: Form -> RelMDD
+cpRelMdd f =
+    let
+        -- Evaluate f in Target (cp)
+        -- To do this cleanly without a BelStruct, we assume f is simple BDD
+        -- But here we can just construct it.
+        -- f is likely simple logic.
+        -- If f is "Neg q", we want Rel = (-. cp_q)
+        -- We construct a temporary structure to parse f
+        tempStruct = BlS [pp,tt,qq] top M.empty
+        node = mddOf tempStruct f
+        -- This node is on standard vars. We need to shift to cp.
+        -- K_MDD.cpMdd does this.
+        rel = untag $ cpMdd [pp,tt,qq] node
+    in Tagged rel
 
 -- =============================================================================
--- * The Scenario
+-- * Initial State
 -- =============================================================================
 
--- 1. Initial State:
--- Law: Top (Anything is possible: Marble might be there or not)
--- Actual World: pp is True, tt is True (Sally present, Marble in Basket)
--- Knowledge: Both agents know nothing specific (Relations are Top)
-sallyInitK :: BelScene
-sallyInitK = (BlS vocab law obs, actual)
+sallyInit :: BelScene
+sallyInit = (BlS vocab law obs, actual)
   where
     vocab  = [pp, tt]
-    law    = boolMddOf Top
-    -- Both agents consider all worlds possible (Ignorance about pp and tt)
-    obs    = fromList [ ("Sally", totalRelMdd vocab), ("Anne", totalRelMdd vocab) ]
-    -- In the actual world, both are True.
-    s = var (P' [(0, Neg1, P'' [1, 2])])
-    actual = trace ("statelaw: " ++ show_dd settings (fst s) (snd s)) s
-
--- 2. The Event: Anne Peeks
--- Anne privately learns that the marble is in the basket (tt).
--- This is a Private Announcement to Anne of formula "tt".
--- Note: 'Announce' in K_MDD takes [Agent], Formula, and the "Then" clause is handled by updates.
-annePeeks :: BelScene
-annePeeks =
-    let (bls, s) = sallyInitK
-        -- We update the Belief Structure with the private announcement
-        -- The formula announced is (PrpF tt)
-        -- The group receiving it is ["Anne"]
-        newBls = announce bls ["Anne"] (PrpF tt)
-    in (newBls, s)
+    -- Law: Sally is present (pp) and Marble NOT in basket (not tt)?
+    -- Wait, usually Sally puts it in first.
+    -- SallyAnne.hs says: law = pp AND not tt. (She hasn't put it in yet).
+    law    = boolMddOf (Conj [PrpF pp, Neg (PrpF tt)])
+    obs    = fromList [ ("Sally", totalRelMdd), ("Anne", totalRelMdd) ]
+    -- Actual: pp, not tt (Matches law)
+    actual = var (P' [(0, Neg1, P'' [1])])
 
 -- =============================================================================
--- * Testing / Execution
+-- * Actions
 -- =============================================================================
 
--- | Run this in GHCi to test the logic
-runSallyMDD :: IO ()
-runSallyMDD = do
-    putStrLn "=== Sally-Anne MDD Test (The 'Peeking' Variant) ==="
+-- 1. Sally puts marble in basket
+-- Action: tt := Top. Both see it.
+sallyPutsMarble :: Event
+sallyPutsMarble =
+    let
+        trf = Trf
+                [] -- No new event vars needed (public assignment)
+                Top -- Law
+                (fromList [(tt, Top)]) -- Assignment: tt becomes True
+                (fromList [("Anne", totalRelMdd), ("Sally", totalRelMdd)]) -- Everyone sees everything (Identity on event)
+                -- Note: totalRelMdd is just Top.
+                -- Since there are no addprops, relations over empty set are just Top.
+    in (trf, Top)
 
-    -- 1. Check Initial State
-    putStrLn "\n[Step 1] Initial State: Marble is in basket (tt), but nobody knows it."
-    let (initBls, initState) = sallyInitK
+-- 2. Sally leaves
+-- Action: pp := Bot. Both see it.
+sallyLeaves :: Event
+sallyLeaves =
+    let
+        trf = Trf
+                []
+                Top
+                (fromList [(pp, Bot)]) -- Assignment: pp becomes False
+                (fromList [("Anne", totalRelMdd), ("Sally", totalRelMdd)])
+    in (trf, Top)
 
-    -- Does Anne know tt?
-    let anneKnowsInit = evalViaMdd sallyInitK (K "Anne" (PrpF tt))
-    putStrLn $ "  Does Anne know tt? " ++ show anneKnowsInit
+-- 3. Anne puts marble in box (Moves it)
+-- This is the tricky one.
+-- Event q: Marble moves (tt := False). Anne sees q. Sally sees "not q".
+-- Event not q: Nothing happens.
+-- We model this with 'qq'.
+anneMovesMarble :: Event
+anneMovesMarble =
+    let
+        -- Assignments depend on qq
+        -- if qq then tt := Bot (Moved)
+        -- if not qq then tt := tt (No change)
+        -- Logic: tt <-> (not qq AND tt_old) OR (qq AND False)
+        -- Simplified: tt := (not qq -> tt) & (qq -> Bot)  (From BDD version)
+        assignTT = Conj [Impl (Neg (PrpF qq)) (PrpF tt), Impl (PrpF qq) Bot]
 
-    -- Does Sally know tt?
-    let sallyKnowsInit = evalViaMdd sallyInitK (K "Sally" (PrpF tt))
-    putStrLn $ "  Does Sally know tt? " ++ show sallyKnowsInit
+        trf = Trf
+                [qq] -- New event var
+                Top  -- Law
+                (M.fromList [(tt, assignTT)])
+                (M.fromList [
+                    ("Anne", allsameMdd [qq]), -- Anne distinguishes q (sees if it moved)
+                    ("Sally", cpRelMdd (Neg (PrpF qq))) -- Sally only considers worlds where q is False (didn't move)
+                ])
 
-    -- 2. Perform Update
-    putStrLn "\n[Step 2] Event: Anne privately peeks into the basket (Private Announcement of tt)."
-    let finalScene = annePeeks
+        -- The actual event that happens is q (marble moved)
+        facts = PrpF qq
+    in (trf, facts)
 
-    -- 3. Check Final Knowledge
-    putStrLn "\n[Step 3] Final State Checks:"
+-- 4. Sally comes back
+-- Action: pp := Top. Both see it.
+sallyReturns :: Event
+sallyReturns =
+    let
+        trf = Trf
+                []
+                Top
+                (fromList [(pp, Top)])
+                (fromList [("Anne", totalRelMdd), ("Sally", totalRelMdd)])
+    in (trf, Top)
 
-    -- Anne should now know tt
-    let anneKnows = evalViaMdd finalScene (K "Anne" (PrpF tt))
-    putStrLn $ "  Does Anne know tt? " ++ show anneKnows ++ " (Expected: True)"
 
-    -- Sally should NOT know tt (she didn't see)
-    let sallyKnows = evalViaMdd finalScene (K "Sally" (PrpF tt))
-    putStrLn $ "  Does Sally know tt? " ++ show sallyKnows ++ " (Expected: False)"
+-- =============================================================================
+-- * Execution
+-- =============================================================================
 
-    -- Does Sally know that Anne knows? (Should be False, it was private)
-    let sallyKnowsAnneKnows = evalViaMdd finalScene (K "Sally" (K "Anne" (PrpF tt)))
-    putStrLn $ "  Does Sally know that Anne knows? " ++ show sallyKnowsAnneKnows ++ " (Expected: False)"
+runSallyAnne :: IO ()
+runSallyAnne = do
+    putStrLn "=== Sally-Anne MDD Simulation ==="
 
-    if anneKnows && not sallyKnows && not sallyKnowsAnneKnows
-        then putStrLn "\n[SUCCESS] The Private Announcement logic is working correctly."
-        else putStrLn "\n[FAILURE] The logic did not behave as expected."
+    -- 0. Init
+    let scene0 = sallyInit
+    putStrLn "\n[0] Initial: Sally present, No marble."
+    printStatus scene0
+
+    -- 1. Sally puts marble
+    let scene1 = unsafeUpdate scene0 sallyPutsMarble
+    putStrLn "\n[1] Action: Sally puts marble in basket."
+    printStatus scene1
+
+    -- 2. Sally leaves
+    let scene2 = unsafeUpdate scene1 sallyLeaves
+    putStrLn "\n[2] Action: Sally leaves the room."
+    printStatus scene2
+
+    -- 3. Anne moves marble
+    let scene3 = unsafeUpdate scene2 anneMovesMarble
+    putStrLn "\n[3] Action: Anne moves marble to box (Sally doesn't see)."
+    printStatus scene3
+
+    -- 4. Sally returns
+    let scene4 = unsafeUpdate scene3 sallyReturns
+    putStrLn "\n[4] Action: Sally returns."
+    printStatus scene4
+
+    putStrLn "\n--- Final Belief Check ---"
+
+    -- Does Anne know marble is NOT in basket? (True)
+    let anneKnowsGone = evalViaMdd scene4 (K "Anne" (Neg (PrpF tt)))
+    putStrLn $ "Does Anne know marble is gone? " ++ show anneKnowsGone ++ " (Expected: True)"
+
+    -- Does Sally know marble is NOT in basket? (False - she thinks it's there)
+    let sallyKnowsGone = evalViaMdd scene4 (K "Sally" (Neg (PrpF tt)))
+    putStrLn $ "Does Sally know marble is gone? " ++ show sallyKnowsGone ++ " (Expected: False)"
+
+    -- Does Sally believe marble IS in basket? (True)
+    let sallyBelievesHere = evalViaMdd scene4 (K "Sally" (PrpF tt))
+    putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere ++ " (Expected: True)"
+
+printStatus :: BelScene -> IO ()
+printStatus scn = do
+    let p = evalViaMdd scn (PrpF pp)
+    let t = evalViaMdd scn (PrpF tt)
+    putStrLn $ "    Status: Sally Present=" ++ show p ++ ", Marble in Basket=" ++ show t

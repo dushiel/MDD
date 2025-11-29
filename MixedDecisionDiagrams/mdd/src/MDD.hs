@@ -391,9 +391,11 @@ l0 = (2, 0)
 u = (0, 0)
 
 data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
-    deriving (Eq, Show)
+    deriving (Eq, Show, Ord)
 data LevelL = Ll [(Int, InfL)] Int deriving (Eq, Show)
 
+instance Ord LevelL where
+    compare (Ll xs i) (Ll ys j) = compare (xs, i) (ys, j)
 
 -- given a LevelL create a Mixed Decision Diagram path
 -- place a minus sign before a node nr to set it to negative.
