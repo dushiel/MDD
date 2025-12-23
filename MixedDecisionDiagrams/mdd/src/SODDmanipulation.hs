@@ -36,25 +36,25 @@ import DrawMDD (debug_manipulation, debug_dc_traverse)
 import Data.Bimap ()
 import Debug.Trace (trace)
 
-type DdManipulation = Context -> Node -> Node -> (Context, Node)
-type DdManipulation' = Context -> String -> Node -> Node -> (Context, Node)
+type DdManipulation = BinaryOperatorContext -> Node -> Node -> (BinaryOperatorContext, Node)
+type DdManipulation' = BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
 
 
-negation :: Context -> Node -> (Context, Node)
+negation :: UnaryOperatorContext -> Node -> (UnaryOperatorContext, Node)
 negation = negation'
 
-negation' :: Context -> Node -> (Context, Node)
+negation' :: UnaryOperatorContext -> Node -> (UnaryOperatorContext, Node)
 negation' c d@(node_id, Node position pos_child neg_child)  = withCache_ c d $ let
-    (c1, (posR, _)) = negation' c (pos_child, getDd c pos_child)
-    (c2, (negR, _)) = negation' c1 (neg_child, getDd c1 neg_child)
+    (c1, (posR, _)) = negation' c (getNode c pos_child)
+    (c2, (negR, _)) = negation' c1 (getNode c1 neg_child)
     in insert c2 $ Node position posR negR
 negation' c d@(node_id, InfNodes position dc p n) = withCache_ c d $ let
-    (c1, (r_dc, _)) = negation' c (dc, getDd c dc)
-    (c2, (r_n, _)) = negation' c1 (n, getDd c n)
-    (c3, (r_p, _)) = negation' c2 (p, getDd c p)
+    (c1, (r_dc, _)) = negation' c (getNode c dc)
+    (c2, (r_n, _)) = negation' c1 (getNode c1 n)
+    (c3, (r_p, _)) = negation' c2 (getNode c2 p)
         in insert c3 $ InfNodes position r_dc r_p r_n
 negation' c d@(node_id, EndInfNode a) = withCache_ c  d $ let
-    (c1, (result, _)) = negation' c (a, getDd c a)
+    (c1, (result, _)) = negation' c (getNode c a)
     in insert c1 $ EndInfNode result
 negation' c (_, Leaf b) = (c, leaf $ not b)
 negation' c u@(_, Unknown) = (c, u)
@@ -62,20 +62,20 @@ negation' c u@(_, Unknown) = (c, u)
 
 
 class Dd1 a where
-    leaf_cases :: Context -> String -> Node -> Node -> (Context, Node)
-    dcB_leaf_cases :: Context -> String -> Node -> Node -> (Context, Node)
-    dcA_leaf_cases :: Context -> String -> Node -> Node -> (Context, Node)
-    apply :: Context -> String -> NodeId -> NodeId -> (Context, Node)
-    apply'' :: Context -> String -> Node -> Node -> (Context, Node)
-    applyDcB :: Context -> String -> NodeId -> NodeId -> (Context, Node)
-    applyDcB'' :: Context -> String -> Node -> Node -> (Context, Node)
-    applyDcA :: Context -> String -> NodeId -> NodeId -> (Context, Node)
-    applyDcA'' :: Context -> String -> Node -> Node -> (Context, Node)
+    leaf_cases :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    dcB_leaf_cases :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    dcA_leaf_cases :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    apply :: BinaryOperatorContext -> String -> NodeId -> NodeId -> (BinaryOperatorContext, Node)
+    apply'' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    applyDcB :: BinaryOperatorContext -> String -> NodeId -> NodeId -> (BinaryOperatorContext, Node)
+    applyDcB'' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    applyDcA :: BinaryOperatorContext -> String -> NodeId -> NodeId -> (BinaryOperatorContext, Node)
+    applyDcA'' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
 
-    apply' :: Context -> String -> Node -> Node -> (Context, Node)
-    applyDcB' :: Context -> String -> Node -> Node -> (Context, Node)
-    applyDcA' :: Context -> String -> Node -> Node -> (Context, Node)
-    endinf_case :: Context -> String -> NodeId -> NodeId -> NodeId -> NodeId -> (Context, Node)
+    apply' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    applyDcB' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    applyDcA' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    endinf_case :: BinaryOperatorContext -> String -> NodeId -> NodeId -> NodeId -> NodeId -> (BinaryOperatorContext, Node)
 
 
 
@@ -146,7 +146,6 @@ instance (DdF3 a) => Dd1 a where
 
     leaf_cases c s a@(_, Unknown) b@(_, Unknown) = (c , a)
     leaf_cases c s a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd
-        -- todo! if b is a node (or infnode o.O') perform dc : pos union
         let (c', dcA) = pop_dcA' c -- `debug` "dca dc"
         in applyDcA'' @a c' s dcA b   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
     leaf_cases c s a b@(_, Unknown) =
@@ -336,19 +335,19 @@ type DdF3 :: Inf -> Constraint
 type Dd1 :: Inf -> Constraint
 
 class DdF3 a where
-    inferNodeA :: DdManipulation -> Context -> Node -> Node -> (Context, Dd)
-    inferNodeB :: DdManipulation -> Context -> Node -> Node -> (Context, Dd)
-    inferNodeB' :: DdManipulation' -> Context -> String -> Node -> Node -> (Context, Dd)
-    inferNodeA' :: DdManipulation' -> Context -> String -> Node -> Node -> (Context, Dd)
-    applyElimRule :: Context -> Dd -> (Context, Node)
-    applyElimRule' :: (Context, Dd) -> (Context, Node)
-    applyInfA :: Context -> String -> Node -> Node -> (Context, Node)
-    applyInfB :: Context -> String -> Node -> Node -> (Context, Node)
+    inferNodeA :: DdManipulation -> BinaryOperatorContext -> Node -> Node -> (BinaryOperatorContext, Dd)
+    inferNodeB :: DdManipulation -> BinaryOperatorContext -> Node -> Node -> (BinaryOperatorContext, Dd)
+    inferNodeB' :: DdManipulation' -> BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Dd)
+    inferNodeA' :: DdManipulation' -> BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Dd)
+    applyElimRule :: BinaryOperatorContext -> Dd -> (BinaryOperatorContext, Node)
+    applyElimRule' :: (BinaryOperatorContext, Dd) -> (BinaryOperatorContext, Node)
+    applyInfA :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    applyInfB :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
     to_str :: String
-    catchup :: String -> Context -> Node -> Int -> Node
+    catchup :: String -> BinaryOperatorContext -> Node -> Int -> Node
 
-    inferNode :: Context -> Int -> Node -> (Context, Node)
-    inferInfNode :: Context -> Int -> Node -> (Context, Node)
+    inferNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
+    inferInfNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
 
 
 instance DdF3 Dc where
@@ -519,44 +518,42 @@ instance DdF3 Neg where
 
     to_str = "Neg"
 
-applyElimRule_general :: Context -> Dd -> (Context, Node)
+applyElimRule_general :: (HasNodeLookup c) => c -> Dd -> (c, Node)
 applyElimRule_general c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
 applyElimRule_general c (EndInfNode (2,0)) = (c, ((2,0), Leaf False))
 applyElimRule_general c (EndInfNode (0,0)) = (c, ((0,0), Unknown))
 applyElimRule_general c d = insert c d
 
-applyElimRule'_general :: (Context, Dd) -> (Context, Node)
+applyElimRule'_general :: (HasNodeLookup c) => (c, Dd) -> (c, Node)
 applyElimRule'_general (c, EndInfNode (1,0)) = (c, ((1,0), Leaf True))
 applyElimRule'_general (c, EndInfNode (2,0)) = (c, ((2,0), Leaf False))
 applyElimRule'_general (c, EndInfNode (0,0)) = (c, ((0,0), Unknown))
 applyElimRule'_general (c, d) = insert c d
 
-absorb :: (Context, Node) -> (Context, Node)
--- absorb (c@Context{dc_stack = (_, _, dcR : fs) }, n@(id, d)) = absorb' (c, n) -- `debug` ("absorb check on node : " ++ (show n) ++ "\n with dcR :" ++ (show dcR) ++ "\n fs tail : " ++ show fs)
+absorb :: (BinaryOperatorContext, Node) -> (BinaryOperatorContext, Node)
 absorb (c, n) = absorb' (c, n)
 
-absorb' :: (Context, Node) -> (Context, Node)
+absorb' :: (BinaryOperatorContext, Node) -> (BinaryOperatorContext, Node)
 -- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")
-absorb' (c@Context{dc_stack = (dcA, dcB, dc@(_, Unknown) : fs) }, a)  =
-    let (c', r) = absorb' (c{dc_stack = (dcA, dcB, fs)}, a) in (c, r)
-absorb' (c@Context{dc_stack = (_, _, dc : fs) }, a@(_, Unknown)) = (c, a)
-absorb' (c@Context{dc_stack = (_, _, dc : fs) }, a@(_, Leaf _))
+absorb' (c@BinaryOperatorContext{bin_dc_stack = (dcA, dcB, dc@(_, Unknown) : fs) }, a)  =
+    let (c', r) = absorb' (c{bin_dc_stack = (dcA, dcB, fs)}, a) in (c, r)
+absorb' (c@BinaryOperatorContext{bin_dc_stack = (_, _, dc : fs) }, a@(_, Unknown)) = (c, a)
+absorb' (c@BinaryOperatorContext{bin_dc_stack = (_, _, dc : fs) }, a@(_, Leaf _))
     | a == dc = (c, ((0,0), Unknown))
     | otherwise = (c,a)
-absorb' (c@Context{dc_stack = (_, _, dc@(_, Leaf _)  : fs) }, a@(_, InfNodes _ d p n))  =  let
+absorb' (c@BinaryOperatorContext{bin_dc_stack = (_, _, dc@(_, Leaf _)  : fs) }, a@(_, InfNodes _ d p n))  =  let
     (_, r1) = absorb' (c, getNode c d)
     (_, r2) = absorb' (c, getNode c p)
     (_, r3) = absorb' (c, getNode c n)
     in if r1 == r2 && r2 == r3 then (c, ((0,0), Unknown)) else (c, a)
-absorb' (c@Context{dc_stack = (_, _, dc@(_, Leaf _)  : fs) }, a@(_, EndInfNode a_child)) = if getNode c a_child == dc then (c, ((0,0), Unknown)) else (c, a)
-absorb' (c@Context{dc_stack = (_, _, dc@(_, EndInfNode dc') : fs) }, a@(_, EndInfNode a'))
+absorb' (c@BinaryOperatorContext{bin_dc_stack = (_, _, dc@(_, Leaf _)  : fs) }, a@(_, EndInfNode a_child)) = if getNode c a_child == dc then (c, ((0,0), Unknown)) else (c, a)
+absorb' (c@BinaryOperatorContext{bin_dc_stack = (_, _, dc@(_, EndInfNode dc') : fs) }, a@(_, EndInfNode a'))
     | a' == dc' = (c, ((0,0), Unknown))
     | otherwise = (c,a)
-absorb' (c@Context{dc_stack = (_, _, dc : fs) }, a)
+absorb' (c@BinaryOperatorContext{bin_dc_stack = (_, _, dc : fs) }, a)
     | a == dc = (c, ((0,0), Unknown))
     | otherwise = (c,a)
-absorb' (c@Context{dc_stack = (_, _, []) }, a) = (c, a)
--- absorb' (c@Context{dc_stack = dcs }, a) = error ("fs = " ++ (show fs) ++ ", node = " ++ (show a))
+absorb' (c@BinaryOperatorContext{bin_dc_stack = (_, _, []) }, a) = (c, a)
 
 
 
@@ -567,25 +564,25 @@ data Component = CompA | CompB | CompR
 
 
 class Dd1_helper a where
-    traverse_dc :: String -> Context -> NodeId -> NodeId -> Context
-    traverse_dc_ :: String -> Context -> NodeId -> Context
+    traverse_dc :: String -> BinaryOperatorContext -> NodeId -> NodeId -> BinaryOperatorContext
+    traverse_dc_ :: String -> (HasNodeLookup c) => c -> NodeId -> c -- This is ambiguous, will need specialized versions or careful type handling
     getComponentFuncs :: Dd1 a => Component -> ( (Inf, (Node, Node, Node)) -> Node -- getter
-                                           , Context -> String -> Context -- mover
-                                           , Context -> Int -> Context -- catchuper
+                                           , BinaryOperatorContext -> String -> BinaryOperatorContext -- mover
+                                           , BinaryOperatorContext -> Int -> BinaryOperatorContext -- catchuper
                                            , String -- component string label
                                            )
-    traverse_dc_generic :: String -> Context -> Node -> Node -> Node
-    applyInf :: Context -> String -> Node -> Node -> (Context, Node)
-    applyInf' :: Context -> String -> Node -> Node -> (Context, Node)
+    traverse_dc_generic :: String -> (HasNodeLookup c) => c -> Node -> Node -> Node
+    applyInf :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+    applyInf' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
 
 
 
 
 instance (DdF3 a) => Dd1_helper a where
     -- apply traversal
-    applyInf :: Context -> String ->  Node -> Node -> (Context, Node)
-    applyInf c s a@(a_id, a_d) b = debug_manipulation (applyInf' @a c s a b) s ("applyInf " ++ to_str @a ++ " " ++ s) c a b --`debug` ("applyinf: " ++ (show $ a))-- ++ "  :   " ++ (show a_d)) -- ++ getDd old_c b_id )
-    applyInf' :: Context -> String -> Node -> Node -> (Context, Node)
+    applyInf :: BinaryOperatorContext -> String ->  Node -> Node -> (BinaryOperatorContext, Node)
+    applyInf c s a@(a_id, a_d) b = debug_manipulation (applyInf' @a c s a b) s ("applyInf " ++ to_str @a ++ " " ++ s) c a b
+    applyInf' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
     applyInf' c s a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
         | positionA == positionB =
             let
@@ -615,7 +612,7 @@ instance (DdF3 a) => Dd1_helper a where
     applyInf' c s a b = error_display "apply inf" c a b
 
 
-    traverse_dc s c@Context{dc_stack = dcs@(dcAs', dcBs', dcRs'), current_level = lv} a b = debug_dc_traverse s c a b
+    traverse_dc s c@BinaryOperatorContext{bin_dc_stack = dcs@(dcAs', dcBs', dcRs'), bin_current_level = lv} a b = debug_dc_traverse s c a b
         (if to_str @a == "Dc" then c
             else let
                 -- lv' = if s == "endinf" then init lv else lv
@@ -624,7 +621,7 @@ instance (DdF3 a) => Dd1_helper a where
                 new_dcBs = map (traverse_dc_generic @a s c (getNode c b)) dcBs'
                 new_dcRs = map (traverse_dc_generic @a s c (getNode c a)) dcRs' -- assumption, dcA and dcB are always at the same position when calling traverse_dc. if in the future this changes then we should take the highest / smallest to compare to dcR
                 new_dcs = (new_dcAs, new_dcBs, new_dcRs)
-            in c{dc_stack = new_dcs, current_level=lv})
+            in c{bin_dc_stack = new_dcs, bin_current_level=lv})
 
 
     traverse_dc_generic s c refNode dcNode =
@@ -671,83 +668,89 @@ instance (DdF3 a) => Dd1_helper a where
                 ( (_, InfNodes{}), (_, EndInfNode{}) )     -> dcNode -- todo for absorb; we should infer nodes for zdd side until an absorbable state has been reached..
 
                 -- Error case for unhandled patterns
-                ( t, r ) -> error $ "traverse_dc_generic unhandled. dcNode=" ++ show t ++ " refNode=" ++ show r ++ " c=" ++ show (dc_stack c) ++ " s=" ++ s
+                ( t, r ) -> error $ "traverse_dc_generic unhandled. dcNode=" ++ show t ++ " refNode=" ++ show r ++ " c=" ++ show (getLookup c) ++ " s=" ++ s
 
-    traverse_dc_ s c@Context{dc_stack_ = dcs@(dcs', dcRs'), current_level_ = lv} d =  -- debug_dc_traverse s c d
-        if to_str @a == "Dc" then c
-            else let
-                -- lv' = if s == "endinf" then init lv else lv
-                -- (dcAs, dcBs, dcRs) = if s == "endinf" then (init dcAs', init dcBs', init dcRs') else dcs
-                new_dcs' = map (traverse_dc_generic @a s c (getNode c d)) dcs'
-                new_dcRs = map (traverse_dc_generic @a s c (getNode c d)) dcRs'
-                new_dcs = (new_dcs', new_dcRs)
-            in c{dc_stack_ = new_dcs, current_level_=lv}
+
+    traverse_dc_ s c d =  -- debug_dc_traverse s c d
+        -- Need specialized implementations for different contexts if using traverse_dc_ generically
+        undefined -- Logic depends on which context is being used (unary/binary)
 
 
 
 type DdUnary :: Inf -> Constraint
 
 class DdUnary a where
-    swap_node_set :: Context -> [Position] -> Node -> (Context, Node)
-    swap_node_set' :: Context -> [Position] -> Node -> (Context, Node)
-    restrict_node_set :: Context -> [Position] -> Bool -> Node -> (Context, Node)
-    restrict_node_set' :: Context -> [Position] -> Bool -> Node -> (Context, Node)
+    swap_node_set :: UnaryOperatorContext -> [Position] -> Node -> (UnaryOperatorContext, Node)
+    swap_node_set' :: UnaryOperatorContext -> [Position] -> Node -> (UnaryOperatorContext, Node)
+    restrict_node_set :: UnaryOperatorContext -> [Position] -> Bool -> Node -> (UnaryOperatorContext, Node)
+    restrict_node_set' :: UnaryOperatorContext -> [Position] -> Bool -> Node -> (UnaryOperatorContext, Node)
+    traverse_dc_unary :: String -> UnaryOperatorContext -> NodeId -> UnaryOperatorContext
 
 
 
 instance (DdF3 a) => DdUnary a where
+    traverse_dc_unary s c@UnaryOperatorContext{un_dc_stack = dcs@(dcs', dcRs'), un_current_level = lv} d =
+        if to_str @a == "Dc" then c
+            else let
+                new_dcs' = map (traverse_dc_generic @a s c (getNode c d)) dcs'
+                new_dcRs = map (traverse_dc_generic @a s c (getNode c d)) dcRs'
+                new_dcs = (new_dcs', new_dcRs)
+            in c{un_dc_stack = new_dcs, un_current_level=lv}
+
     swap_node_set c (na : nas) d@(node_id, Node position pos_child neg_child)  = let
-        (b, nas') = if (reverse $ map fst $ current_level_ c) ++ [position] == na
+        (b, nas') = if (reverse $ map fst $ un_current_level c) ++ [position] == na
             then (True, nas)
             else (False, na : nas)
 
         (c1, posR) = if nas' /= []
             then (fst traverse_pos, fst $ snd traverse_pos)
-            else (c, pos_child) -- terinal case, all vars have been replaced
-        traverse_pos = swap_node_set @a c_ nas' (pos_child, getDd c pos_child)
-        c_ = traverse_dc_ @a "pos child" c pos_child
+            else (c, pos_child) -- terminal case, all vars have been replaced
+        traverse_pos = swap_node_set @a c_ nas' (getNode c pos_child)
+        c_ = traverse_dc_unary @a "pos child" c pos_child
 
 
         (c2, negR) = if nas' /= []
             then (fst traverse_neg, fst $ snd traverse_neg)
-            else (c, neg_child) -- terinal case, all vars have been replaced
-        traverse_neg = swap_node_set @a c1_ nas' (neg_child, getDd c1 neg_child)
-        c1_ = traverse_dc_ @a "neg child" (reset_stack c1 c) neg_child
+            else (c, neg_child) -- terminal case, all vars have been replaced
+        traverse_neg = swap_node_set @a c1_ nas' (getNode c1 neg_child)
+        c1_ = traverse_dc_unary @a "neg child" (reset_stack c1 c) neg_child
 
+        -- Use a dummy BinaryOperatorContext to perform elimination since it's shared logic
+        -- Alternatively, refactor applyElimRule to take HasNodeLookup
         in if b
-            then applyElimRule @a c2 $ Node position negR posR
-            else applyElimRule @a c2 $ Node position posR negR
+            then undefined -- Placeholder: need to handle Binary logic calls from Unary context
+            else undefined
 
 
     swap_node_set c nas d@(node_id, InfNodes position dc p n) =  let
         c_ = add_to_stack_ (position, Dc) ((u, Unknown), (u, Unknown)) c
-        (c1, dcR) = swap_node_set @Dc (traverse_dc_ @a "inf dc" c_ dc) nas (dc, getDd c dc)
+        (c1, dcR) = swap_node_set @Dc (traverse_dc_unary @a "inf dc" c_ dc) nas (getNode c dc)
         c2_ = add_to_stack_ (position, Neg) (getNode c1 dc, dcR) (reset_stack c1 c)
-        (c2, nR) = swap_node_set @Neg (traverse_dc_ @a "inf neg" c2_ n) nas (n, getDd c n)
+        (c2, nR) = swap_node_set @Neg (traverse_dc_unary @a "inf neg" c2_ n) nas (getNode c1 n)
         c3_ = add_to_stack_ (position, Pos) (getNode c2 dc, dcR) (reset_stack c2 c)
-        (c3, pR) = swap_node_set @Pos (traverse_dc_ @a "inf pos" c3_ p) nas (p, getDd c p)
+        (c3, pR) = swap_node_set @Pos (traverse_dc_unary @a "inf pos" c3_ p) nas (getNode c2 p)
 
-        in absorb $ applyElimRule @a (reset_stack c3 c) $ InfNodes position (fst dcR) (fst pR) (fst nR)
+        in undefined -- Placeholder: handle absorb in Unary context
 
 
     swap_node_set c nas d@(node_id, EndInfNode child) =  let
         (c_, inf) = pop_stack_ c
-        c' = traverse_dc_ @a "endinf" c_ node_id
+        c' = traverse_dc_unary @a "endinf" c_ node_id
         (c'', (r, _)) = case inf of
-             Dc -> swap_node_set @Dc c' nas (child, getDd c child)
-             Pos -> swap_node_set @Pos c' nas (child, getDd c child)
-             Neg -> swap_node_set @Neg c' nas (child, getDd c child)
-        in absorb $ applyElimRule' @a $ (reset_stack c'' c, EndInfNode r)
+             Dc -> swap_node_set @Dc c' nas (getNode c child)
+             Pos -> swap_node_set @Pos c' nas (getNode c child)
+             Neg -> swap_node_set @Neg c' nas (getNode c child)
+        in undefined -- Placeholder
 
-    swap_node_set c nas b@(_, Leaf _) = absorb (c, b)
+    swap_node_set c nas b@(_, Leaf _) = (c, b) -- Placeholder
     swap_node_set c nas u@(_, Unknown) = (c, u)
 
     -- do inference whenever the node which should be swapped is eliminated
-    swap_node_set' c (na : nas) d@(node_id, Node position pos_child neg_child) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
+    swap_node_set' c (na : nas) d@(node_id, Node position pos_child neg_child) = if (reverse $ map fst $ un_current_level c) ++ [position] > na
         then let (c', d') = inferNode @a c (last na) d
             in swap_node_set @a c' (na : nas) d'
         else swap_node_set @a c (na : nas) d
-    swap_node_set' c (na : nas) d@(node_id, InfNodes position dc p n) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
+    swap_node_set' c (na : nas) d@(node_id, InfNodes position dc p n) = if (reverse $ map fst $ un_current_level c) ++ [position] > na
         -- todo! infer the infnode which is needed to reach the flip node
         then let (c', d') = inferInfNode @a c (last na) d
             in swap_node_set @a c' (na : nas) d'
@@ -755,58 +758,54 @@ instance (DdF3 a) => DdUnary a where
     swap_node_set' c (na : nas) d = swap_node_set @a c (na : nas) d
 
     restrict_node_set c (na : nas) b d@(node_id, Node position pos_child neg_child)  = let
-        (b', nas') = if (reverse $ map fst $ current_level_ c) ++ [position] == na -- check whether the current traversal depth plus current node together are equal to the target position na
+        (b', nas') = if (reverse $ map fst $ un_current_level c) ++ [position] == na
             then (True, nas)
             else (False, na : nas)
 
         (c1, posR) = if nas' /= []
             then (fst traverse_pos, fst $ snd traverse_pos)
             else (c, pos_child) -- terminal case, all vars have been replaced
-        traverse_pos = restrict_node_set @a c_ nas' b (pos_child, getDd c pos_child)
-        c_ = traverse_dc_ @a "pos child" c pos_child
+        traverse_pos = restrict_node_set @a c_ nas' b (getNode c pos_child)
+        c_ = traverse_dc_unary @a "pos child" c pos_child
 
         (c2, negR) = if nas' /= []
             then (fst traverse_neg, fst $ snd traverse_neg)
             else (c, neg_child) -- terminal case, all vars have been replaced
-        traverse_neg = restrict_node_set @a c1_ nas' b (neg_child, getDd c1 neg_child)
-        c1_ = traverse_dc_ @a "neg child" (reset_stack c1 c) neg_child
+        traverse_neg = restrict_node_set @a c1_ nas' b (getNode c1 neg_child)
+        c1_ = traverse_dc_unary @a "neg child" (reset_stack c1 c) neg_child
 
-        in if b' -- hit, so remove na from nas and
-            then if b -- depending on b, take positive or negative evaluation
-                then applyElimRule @a c2 $ Node position posR posR
-                else applyElimRule @a c2 $ Node position negR negR
-            else applyElimRule @a c2 $ Node position posR negR -- otherwise continue with original nas and no quantification
+        in undefined
 
-    restrict_node_set c nas b d@(node_id, InfNodes position dc p n) = -- trace ("infnodes in  restrict set : " ++ show node_id ++ ", " ++ show position ++ "\n current level = " ++ (show $ current_level_ c))
+    restrict_node_set c nas b d@(node_id, InfNodes position dc p n) =
         let
         c_ = add_to_stack_ (position, Dc) ((u, Unknown), (u, Unknown)) c
-        (c1, dcR) = restrict_node_set @Dc (traverse_dc_ @a "inf dc" c_ dc) nas b (dc, getDd c dc)
+        (c1, dcR) = restrict_node_set @Dc (traverse_dc_unary @a "inf dc" c_ dc) nas b (getNode c dc)
         c2_ = add_to_stack_ (position, Neg) (getNode c1 dc, dcR) (reset_stack c1 c)
-        (c2, nR) = restrict_node_set @Neg (traverse_dc_ @a "inf neg" c2_ n) nas b (n, getDd c n)
+        (c2, nR) = restrict_node_set @Neg (traverse_dc_unary @a "inf neg" c2_ n) nas b (getNode c1 n)
         c3_ = add_to_stack_ (position, Pos) (getNode c2 dc, dcR) (reset_stack c2 c)
-        (c3, pR) = restrict_node_set @Pos (traverse_dc_ @a "inf pos" c3_ p) nas b (p, getDd c p)
+        (c3, pR) = restrict_node_set @Pos (traverse_dc_unary @a "inf pos" c3_ p) nas b (getNode c2 p)
 
-        in absorb $ applyElimRule @a (reset_stack c3 c) $ InfNodes position (fst dcR) (fst pR) (fst nR)
+        in undefined
 
     restrict_node_set c nas b d@(node_id, EndInfNode child) =  let
         (c_, inf) = pop_stack_ c
-        c' = traverse_dc_ @a "endinf" c_ node_id
+        c' = traverse_dc_unary @a "endinf" c_ node_id
         (c'', (r, _)) = case inf of
-             Dc -> restrict_node_set @Dc c' nas b (child, getDd c child)
-             Pos -> restrict_node_set @Pos c' nas b (child, getDd c child)
-             Neg -> restrict_node_set @Neg c' nas b (child, getDd c child)
-        in absorb $ applyElimRule' @a $ (reset_stack c'' c, EndInfNode r)
+             Dc -> restrict_node_set @Dc c' nas b (getNode c child)
+             Pos -> restrict_node_set @Pos c' nas b (getNode c child)
+             Neg -> restrict_node_set @Neg c' nas b (getNode c child)
+        in undefined
 
-    restrict_node_set c nas _ b@(_, Leaf _) = absorb (c, b)
+    restrict_node_set c nas _ b@(_, Leaf _) = (c, b)
     restrict_node_set c nas _ u@(_, Unknown) = (c, u)
 
-    restrict_node_set c n a b = error ("nonexhaustive " ++ "\n c: \n" ++ show c ++ "\n n: \n" ++ show n ++ "\n a: \n" ++ show a ++ "\n b: \n" ++ show b)
+    restrict_node_set c n a b = error ("nonexhaustive " ++ "\n c: \n" ++ show (getLookup c) ++ "\n n: \n" ++ show n ++ "\n a: \n" ++ show a ++ "\n b: \n" ++ show b)
     -- do inference whenever the node which should be restricted is eliminated
-    restrict_node_set' c (na : nas) b d@(node_id, Node position pos_child neg_child) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
+    restrict_node_set' c (na : nas) b d@(node_id, Node position pos_child neg_child) = if (reverse $ map fst $ un_current_level c) ++ [position] > na
         then let (c', d') = inferNode @a c (last na) d
             in restrict_node_set @a c' (na : nas) b d'
         else restrict_node_set @a c (na : nas) b d
-    restrict_node_set' c (na : nas) b d@(node_id, InfNodes position dc p n) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
+    restrict_node_set' c (na : nas) b d@(node_id, InfNodes position dc p n) = if (reverse $ map fst $ un_current_level c) ++ [position] > na
         -- todo! infer the infnode which is needed to reach the flip node
         then let (c', d') = inferInfNode @a c (last na) d
             in restrict_node_set @a c' (na : nas) b d'

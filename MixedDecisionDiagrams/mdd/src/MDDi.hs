@@ -1,4 +1,3 @@
-
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
@@ -9,17 +8,26 @@
 {-# HLINT ignore "Move brackets to avoid $" #-}
 {-# HLINT ignore "Eta reduce" #-}
 module MDDi where
+
 import MDD
     ( Inf(Dc),
       InfL(Dc1),
       Dd(Leaf, Unknown),
-      Context,
+      NodeLookup,
+      NodeId,
       Node,
       Position,
       Path(P', P''),
-      init_manager,
-      unionContext,
-      path, LevelL, makeNode )
+      init_lookup,
+      unionNodeLookup,
+      path, LevelL, makeNode,
+      BinaryOperatorContext,
+      UnaryOperatorContext,
+      init_binary_context,
+      init_unary_context,
+      getLookup,
+      getNode,
+      l_u, l_0, l_1 )
 import SODDmanipulation
 import DrawMDD
 import SupportMDD
@@ -27,93 +35,92 @@ import Data.List
 import Data.Maybe (fromJust)
 import Debug.Trace (trace)
 
-
 -- |======================================== Dd Manipulation operators interactive ==============================================
 
-type MDD = (Context, Node)
+-- | MDDs are represented by (NodeLookup, Node) as a self-contained unit
+type MDD = (NodeLookup, Node)
 
-c :: Context
-c = init_manager
+-- Constants for standard leaf nodes
+top_n :: Node
+top_n = ((1, 0), Leaf True)
 
-top' :: Node
-top' = ((1, 0), Leaf True)
+bot_n :: Node
+bot_n = ((2, 0), Leaf False)
 
-bot' :: Node
-bot' = ((2, 0), Leaf False)
+unk_n :: Node
+unk_n = ((0, 0), Unknown)
 
-unk' :: Node
-unk' = ((0, 0), Unknown)
+c :: NodeLookup
+c = init_lookup
 
-top :: (Context, Node)
-top = (c, ((1, 0), Leaf True))
+top :: MDD
+top = (c, top_n)
 
-bot :: (Context, Node)
-bot = (c, ((2, 0), Leaf False))
+bot :: MDD
+bot = (c, bot_n)
 
-unk :: (Context, Node)
-unk = (c, ((0, 0), Unknown))
+unk :: MDD
+unk = (c, unk_n)
 
-var :: Path -> (Context, Node)
-var p = path c p
+var :: Path -> MDD
+var p = let (c', n) = path init_lookup p in (getLookup c', n)
 
-var' :: LevelL -> (Context, Node)
-var' l = makeNode c l
+var' :: LevelL -> MDD
+var' l = let (c', n) = makeNode init_lookup l in (getLookup c', n)
 
-(-.) :: (Context, Node) -> (Context, Node)
-(-.) (ca, a) = neg ca a
+(-.) :: MDD -> MDD
+(-.) (la, a) = neg la a
 
-infix 2 .*.   -- F1 Conjunction / product | F0 Disjunction / sum
-(.*.) :: (Context, Node) -> (Context, Node) -> (Context, Node)
-(.*.) (ca, a) (cb, b) = con (unionContext ca cb) a b
+infix 2 .*.   -- Conjunction / product
+(.*.) :: MDD -> MDD -> MDD
+(.*.) (la, a) (lb, b) = con (unionNodeLookup la lb) a b
 
-infixl 3 .+.
-(.+.) :: (Context, Node) -> (Context, Node) -> (Context, Node)
-(.+.) (ca, a) (cb, b) = dis (unionContext ca cb) a b
+infixl 3 .+.  -- Disjunction / sum
+(.+.) :: MDD -> MDD -> MDD
+(.+.) (la, a) (lb, b) = dis (unionNodeLookup la lb) a b
 
 infixl 1 .->.
-(.->.) :: (Context, Node) -> (Context, Node) -> (Context, Node)
+(.->.) :: MDD -> MDD -> MDD
 (.->.) a b = (-.) a .+. b
 
 infixl 1 .<-.
-(.<-.) :: (Context, Node) -> (Context, Node) -> (Context, Node)
+(.<-.) :: MDD -> MDD -> MDD
 (.<-.) a b = a .+. (-.) b
 
 infixl 1 .<->.
-(.<->.) :: (Context, Node) -> (Context, Node) -> (Context, Node)
+(.<->.) :: MDD -> MDD -> MDD
 (.<->.) a b = (a .*. b) .+. ((-.) a .*. (-.) b)
 
-ite :: (Context, Node) -> (Context, Node) -> (Context, Node) -> (Context, Node)
+ite :: MDD -> MDD -> MDD -> MDD
 ite x y z = (x .*. y) .+. ((-.) x .*. z)
 
-xor :: (Context, Node) -> (Context, Node) -> (Context, Node)
+xor :: MDD -> MDD -> MDD
 xor a b = (a .*. (-.) b) .+. ((-.) a .*. b)
 
-forall :: Position -> (Context, Node) -> (Context, Node)
+forall :: Position -> MDD -> MDD
 forall n d = (restrict n False d) .*. (restrict n True d)
 
-exist :: Position -> (Context, Node) -> (Context, Node)
+exist :: Position -> MDD -> MDD
 exist n d = (restrict n False d) .+. (restrict n True d)
 
-
-
-conSet :: [(Context, Node)] -> (Context, Node)
+conSet :: [MDD] -> MDD
 conSet [] = top
 conSet (d:ds) = foldl' (.*.) d ds
 
-disSet :: [(Context, Node)] -> (Context, Node)
+disSet :: [MDD] -> MDD
 disSet [] = bot
 disSet (d:ds) = foldl' (.+.) d ds
 
-xorSet :: [(Context, Node)] -> (Context, Node)
+xorSet :: [MDD] -> MDD
 xorSet [] = top
 xorSet (d:ds) = foldl' (xor) d ds
 
-forallSet :: [Position] -> (Context, Node) -> (Context, Node)
+forallSet :: [Position] -> MDD -> MDD
 forallSet [] d = d
 forallSet [n] d = forall n d
 forallSet (n : ns) d = (restrict n False (forallSet ns d)) .*. (restrict n True (forallSet ns d))
 
-existSet :: [Position] -> (Context, Node) -> (Context, Node)
+existSet :: [Position] -> MDD -> MDD
 existSet [] d = d
 existSet [n] d = exist n d
 existSet (n : ns) d = (restrict n False (existSet ns d)) .+. (restrict n True (existSet ns d))
@@ -121,39 +128,51 @@ existSet (n : ns) d = (restrict n False (existSet ns d)) .+. (restrict n True (e
 
 -- |======================================== Dd Manipulation operators ==============================================
 
-restrict :: Position -> Bool -> (Context, Node) -> (Context, Node)
-restrict n b (c, d) = restrict_node_set @Dc c [0 : n] b d
+restrict :: Position -> Bool -> MDD -> MDD
+restrict n b (l, d) =
+    let ctx = init_unary_context l
+        -- Levels are prefixed by 0 in the current addressing scheme
+        (ctx', r) = restrict_node_set @Dc ctx [0 : n] b d
+    in (getLookup ctx', r)
 
-neg :: Context -> Node -> (Context, Node)
-neg c' a = negation (reset_stack c' c) a
+neg :: NodeLookup -> Node -> MDD
+neg l a =
+    let ctx = init_unary_context l
+        (ctx', r) = negation ctx a
+    in (getLookup ctx', r)
 
-con :: Context -> Node -> Node -> (Context, Node)
-con c'' a b =
-    let (c', (_, r)) = debug_func "INTER" $ apply' @Dc (reset_stack c'' c) "inter" a b
-    in applyElimRule @Dc c' r
+con :: NodeLookup -> Node -> Node -> MDD
+con l a b =
+    let ctx = init_binary_context l
+        (ctx', (_, r_dd)) = debug_func "INTER" $ apply' @Dc ctx "inter" a b
+        (ctx'', r) = applyElimRule @Dc ctx' r_dd
+    in (getLookup ctx'', r)
 
-dis :: Context -> Node -> Node -> (Context, Node)
-dis c'' a b =
-    let (c', (_, r)) = debug_func "UNION" $ apply' @Dc (reset_stack c'' c) "union" a b
-    in applyElimRule @Dc c' r
-
-
-
-exists' :: Context -> Position -> Node -> (Context, Node)
-exists' c n d = let
-        (c', r1) = restrict_node_set @Dc c [n] False d
-        (c'', r2) = restrict_node_set @Dc c [n] True d
-        in dis c'' r1 r2
-
-forall' :: Context -> Position -> Node -> (Context, Node)
-forall' c n d = let
-        (c', r1) = restrict_node_set @Dc c [n] False d
-        (c'', r2) = restrict_node_set @Dc c [n] True d
-        in con c'' r1 r2
+dis :: NodeLookup -> Node -> Node -> MDD
+dis l a b =
+    let ctx = init_binary_context l
+        (ctx', (_, r_dd)) = debug_func "UNION" $ apply' @Dc ctx "union" a b
+        (ctx'', r) = applyElimRule @Dc ctx' r_dd
+    in (getLookup ctx'', r)
 
 
-getDependentVars :: Context -> [Position] -> Node -> [Position]
-getDependentVars c v dd = filter (\n -> (snd $ restrict_node_set @Dc c [n] True dd) /= (snd $ restrict_node_set @Dc c [n] False dd)) v
+exists' :: NodeLookup -> Position -> Node -> MDD
+exists' l n d =
+    let (l', r1) = restrict n False (l, d)
+        (l'', r2) = restrict n True (l', d)
+    in dis l'' r1 r2
+
+forall' :: NodeLookup -> Position -> Node -> MDD
+forall' l n d =
+    let (l', r1) = restrict n False (l, d)
+        (l'', r2) = restrict n True (l', d)
+    in con l'' r1 r2
+
+
+getDependentVars :: NodeLookup -> [Position] -> Node -> [Position]
+getDependentVars l v dd =
+    let ctx = init_unary_context l
+    in filter (\n -> (fst $ restrict_node_set @Dc ctx [0 : n] True dd) /= (fst $ restrict_node_set @Dc ctx [0 : n] False dd)) v
 
 
 position_as_BDD :: Position -> Bool -> Path
@@ -162,40 +181,39 @@ position_as_BDD ([n]) b = if b then P'' [n] else P'' [-n]
 position_as_BDD (n : ns) b = P' [(n, Dc1, position_as_BDD ns b)]
 
 -- | needs to have full vocab as first argument
-restrictLaw :: [Position] -> (Context, Node) -> (Context, Node) -> (Context, Node)
+restrictLaw :: [Position] -> MDD -> MDD -> MDD
 restrictLaw v (mgr, d) law = loop (getDependentVars mgr v d) (mgr, d) law where
-  loop (n:ns) d@(_, dd) l@(_, law)
-    | law == top' = d -- the law completely covers the dd thus all nodes are restricted out
-    | (dd == top') || (dd == bot') = d -- the dd is already top/bot, restricting it further does not change anything
-    | law == bot' = top
-    -- otherwise do the recursive restriction until terminal cases are met
+  loop (n:ns) d@(_, dd) l@(_, law_node)
+    | law_node == top_n = d -- the law completely covers the dd
+    | (dd == top_n) || (dd == bot_n) = d
+    | law_node == bot_n = top
     | otherwise =
-        ((path init_manager (position_as_BDD n True)) .*. (loop ns (restrict n True d) (restrict n True l )))    .+.
-        ((path init_manager (position_as_BDD n False)) .*. (loop ns (restrict n False d) (restrict n False l)))
-  loop [] d@(_, dd) (_, law)
-    | law == top' = d -- the law completely covers the dd thus all nodes are restricted out
-    | (dd == top') || (dd == bot') = d -- the dd is already top/bot, restricting it further does not change anything
-    | law == bot' = top
+        ((var $ position_as_BDD n True) .*. (loop ns (restrict n True d) (restrict n True l )))    .+.
+        ((var $ position_as_BDD n False) .*. (loop ns (restrict n False d) (restrict n False l)))
+  loop [] d@(_, dd) (_, law_node)
+    | law_node == top_n = d
+    | (dd == top_n) || (dd == bot_n) = d
+    | law_node == bot_n = top
     | otherwise = error "impossible? something went wrong in restrictLaw."
 
 
 
-ddSwapVars :: Context -> Node -> [Position] -> [Position] -> (Context, Node) -- assumes no overlapping in lists
-ddSwapVars mgr z [n1] [n2] = -- trace ("terminal case, : \n" ++ (intercalate "\n, " (map (\x -> show_dd settings (fst x) (snd x)) [a11, a10, a01, a00])))
-        ite (path mgr $ position_as_BDD n2 True)
-        (ite (path mgr $ position_as_BDD n1 True) a11 a10)
-        (ite (path mgr $ position_as_BDD n1 True) a01 a00)
+ddSwapVars :: NodeLookup -> Node -> [Position] -> [Position] -> MDD
+ddSwapVars mgr z [n1] [n2] =
+        ite (var $ position_as_BDD n2 True)
+        (ite (var $ position_as_BDD n1 True) a11 a10)
+        (ite (var $ position_as_BDD n1 True) a01 a00)
     where
       a11 = restrict n2 True (restrict n1 True (mgr, z))
       a10 = restrict n2 False (restrict n1 True (mgr, z))
       a01 = restrict n2 True (restrict n1 False (mgr, z))
       a00 = restrict n2 False (restrict n1 False (mgr, z))
 ddSwapVars mgr z (n1:ns1) (n2:ns2) =
-        let (c', r) = ite (path mgr $ position_as_BDD n2 True)
-                (ite (path mgr $ position_as_BDD n1 True) a11 a10)
-                (ite (path mgr $ position_as_BDD n1 True) a01 a00)
-            r'' = (ddSwapVars c' r ns1 ns2)
-        in  r'' --trace ("\nrecursive call for: " ++ show ns1 ++ ", " ++ show ns2 ++ "\n = " ++ show_dd settings (mgr) (z))
+        let (l', r) = ite (var $ position_as_BDD n2 True)
+                (ite (var $ position_as_BDD n1 True) a11 a10)
+                (ite (var $ position_as_BDD n1 True) a01 a00)
+            r'' = (ddSwapVars l' (snd r) ns1 ns2)
+        in  r''
     where
       a11 = restrict n2 True (restrict n1 True (mgr, z))
       a10 = restrict n2 False (restrict n1 True (mgr, z))
@@ -205,7 +223,7 @@ ddSwapVars mgr z n1 n2 = error $ "not covered case? \n" ++ intercalate ", \n" [s
 
 
 -- | Relabel a DD with a list of pairs.
-relabelWith ::  [(Position, Position)] -> (Context, Node) -> (Context, Node)
+relabelWith ::  [(Position, Position)] -> MDD -> MDD
 relabelWith r d = -- trace ("relabeling with " ++ show r ++ "\n on dd: \n" ++ show_dd settings (fst d) (snd d))
   loop d disjointListOfLists where
 
@@ -241,16 +259,15 @@ relabelWith r d = -- trace ("relabeling with " ++ show r ++ "\n on dd: \n" ++ sh
   -- and turn the positions into BDD nodes (as ddSwapVars requires this)
   disjointListOfLists = splitCompare listVars1 listVars2
 
-  loop (mgr, dd) (n:ns) = loop (uncurry (ddSwapVars mgr dd) n) ns
+  loop (mgr, dd) (n:ns) = let (mgr', dd') = uncurry (ddSwapVars mgr dd) n in loop (mgr', dd') ns
   loop d [] = d
 
 
 -- | Simultaneous substitution.
--- Implemented via `ifte` and `restrict`.
-substitSimul :: [(Position, Node)] -> (Context, Node) -> (Context, Node)
+substitSimul :: [(Position, Node)] -> MDD -> MDD
 substitSimul [] (mgr, dd) = (mgr, dd)
 substitSimul ((n, psi) : ns) (mgr, dd) =
-        ite (mgr,  psi)
+        ite (mgr, psi)
         (recurs (restrict n True (mgr, dd)))
         (recurs (restrict n False (mgr, dd)))
   where

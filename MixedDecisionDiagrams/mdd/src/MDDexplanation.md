@@ -145,9 +145,3 @@ current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next
 Cleanups of code:
 - separate nodelookup from the function context, such that: MDDs are represented by (NodeLookup, Node), and when starting a operator function a fresh UnaryOperatorContext or a BinaryOperatorContext is made containing the appropriate cache, dc_stack and current_level fields are initialized and passed. For now implement it such that the (...)OperatorContext also contains the (merged) Nodelookups of the input MDD(s). Implement this similarly for a DrawOperatorContext.
 - create a new data type StaticMDD, which consists of (StaticNodeLookup, NodeStatic), such that "to_static_form':: Context -> Node -> (Context, NodeStatic)" becomes "to_static_form':: Context -> Node -> (StaticNodeLookup, NodeStatic)" and etc.
-
-- use {-# LANGUAGE PatternSynonyms #-}
--- Define the pattern synonym
-pattern LeafTrue <- (1, 1)
-
-for l_u and l_1 and l_0
