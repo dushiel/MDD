@@ -688,7 +688,6 @@ instance (DdF3 a) => Dd1_helper a where
 type DdUnary :: Inf -> Constraint
 
 class DdUnary a where
-    --todo add speedup: function cache
     swap_node_set :: Context -> [Position] -> Node -> (Context, Node)
     swap_node_set' :: Context -> [Position] -> Node -> (Context, Node)
     restrict_node_set :: Context -> [Position] -> Bool -> Node -> (Context, Node)

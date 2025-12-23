@@ -52,11 +52,11 @@ init_manager = Context{
     nodelookup = defaultNodeMap,
 
     cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId) ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId),
-    dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)], [((0,0), Unknown)]),
+    dc_stack = ([(l_u, Unknown)], [(l_u, Unknown)], [(l_u, Unknown)]),
     current_level = ([(0, Dc)], [(0, Dc)]),
 
     cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
-    dc_stack_ = ([((0,0), Unknown)], [((0,0), Unknown)]),
+    dc_stack_ = ([(l_u, Unknown)], [(l_u, Unknown)]),
     current_level_ = [(0, Dc)],
 
     nodelookup_static = defaultNodeMapStatic,
@@ -386,9 +386,9 @@ leaf b = ((hash $ Leaf b, 0), Leaf b)
 leafid :: Bool -> NodeId
 leafid b = (hash $ Leaf b, 0)
 
-l1 = (1, 0)
-l0 = (2, 0)
-u = (0, 0)
+l_1 = (1, 0)
+l_0 = (2, 0)
+l_u = (0, 0)
 
 data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
     deriving (Eq, Show, Ord)
@@ -413,7 +413,7 @@ data Path = P'' [Int]
 
 
 path :: Context -> Path -> (Context, Node)
-path c p = path' (-1) (c, ((0,0), Node (-5) (0,0) (0,0))) (sortPathDesc p)
+path c p = path' (-1) (c, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
 
 -- Function to sort the Path data structure in a depth-first manner
 -- from highest to lowest on the integers.
@@ -429,28 +429,28 @@ sortPathDesc (P' taggedPaths) =
     in P' sortedTaggedPaths
 
 l0' b
-  | b == 0 = u
-  | otherwise = l0
+  | b == 0 = l_u
+  | otherwise = l_0
 l1' b
-  | b == 1 = u
-  | otherwise = l1
+  | b == 1 = l_u
+  | otherwise = l_1
 
 
 path' :: Int -> (Context, Node) -> Path -> (Context, Node)
 path' b (c, n) (P' ((i, inf, P'' nodelist) : pl))
-    | inf == Dc1 || inf == Dc0 = path' b (insert c' (InfNodes i rid u u)) (P' pl) -- breadth step
-    | inf == Pos1 = path' b (insert c' (InfNodes i (l0' b) rid u)) (P' pl) -- breadth step
-    | inf == Neg1 = path' b (insert c' (InfNodes i (l0' b) u rid)) (P' pl) -- breadth step
-    | inf == Pos0 = path' b (insert c' (InfNodes i (l1' b) rid u)) (P' pl) -- breadth step
-    | inf == Neg0 = path' b (insert c' (InfNodes i (l1' b) u rid)) (P' pl) -- breadth step
+    | inf == Dc1 || inf == Dc0 = path' b (insert c' (InfNodes i rid l_u l_u)) (P' pl) -- breadth step
+    | inf == Pos1 = path' b (insert c' (InfNodes i (l0' b) rid l_u)) (P' pl) -- breadth step
+    | inf == Neg1 = path' b (insert c' (InfNodes i (l0' b) l_u rid)) (P' pl) -- breadth step
+    | inf == Pos0 = path' b (insert c' (InfNodes i (l1' b) rid l_u)) (P' pl) -- breadth step
+    | inf == Neg0 = path' b (insert c' (InfNodes i (l1' b) l_u rid)) (P' pl) -- breadth step
       where
         (c',(rid,_)) = localpath' (c, n) inf nodelist -- depth first
 path' b (c, n) (P' ((i, inf, pc) : pl))
-    | inf == Dc1 || inf == Dc0 = path' b (insert cDc (InfNodes i ridDc u u)) (P' pl) -- breadth step
-    | inf == Pos1 = path' b (insert c1 (InfNodes i (l0' b) rid1 u)) (P' pl) -- breadth step
-    | inf == Neg1 = path' b (insert c1 (InfNodes i (l0' b) u rid1)) (P' pl) -- breadth step
-    | inf == Pos0 = path' b (insert c0 (InfNodes i (l1' b) rid0 u)) (P' pl) -- breadth step
-    | inf == Neg0 = path' b (insert c0 (InfNodes i (l1' b) u rid0)) (P' pl) -- breadth step
+    | inf == Dc1 || inf == Dc0 = path' b (insert cDc (InfNodes i ridDc l_u l_u)) (P' pl) -- breadth step
+    | inf == Pos1 = path' b (insert c1 (InfNodes i (l0' b) rid1 l_u)) (P' pl) -- breadth step
+    | inf == Neg1 = path' b (insert c1 (InfNodes i (l0' b) l_u rid1)) (P' pl) -- breadth step
+    | inf == Pos0 = path' b (insert c0 (InfNodes i (l1' b) rid0 l_u)) (P' pl) -- breadth step
+    | inf == Neg0 = path' b (insert c0 (InfNodes i (l1' b) l_u rid0)) (P' pl) -- breadth step
       where
         (c0,(rid0,_)) = path' 1 (c, n) pc -- depth first
         (c1,(rid1,_)) = path' 0 (c, n) pc -- depth first
@@ -487,8 +487,8 @@ localpath' (c, n) inf nodeList
               if consequence == initNode then (c, leaf b)
                 else insert c' $ EndInfNode $ fst consequence
             else if n >= 0
-                  then insert c' (Node n next_iter u )
-                      else insert c' (Node (abs n) u next_iter )
+                  then insert c' (Node n next_iter l_u )
+                      else insert c' (Node (abs n) l_u next_iter )
 
         loopNeg c b [] consequence = if consequence == initNode
             then (c, leaf b)
@@ -499,10 +499,10 @@ localpath' (c, n) inf nodeList
               if consequence == initNode then (c, leaf b)
                 else insert c' $ EndInfNode $ fst consequence
             else if n >= 0
-                  then insert c' (Node n next_iter u)
-                      else insert c' (Node (abs n) u next_iter)
+                  then insert c' (Node n next_iter l_u)
+                      else insert c' (Node (abs n) l_u next_iter)
 
-        initNode = ((0,0), Node (-5) (0,0) (0,0)) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout
+        initNode = (l_u, Node (-5) l_u l_u) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout
 
 
 -- | Helper function to nicely format the NodeLookup table

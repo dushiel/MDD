@@ -247,12 +247,12 @@ validViaMdd bls@(BlS _ lawmdd _) f =
     in snd (lawmdd .->. f_node) == top'
 
 evalViaMdd :: BelScene -> Form -> Bool
-evalViaMdd (bls@(BlS _ lawmdd _), s) f =
-    let
+evalViaMdd (bls@(BlS _ lawmdd _), s) f = trace ("\nevaluating state s : " ++ show_dd settings (fst s) (snd s) ++ "\non formula : " ++ show f)
+    (let
         f_node = mddOf bls f
         check_node = s .->. f_node
     in
-        snd check_node == top'
+        snd check_node == top')
 
 instance Semantics BelStruct where
   isTrue = validViaMdd
@@ -407,7 +407,13 @@ instance Update BelScene Event where
           -- 5. Construct New State
           -- s is the old state (MDD).
           -- (a) Relabel s to copies: s(p) -> s(p_copy)
-          s_copy = relabelWith copyRelOrd s
+          r = relabelWith copyRelOrd s
+          r' = existSet (map toOrdinal changeprops) (r)
+          s_copy = trace ("new state based on old state without the consequences." ++
+            "\n relabeling with: " ++ show copyRelOrd ++
+            "\n before quantification: " ++ (show_dd settings (fst r) (snd r)) ++
+            "\n after quantification : " ++ (show_dd settings (fst r') (snd r')))
+            r
 
           -- (b) Intersect with assignments and event facts
           -- This effectively calculates the new values of p based on psi(p_copy) and s(p_copy)
@@ -415,6 +421,11 @@ instance Update BelScene Event where
           factsNode = mddOf tempBls eventFactsShifted
 
           newStateNode = conSet [s_copy, factsNode, conSet assign_laws]
+          -- a method which more closely follows the true mechanisms:
+          -- from the old state: quantify out the variables which could have changed, store their values in another domain, add valuation that event has happened in yet another domain.
+          -- take the new law and apply it to the new "state" by conjunction and it should result in all quantified propositions taking on a single valuation, resulting in a sinlge path/state again
+          -- but because this is a single state we can use list/cube logic on it, so we just gather the propositions that are true and make a Neg1 path out of it.
+          -- this might actually be less efficient, so its worth it in the future to try the method above.
 
           -- 6. Final Vocabulary
           newProps = props ++ addprops ++ copyChangeProps
