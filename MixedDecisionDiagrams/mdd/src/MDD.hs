@@ -33,6 +33,11 @@ class HasNodeLookup a where
     getLookup :: a -> NodeLookup
     setLookup :: NodeLookup -> a -> a
 
+
+instance HasNodeLookup NodeLookup where
+    getLookup = id
+    setLookup nl _ = nl
+
 -- | Context for Binary Operations (e.g., union, intersection)
 data BinaryOperatorContext = BinaryOperatorContext {
   bin_nodelookup :: NodeLookup, -- hashmap of all nodes in the graph
@@ -71,7 +76,7 @@ instance HasNodeLookup DrawOperatorContext where
 type MDD = (NodeLookup, NodeId)
 
 -- | Static MDD Data Type
-type StaticMDD = (NodeLookupStatic, NodeStatic)
+type StaticMDD = (StaticNodeLookup, NodeStatic)
 
 
 init_lookup :: NodeLookup
@@ -106,7 +111,7 @@ defaultNodeMap = HashMap.fromList [
     (1, Map.fromList [(0, Entry{dd = Leaf True, reference_count=1})] :: LookupEntry),
     (2, Map.fromList [(0, Entry{dd = Leaf False, reference_count=1})] :: LookupEntry)]
 
-defaultNodeMapStatic :: NodeLookupStatic
+defaultNodeMapStatic :: StaticNodeLookup
 defaultNodeMapStatic = HashMap.fromList [
     (0, Map.fromList [(0, Entry'{ddStatic = Unknown', reference_count'=1})] :: LookupEntryStatic),
     (1, Map.fromList [(0, Entry'{ddStatic = Leaf' True, reference_count'=1})] :: LookupEntryStatic),
@@ -173,19 +178,14 @@ instance Hashable Level where
         h x = position `hashWithSalt` x `hashWithSalt` hashWithSalt s (L ns i)
 
 
--- hashLevel :: Level -> Dd -> HashedId
--- hashLevel _ (Leaf b) = if b then 1 else 0
--- hashLevel l (Node idx lc rc) = l `hashLevel` idx `hashLevel` fst lc `hashLevel` fst rc
--- hashLevel l (InfNodes idx dc n1 n p1 p) = s `hashLevel` idx `hashLevel` fst dc `hashLevel` fst n1 `hashLevel` fst n `hashLevel` fst p1 `hashLevel` fst p
--- hashLevel l (EndInfNode d) = s `hashLevel` fst d `hashLevel` (2::NodeId)
-
-
 type NodeLookup =  HashMap.HashMap HashedId LookupEntry
 type LookupEntry = Map.Map Int TableEntry
+
 data TableEntry = Entry {
   dd :: Dd,
   reference_count :: Int
-}
+} deriving (Show, Generic)
+
 type Node = (NodeId, Dd)
 
 insert :: (HasNodeLookup c) => c -> Dd -> (c, Node)
@@ -263,7 +263,6 @@ insert_id k v nm = case HashMap.lookup k nm of
         -- `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
 
 
-
 -- todo add referencing and dereferencing of nodes in manager
 -- -- | reduce count (and maybe remove) of a node in the nodelookup table
 -- dereference :: Context -> Node -> Context
@@ -310,7 +309,7 @@ data DdStatic =  Node' [Int] NodeId NodeId               -- left = pos (solid li
                 | Unknown'
     deriving (Eq)
 
-type NodeLookupStatic =  HashMap.HashMap HashedId LookupEntryStatic
+type StaticNodeLookup =  HashMap.HashMap HashedId LookupEntryStatic
 type LookupEntryStatic = Map.Map Int TableEntryStatic
 data TableEntryStatic = Entry' {
   ddStatic :: DdStatic,
@@ -318,7 +317,7 @@ data TableEntryStatic = Entry' {
 }
 type NodeStatic = (NodeId, DdStatic)
 
-getNodeStatic :: NodeLookupStatic -> NodeId -> NodeStatic
+getNodeStatic :: StaticNodeLookup -> NodeId -> NodeStatic
 getNodeStatic nm node_id = case HashMap.lookup (fst node_id) nm of
        Just result -> case Map.lookup (snd node_id) result of
           Just result2 -> (node_id, ddStatic result2)
@@ -351,7 +350,7 @@ match_alternative_static targetDD = Map.foldrWithKey' check Nothing
                         then Just (k, entry)
                         else acc
 
-insert_id_static :: HashedId -> DdStatic -> NodeLookupStatic -> (NodeId, NodeLookupStatic)
+insert_id_static :: HashedId -> DdStatic -> StaticNodeLookup -> (NodeId, StaticNodeLookup)
 insert_id_static k v nm = case HashMap.lookup k nm of
        Just result -> case match_alternative_static v result of -- there is something inserted at this key
          Just (nr, t_entry) -> -- increment the reference countshow_dd settings c b_id
@@ -389,9 +388,6 @@ withCache c@BinaryOperatorContext{bin_cache = nc, bin_dc_stack = dck} ((keyA, _)
       Just result -> (c, getNode c result) --`debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
       Nothing -> let
         (updatedContext, r@(result, _)) = func_with_args
-        -- x = case getDd updatedContext result of
-        --   --(EndInfNode d) -> error ("EndInf to be inserted in func cache" ++ show d)
-        --   _ -> updatedContext
         new_dck = bin_dc_stack updatedContext
         updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB, new_dck) result nc') nc
         in (updatedContext { bin_cache = updatedCache }, r) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
@@ -450,16 +446,16 @@ levelLtoPath :: LevelL -> Path
 levelLtoPath (Ll ((i, inf) : ns) int) = P' [(i, inf, levelLtoPath (Ll ns int))]
 levelLtoPath (Ll [] int) = P'' [int]
 
-makeNode :: (HasNodeLookup c) => c -> LevelL -> (c, Node)
-makeNode c l = path c (levelLtoPath l)
+makeNode :: NodeLookup -> LevelL -> (NodeLookup, Node)
+makeNode nl l = path nl (levelLtoPath l)
 
 
 data Path = P'' [Int]
             | P' [(Int, InfL, Path)] deriving Show
 
 
-path :: (HasNodeLookup c) => c -> Path -> (c, Node)
-path c p = path' (-1) (c, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+path :: NodeLookup -> Path -> (NodeLookup, Node)
+path nl p = path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
 
 -- Function to sort the Path data structure in a depth-first manner
 -- from highest to lowest on the integers.
@@ -482,7 +478,7 @@ l1' b
   | otherwise = l_1
 
 
-path' :: (HasNodeLookup c) => Int -> (c, Node) -> Path -> (c, Node)
+path' :: Int -> (NodeLookup, Node) -> Path -> (NodeLookup, Node)
 path' b (c, n) (P' ((i, inf, P'' nodelist) : pl))
     | inf == Dc1 || inf == Dc0 = path' b (insert c' (InfNodes i rid l_u l_u)) (P' pl) -- breadth step
     | inf == Pos1 = path' b (insert c' (InfNodes i (l0' b) rid l_u)) (P' pl) -- breadth step
@@ -503,7 +499,8 @@ path' b (c, n) (P' ((i, inf, pc) : pl))
         (cDc,(ridDc,_)) = path' b (c, n) pc -- depth first
 path' b (c, n) (P' []) = (c, n) -- end of breadth step, return accumelator to previous call
 
-localpath' :: (HasNodeLookup c) => (c, Node) -> InfL -> [Int] -> (c, Node)
+-- FIX: Changed signature to use NodeLookup directly as requested
+localpath' :: (NodeLookup, Node) -> InfL -> [Int] -> (NodeLookup, Node)
 localpath' (c, n) inf nodeList
     | inf == Dc1 = loopDc c True nodeList n
     | inf == Pos1 = loopPos c True nodeList n
@@ -519,7 +516,7 @@ localpath' (c, n) inf nodeList
           (c', (next_iter,_)) = loopDc c b ns consequence in
             if n ==0 then
               if consequence == initNode then (c, leaf b)
-                else insert c' $ EndInfNode $ fst consequence -- todo: figure out what the order is here, why did i have c instead of c' before this and why did that work..
+                else insert c' $ EndInfNode $ fst consequence
             else if n >= 0
                   then insert c' (Node n next_iter (leafid $not b))
                   else insert c' (Node (abs n) (leafid$ not b) next_iter)

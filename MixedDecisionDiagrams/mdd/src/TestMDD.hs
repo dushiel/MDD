@@ -1,4 +1,3 @@
-
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
@@ -139,7 +138,7 @@ p'p'12 = path (fst p'_p2)       (P' [(1, Pos1, P' [(1, Pos0, P'' [-1, -2])])])
 ndc = path (fst p'p'12)         (P' [(1, Neg1, P' [(1, Dc1, P'' [0])])])
 n'dc' = path (fst p'p'12)       (P' [(1, Neg0, P' [(1, Dc0, P'' [0])])])
 
--- the actual test context, containing all the DD's of the above declarations
+-- | The actual test context (NodeLookup)
 (t_c, _) = p'p'12
 
 

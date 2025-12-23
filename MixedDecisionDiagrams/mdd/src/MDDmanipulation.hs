@@ -344,7 +344,7 @@ class DdF3 a where
     applyInfA :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
     applyInfB :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
     to_str :: String
-    catchup :: String -> BinaryOperatorContext -> Node -> Int -> Node
+    catchup :: (HasNodeLookup c) => String -> c -> Node -> Int -> Node
 
     inferNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
     inferInfNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
@@ -588,7 +588,7 @@ instance (DdF3 a) => Dd1_helper a where
             let
                 -- if there is an above layer
                 -- update func stack so its dc's are on the same level as a and b (if not in dc context)
-                c_ = add_to_stack (positionA, Dc) ((u, Unknown), (u, Unknown), (u, Unknown)) c
+                c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) c
 
                 (c1, dcR) = apply @Dc (traverse_dc @a "inf dc" c_ dcA dcB) s dcA dcB
 
@@ -723,7 +723,7 @@ instance (DdF3 a) => DdUnary a where
 
 
     swap_node_set c nas d@(node_id, InfNodes position dc p n) =  let
-        c_ = add_to_stack_ (position, Dc) ((u, Unknown), (u, Unknown)) c
+        c_ = add_to_stack_ (position, Dc) (((0, 0), Unknown), ((0, 0), Unknown)) c
         (c1, dcR) = swap_node_set @Dc (traverse_dc_unary @a "inf dc" c_ dc) nas (getNode c dc)
         c2_ = add_to_stack_ (position, Neg) (getNode c1 dc, dcR) (reset_stack c1 c)
         (c2, nR) = swap_node_set @Neg (traverse_dc_unary @a "inf neg" c2_ n) nas (getNode c1 n)
@@ -778,7 +778,7 @@ instance (DdF3 a) => DdUnary a where
 
     restrict_node_set c nas b d@(node_id, InfNodes position dc p n) =
         let
-        c_ = add_to_stack_ (position, Dc) ((u, Unknown), (u, Unknown)) c
+        c_ = add_to_stack_ (position, Dc) (((0, 0), Unknown), ((0, 0), Unknown)) c
         (c1, dcR) = restrict_node_set @Dc (traverse_dc_unary @a "inf dc" c_ dc) nas b (getNode c dc)
         c2_ = add_to_stack_ (position, Neg) (getNode c1 dc, dcR) (reset_stack c1 c)
         (c2, nR) = restrict_node_set @Neg (traverse_dc_unary @a "inf neg" c2_ n) nas b (getNode c1 n)

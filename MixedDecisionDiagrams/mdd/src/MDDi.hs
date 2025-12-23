@@ -172,7 +172,7 @@ forall' l n d =
 getDependentVars :: NodeLookup -> [Position] -> Node -> [Position]
 getDependentVars l v dd =
     let ctx = init_unary_context l
-    in filter (\n -> (fst $ restrict_node_set @Dc ctx [0 : n] True dd) /= (fst $ restrict_node_set @Dc ctx [0 : n] False dd)) v
+    in filter (\n -> (snd $ restrict_node_set @Dc ctx [0 : n] True dd) /= (snd $ restrict_node_set @Dc ctx [0 : n] False dd)) v
 
 
 position_as_BDD :: Position -> Bool -> Path
@@ -212,7 +212,7 @@ ddSwapVars mgr z (n1:ns1) (n2:ns2) =
         let (l', r) = ite (var $ position_as_BDD n2 True)
                 (ite (var $ position_as_BDD n1 True) a11 a10)
                 (ite (var $ position_as_BDD n1 True) a01 a00)
-            r'' = (ddSwapVars l' (snd r) ns1 ns2)
+            r'' = (ddSwapVars l' r ns1 ns2)
         in  r''
     where
       a11 = restrict n2 True (restrict n1 True (mgr, z))

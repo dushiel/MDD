@@ -8,7 +8,8 @@ import MDD
 import qualified Data.Map as Map
 import Data.List (intercalate, partition, sort, nub)
 import Data.Maybe (fromMaybe, maybe)
-import SupportMDD (to_static_form')
+-- Import the function signature from SupportMDD. We need to create the context to run it.
+import SupportMDD (to_static_form)
 
 import System.Process (readProcessWithExitCode)
 import System.Exit (ExitCode(..))
@@ -24,22 +25,24 @@ generatePositionMap xss =
 
 -- | Generates a graph image file.
 --   Args:
---     context: The MDD context.
---     rootNode: The starting node.
+--     mdd: The MDD (NodeLookup, Node)
 --     color: Whether to use colored nodes.
 --     hideUnknown: If true, hides the 'Unknown' leaf and its edges.
 --     namingMap: A map from position vectors to custom string labels.
-generateGraphImage :: Context -> MDD.Node -> Bool -> Bool -> Map.Map [Int] String -> IO (Bool, String, FilePath)
-generateGraphImage context rootNode color hideUnknown namingMap = do
+generateGraphImage :: (NodeLookup, Node) -> Bool -> Bool -> Map.Map [Int] String -> IO (Bool, String, FilePath)
+generateGraphImage (lookup, rootNode) color hideUnknown namingMap = do
     let dotFileName = "graph.dot"
         svgFileName = "graph.svg"
     currentDir <- getCurrentDirectory
     let dotFilePath = currentDir </> dotFileName
         svgFilePath = currentDir </> svgFileName
 
-    let (staticContext, staticGraph) = to_static_form' context rootNode
+    -- 1. Convert dynamic MDD to Static MDD using the new context workflow
+    let initCtx = init_unary_context lookup
+    let (staticLookup, staticRoot) = to_static_form initCtx rootNode
+
     -- Pass all flags and the naming map down
-    let dotGraphString = createDotGraph staticContext (fst staticGraph) color hideUnknown namingMap
+    let dotGraphString = createDotGraph staticLookup (fst staticRoot) color hideUnknown namingMap
     writeFile dotFilePath dotGraphString
 
     let dotExecutable = "dot"
@@ -50,37 +53,37 @@ generateGraphImage context rootNode color hideUnknown namingMap = do
         ExitFailure _ -> return (False, "Error generating image: " ++ stderr, "")
 
 -- Default: shows unknown nodes, no custom names
-generateAndShow :: (Context, MDD.Node) -> IO ()
-generateAndShow (context, rootNode) = do
-    (success, message, imageFilePath) <- generateGraphImage context rootNode False False Map.empty
+generateAndShow :: (NodeLookup, MDD.Node) -> IO ()
+generateAndShow mdd = do
+    (success, message, imageFilePath) <- generateGraphImage mdd False False Map.empty
     putStrLn message
     when success $ putStrLn $ "Image file: " ++ imageFilePath
 
 -- Default colored: shows unknown nodes, no custom names
-generateAndShow_c :: (Context, MDD.Node) -> IO ()
-generateAndShow_c (context, rootNode) = do
-    (success, message, imageFilePath) <- generateGraphImage context rootNode True False Map.empty
+generateAndShow_c :: (NodeLookup, MDD.Node) -> IO ()
+generateAndShow_c mdd = do
+    (success, message, imageFilePath) <- generateGraphImage mdd True False Map.empty
     putStrLn message
     when success $ putStrLn $ "Image file: " ++ imageFilePath
 
 -- Hides unknown nodes, no custom names
-generateAndShow_h :: (Context, MDD.Node) -> IO ()
-generateAndShow_h (context, rootNode) = do
-    (success, message, imageFilePath) <- generateGraphImage context rootNode False True Map.empty
+generateAndShow_h :: (NodeLookup, MDD.Node) -> IO ()
+generateAndShow_h mdd = do
+    (success, message, imageFilePath) <- generateGraphImage mdd False True Map.empty
     putStrLn message
     when success $ putStrLn $ "Image file: " ++ imageFilePath
 
 -- Hides unknown nodes, colored, no custom names
-generateAndShow_ch :: (Context, MDD.Node) -> IO ()
-generateAndShow_ch (context, rootNode) = do
-    (success, message, imageFilePath) <- generateGraphImage context rootNode True True Map.empty
+generateAndShow_ch :: (NodeLookup, MDD.Node) -> IO ()
+generateAndShow_ch mdd = do
+    (success, message, imageFilePath) <- generateGraphImage mdd True True Map.empty
     putStrLn message
     when success $ putStrLn $ "Image file: " ++ imageFilePath
 
 -- | Shows unknown nodes, colored, with custom names.
-generateAndShow_cn :: Map.Map [Int] String -> (Context, MDD.Node) -> IO ()
-generateAndShow_cn namingMap (context, rootNode) = do
-    (success, message, imageFilePath) <- generateGraphImage context rootNode True False namingMap
+generateAndShow_cn :: Map.Map [Int] String -> (NodeLookup, MDD.Node) -> IO ()
+generateAndShow_cn namingMap mdd = do
+    (success, message, imageFilePath) <- generateGraphImage mdd True False namingMap
     putStrLn message
     when success $ putStrLn $ "Image file: " ++ imageFilePath
 
@@ -90,13 +93,14 @@ isUnknownNode Unknown' = True
 isUnknownNode _        = False
 
 -- | Traverses the graph to collect node and edge definitions.
-createDotGraph' :: Context -> NodeId -> Map.Map NodeId String -> Bool -> Bool -> Map.Map [Int] String -> ([(NodeId, String, [Int])], [String], Map.Map NodeId String)
-createDotGraph' context startNodeId visited colorized hideUnknown namingMap =
+-- Note: Takes the StaticNodeLookup directly for immutable graph traversal
+createDotGraph' :: StaticNodeLookup -> NodeId -> Map.Map NodeId String -> Bool -> Bool -> Map.Map [Int] String -> ([(NodeId, String, [Int])], [String], Map.Map NodeId String)
+createDotGraph' staticLookup startNodeId visited colorized hideUnknown namingMap =
   case Map.lookup startNodeId visited of
     Just _ -> ([], [], visited) -- Node already visited
     Nothing ->
       let
-        (_nodeId, nodeData) = getNodeStatic context startNodeId
+        (_nodeId, nodeData) = getNodeStatic staticLookup startNodeId
       in
       if hideUnknown && isUnknownNode nodeData
       then ([], [], visited)
@@ -125,8 +129,8 @@ createDotGraph' context startNodeId visited colorized hideUnknown namingMap =
           -- Recursive traversal for child nodes and edges
           (childNodeDefs, childEdgeDefs, finalVisited) = case nodeData of
             Node' _ l r ->
-              let (lDefs, lEdges, v1) = createDotGraph' context l updatedVisited colorized hideUnknown namingMap
-                  (rDefs, rEdges, v2) = createDotGraph' context r v1 colorized hideUnknown namingMap
+              let (lDefs, lEdges, v1) = createDotGraph' staticLookup l updatedVisited colorized hideUnknown namingMap
+                  (rDefs, rEdges, v2) = createDotGraph' staticLookup r v1 colorized hideUnknown namingMap
                   edgeColorStart = if colorized then " [fontcolor=dimgray, " else " ["
                   lEdge = maybe [] (\target -> [nodeIdStr ++ " -> " ++ target ++ edgeColorStart ++ "style=\"solid\", arrowsize=0.75]"]) (Map.lookup l v2)
                   rEdge = maybe [] (\target -> [nodeIdStr ++ " -> " ++ target ++ edgeColorStart ++ "style=\"dashed\", arrowsize=0.75]"]) (Map.lookup r v2)
@@ -134,9 +138,9 @@ createDotGraph' context startNodeId visited colorized hideUnknown namingMap =
               in (lDefs ++ rDefs, lEdges ++ rEdges ++ newEdges, v2)
 
             InfNodes' _ dc p n ->
-              let (dcDefs, dcEdges, v1) = createDotGraph' context dc updatedVisited colorized hideUnknown namingMap
-                  (pDefs, pEdges, v2) = if p /= (0,0) then createDotGraph' context p v1 colorized hideUnknown namingMap else ([], [], v1)
-                  (nDefs, nEdges, v3) = if n /= (0,0) then createDotGraph' context n v2 colorized hideUnknown namingMap else ([], [], v2)
+              let (dcDefs, dcEdges, v1) = createDotGraph' staticLookup dc updatedVisited colorized hideUnknown namingMap
+                  (pDefs, pEdges, v2) = if p /= (0,0) then createDotGraph' staticLookup p v1 colorized hideUnknown namingMap else ([], [], v1)
+                  (nDefs, nEdges, v3) = if n /= (0,0) then createDotGraph' staticLookup n v2 colorized hideUnknown namingMap else ([], [], v2)
                   edgeColorStart = if colorized then "[fontcolor=dimgray, " else "["
                   dcEdge = guard (dc /= (0,0)) >> maybe [] (\t -> [nodeIdStr ++ " -> " ++ t ++ " " ++ edgeColorStart ++ "style=\"dotted\", taillabel=\"Dc\", fontsize=10]"]) (Map.lookup dc v3)
                   pEdge  = guard (p  /= (0,0)) >> maybe [] (\t -> [nodeIdStr ++ " -> " ++ t ++ " " ++ edgeColorStart ++ "style=\"dotted\", taillabel=\"Pos\", fontsize=10]"]) (Map.lookup p v3)
@@ -145,7 +149,7 @@ createDotGraph' context startNodeId visited colorized hideUnknown namingMap =
               in (dcDefs ++ pDefs ++ nDefs, dcEdges ++ pEdges ++ nEdges ++ newEdges, v3)
 
             EndInfNode' cons ->
-              let (consDefs, consEdges, v1) = createDotGraph' context cons updatedVisited colorized hideUnknown namingMap
+              let (consDefs, consEdges, v1) = createDotGraph' staticLookup cons updatedVisited colorized hideUnknown namingMap
                   edgeColor = if colorized then "fontcolor=dimgray" else ""
                   newEdges = maybe [] (\target -> [nodeIdStr ++ " -> " ++ target ++ " [style=\"dotted\", arrowsize=0.75, " ++ edgeColor ++ "];"]) (Map.lookup cons v1)
               in (consDefs, consEdges ++ newEdges, v1)
@@ -154,11 +158,11 @@ createDotGraph' context startNodeId visited colorized hideUnknown namingMap =
         in (newNodeDef : childNodeDefs, childEdgeDefs, finalVisited)
 
 -- | Main function to generate the final .dot graph string using ranks.
-createDotGraph :: Context -> NodeId -> Bool -> Bool -> Map.Map [Int] String -> String
-createDotGraph context startNode colorized hideUnknown namingMap =
+createDotGraph :: StaticNodeLookup -> NodeId -> Bool -> Bool -> Map.Map [Int] String -> String
+createDotGraph staticLookup startNode colorized hideUnknown namingMap =
   let
     -- Pass all arguments down to the recursive traversal
-    (allNodes, allEdges, _) = createDotGraph' context startNode Map.empty colorized hideUnknown namingMap
+    (allNodes, allEdges, _) = createDotGraph' staticLookup startNode Map.empty colorized hideUnknown namingMap
 
     (leafAndUnknownNodes, rest1) = partition (\(_, _, pos) -> pos == [-1]) allNodes
     (endInfNodes, regularNodes)  = partition (\(_, _, pos) -> pos == [-2]) rest1

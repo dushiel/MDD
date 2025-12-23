@@ -142,6 +142,6 @@ current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next
 6. 0 in parsing paths for node initialization is taken as trick to represent Top (in Dc1) or Bot (in Dc0). a negative number in parsing paths for node initialization is taken to be a negative evaluation of the variable (should the pos / neg not already be able to indicate this? maybe we can fix this later).
 
 
-Cleanups of code:
+Recent cleanups of code:
 - separate nodelookup from the function context, such that: MDDs are represented by (NodeLookup, Node), and when starting a operator function a fresh UnaryOperatorContext or a BinaryOperatorContext is made containing the appropriate cache, dc_stack and current_level fields are initialized and passed. For now implement it such that the (...)OperatorContext also contains the (merged) Nodelookups of the input MDD(s). Implement this similarly for a DrawOperatorContext.
 - create a new data type StaticMDD, which consists of (StaticNodeLookup, NodeStatic), such that "to_static_form':: Context -> Node -> (Context, NodeStatic)" becomes "to_static_form':: Context -> Node -> (StaticNodeLookup, NodeStatic)" and etc.

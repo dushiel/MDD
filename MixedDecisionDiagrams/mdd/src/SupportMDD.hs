@@ -122,9 +122,10 @@ add_to_level_ inf ctx =
 pop_stack_ :: UnaryOperatorContext -> (UnaryOperatorContext, Inf)
 pop_stack_ ctx@UnaryOperatorContext{un_dc_stack = (dcs, dcRs), un_current_level = lvs} =
     let (_ : lv@(_, inf) : lvs') = un_current_level ctx
+        n = (length $ lvs') - 1
     in
         (ctx{un_dc_stack = (trimListToSize n dcs, trimListToSize n dcRs ), un_current_level = lv : lvs'}, inf)
-        where n = (length $ lvs') - 1
+
 
 pop_current_level_ :: UnaryOperatorContext -> UnaryOperatorContext
 pop_current_level_ ctx@UnaryOperatorContext{un_current_level = (_ : lvs) } = ctx{un_current_level = lvs}
@@ -151,9 +152,11 @@ instance ResettableContext UnaryOperatorContext where
 
 class All a where
     error_display :: (HasNodeLookup c) => String -> c -> Node -> Node -> a
-    error_display s c (a_id, a) (b_id, b) = error (show s ++ " : " ++ show (getLookup c) ++ ", " ++ show a ++ ", " ++ show b)
+    error_display s c (a_id, a) (b_id, b) =
+        error (show s ++ " : [Context Size: " ++ show (length $ Prelude.show (getLookup c)) ++ "] " ++ show a ++ ", " ++ show b)
 
 instance All (NodeLookup, Node)
+instance All (BinaryOperatorContext, Node)
 
 -- Combined helper function: Processes a single Node based on the move string.
 move_dc :: (HasNodeLookup c) => c -> String -> Node -> Node
@@ -191,7 +194,7 @@ get_static_lv ctx = reverse (map fst (un_current_level ctx))
 
 -- | Plan implementation: becomes Context -> Node -> (StaticNodeLookup, NodeStatic)
 -- Using UnaryOperatorContext as the carrier for the current level and transient lookup.
-to_static_form' :: UnaryOperatorContext -> Node -> (NodeLookupStatic, NodeStatic)
+to_static_form' :: UnaryOperatorContext -> Node -> (StaticNodeLookup, NodeStatic)
 to_static_form' ctx d@(_, Node position pos_child neg_child) = let
     (nl1, (posR, _)) = to_static_form' ctx (getNode ctx pos_child)
     (nl2, (negR, _)) = to_static_form' (setLookup (unionNodeLookup (getLookup ctx) (getLookup ctx)) ctx) (getNode ctx neg_child) -- Note: simplified lookup management for recursion
@@ -200,10 +203,10 @@ to_static_form' ctx d@(_, Node position pos_child neg_child) = let
     in undefined -- Placeholder: see below for full implementation with static lookup threading
 
 -- Better implementation threading the static lookup
-to_static_form :: UnaryOperatorContext -> Node -> (NodeLookupStatic, NodeStatic)
+to_static_form :: UnaryOperatorContext -> Node -> (StaticNodeLookup, NodeStatic)
 to_static_form ctx node = go (defaultNodeMapStatic) ctx node
   where
-    go :: NodeLookupStatic -> UnaryOperatorContext -> Node -> (NodeLookupStatic, NodeStatic)
+    go :: StaticNodeLookup -> UnaryOperatorContext -> Node -> (StaticNodeLookup, NodeStatic)
     go snl c d@(_, Node position pos_child neg_child) =
         let (snl1, (posR, _)) = go snl c (getNode c pos_child)
             (snl2, (negR, _)) = go snl1 c (getNode c neg_child)
