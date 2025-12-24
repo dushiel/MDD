@@ -7,10 +7,12 @@
 {-# HLINT ignore "Use camelCase" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
 {-# HLINT ignore "Eta reduce" #-}
-module Bool_MDD where
+module MDD.Bool where
 
-import MDDi ( top, bot, neg, con, dis, var, var', MDD, top_n, bot_n, unk_n )
-import MDD ( NodeLookup, LevelL, makeNode, unionNodeLookup, Node )
+import MDD.Interface ( top, bot, (-.), (.*.), (.+.), var, var', top_n, bot_n, unk_n )
+import MDD.Types ( NodeLookup, LevelL, Node, MDD )
+import MDD.Manager ( unionNodeLookup )
+import MDD.Construction ( makeNode )
 
 data Form
     = Top
@@ -32,17 +34,17 @@ ddOf nl Bot = (nl, bot_n)
 ddOf nl (Negate a) =
                 let
                     (nl1, r1) = ddOf nl a
-                in neg nl1 r1
+                in (-.) (nl1, r1)
 ddOf nl (And a b) =
                 let
                     (nl1, r1) = ddOf nl a
                     (nl2, r2) = ddOf nl1 b
-                in con nl2 r1 r2
+                in (nl1, r1) .*. (nl2, r2)
 ddOf nl (Or a b) =
                 let
                     (nl1, r1) = ddOf nl a
                     (nl2, r2) = ddOf nl1 b
-                in dis nl2 r1 r2
+                in (nl1, r1) .+. (nl2, r2)
 ddOf nl (Impl a b) = ddOf nl $ Or (Negate a) b
 ddOf nl (ImplR a b) = ddOf nl $ Or a (Negate b)
 ddOf nl (PrpF l) = makeNode nl l
@@ -55,17 +57,17 @@ ddOf' Bot = bot
 ddOf' (Negate a) =
                 let
                     (nl1, r1) = ddOf' a
-                in neg nl1 r1
+                in (-.) (nl1, r1)
 ddOf' (And a b) =
                 let
                     (nl1, r1) = ddOf' a
                     (nl2, r2) = ddOf' b
-                in con (unionNodeLookup nl1 nl2) r1 r2
+                in (nl1, r1) .*. (nl2, r2)
 ddOf' (Or a b) =
                 let
                     (nl1, r1) = ddOf' a
                     (nl2, r2) = ddOf' b
-                in dis (unionNodeLookup nl1 nl2) r1 r2
+                in (nl1, r1) .+. (nl2, r2)
 ddOf' (Impl a b) = ddOf' $ Or (Negate a) b
 ddOf' (ImplR a b) = ddOf' $ Or a (Negate b)
 ddOf' (PrpF l) = var' l

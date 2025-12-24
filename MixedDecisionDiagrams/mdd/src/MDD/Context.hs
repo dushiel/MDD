@@ -1,0 +1,126 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TupleSections #-}
+
+module MDD.Context where
+
+import MDD.Types
+import MDD.Manager
+import Data.Hashable -- Added to bring the 'hash' function into scope
+import qualified Data.HashMap.Strict as HashMap
+import qualified Data.Map as Map
+
+-- | The distinct types of Contexts for different operations.
+-- The Context is the central state manager for all MDD operations.
+-- It tracks the global NodeLookup (nodelookup), operation caches,
+-- and the semantic stacks (dc_stack) needed to resolve continuous logic.
+
+-- | Common interface for accessing and updating the NodeLookup within any Context.
+class HasNodeLookup a where
+    getLookup :: a -> NodeLookup
+    setLookup :: NodeLookup -> a -> a
+
+instance HasNodeLookup NodeLookup where
+    getLookup = id
+    setLookup nl _ = nl
+
+-- | Caching types for memoization of recursive results.
+-- For Binary operations, the cache key includes both NodeIds and the current dc_stack state.
+type Cache = Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId)
+type SingleCache = HashMap.HashMap NodeId NodeId
+type ShowCache = HashMap.HashMap NodeId [String]
+
+-- | Context for Binary Operations (e.g., union, intersection).
+-- dc_stack: Tracks the hierarchy of continuous branches as the algorithm descends into sub-classes.
+-- It represents (dcA, dcB, dcR) respectively.
+-- - dcR is the resulting continuous dc branch used for absorption/elimination checks.
+-- - dcA and dcB are the dc components of the inputs, used to resolve Unknown leaves.
+data BinaryOperatorContext = BinaryOperatorContext {
+  bin_nodelookup :: NodeLookup,
+  bin_cache :: Cache,
+  bin_dc_stack :: ([Node], [Node], [Node]), -- (dcA, dcB, dcR)
+  bin_current_level :: (Level', Level')
+}
+
+instance HasNodeLookup BinaryOperatorContext where
+    getLookup = bin_nodelookup
+    setLookup nl ctx = ctx { bin_nodelookup = nl }
+
+-- | Context for Unary Operations (e.g., negation).
+-- un_dc_stack tracks (dc, dcR) for single-input resolutions.
+data UnaryOperatorContext = UnaryOperatorContext {
+  un_nodelookup :: NodeLookup,
+  un_cache :: SingleCache,
+  un_dc_stack :: ([Node], [Node]),
+  un_current_level :: Level'
+}
+
+instance HasNodeLookup UnaryOperatorContext where
+    getLookup = un_nodelookup
+    setLookup nl ctx = ctx { un_nodelookup = nl }
+
+-- | Context for Drawing/Printing Operations.
+data DrawOperatorContext = DrawOperatorContext {
+  draw_nodelookup :: NodeLookup,
+  draw_cache :: ShowCache
+}
+
+instance HasNodeLookup DrawOperatorContext where
+    getLookup = draw_nodelookup
+    setLookup nl ctx = ctx { draw_nodelookup = nl }
+
+-- ==========================================================================================================
+-- * Initialization helpers
+-- ==========================================================================================================
+
+-- | Initialize a fresh binary context with standard operations registered in the cache.
+init_binary_context :: NodeLookup -> BinaryOperatorContext
+init_binary_context nl = BinaryOperatorContext {
+    bin_nodelookup = nl,
+    bin_cache = Map.fromList (map (, HashMap.empty)
+        ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]),
+    -- Initial stack represents the default "Unknown" context at the top level.
+    bin_dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)], [((0,0), Unknown)]),
+    bin_current_level = ([(0, Dc)], [(0, Dc)])
+}
+
+-- | Initialize a fresh unary context.
+init_unary_context :: NodeLookup -> UnaryOperatorContext
+init_unary_context nl = UnaryOperatorContext {
+    un_nodelookup = nl,
+    un_cache = HashMap.empty,
+    un_dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)]),
+    un_current_level = [(0, Dc)]
+}
+
+-- | Initialize a context for visualization.
+init_draw_context :: NodeLookup -> DrawOperatorContext
+init_draw_context nl = DrawOperatorContext {
+    draw_nodelookup = nl,
+    draw_cache = HashMap.empty
+}
+
+-- ==========================================================================================================
+-- * Node Retrieval and Persistence
+-- ==========================================================================================================
+
+-- | Basic node retrieval from context using the global lookup table.
+getDd :: (HasNodeLookup c) => c -> NodeId -> Dd
+getDd c node_id =
+    let nm = getLookup c
+    in case HashMap.lookup (fst node_id) nm of
+       Just result -> case Map.lookup (snd node_id) result of
+          Just entry -> dd entry
+          Nothing -> error $ "Node address without Alternative in NodeLookup: " ++ show node_id
+       Nothing -> error $ "Node address not in table/map: " ++ show node_id
+
+-- | Retrieves a full Node (Id and Data) from the context.
+getNode :: (HasNodeLookup c) => c -> NodeId -> Node
+getNode c node_id = (node_id, getDd c node_id)
+
+-- | Insertion of a Dd node into the context's lookup table.
+-- Returns the updated context and the resulting Node.
+insert :: (HasNodeLookup c) => c -> Dd -> (c, Node)
+insert c d =
+    -- Calls insert_id from MDD.Manager. hash is now in scope.
+    let (new_id, rnm) = insert_id (hash d) d (getLookup c)
+    in (setLookup rnm c, (new_id, d))
