@@ -64,7 +64,7 @@ settings = ShowSetting {
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
-            ,   debug_on = True
+            ,   debug_on = False
             ,   save_logs = False
 
             ,   debug_open = True
@@ -152,33 +152,50 @@ showTree' c f d@(nid, Node a l r) =
         res = ("("++ f a ++") " ++ col Dull Blue (show_id nid)) : concat (indentChildren [s1, s2])
     in withCache' c'' d res
 
-showTree' c f d@(nid, InfNodes a dc p n) =
-    let (c1, sDc) = showTree' c f (getNode c dc)
-        (c2, sP) = if p == l_u then (c1, ["[u]"]) else showTree' c1 f (getNode c1 p)
-        (c3, sN) = if n == l_u then (c2, ["[u]"]) else showTree' c2 f (getNode c2 n)
-        header = "<"++ f a ++ "> inf " ++ col Dull Blue (show_id nid)
-        res = header : "  ║  " : concat (indentInfChildren [sDc, sP, sN])
-    in withCache' c3 d res
+showTree' c f d@(nid, InfNodes a dc (0,0) (0,0)) = withCache' c' d $
+    ("<"++ f a ++ "> dc " ++ col Dull Blue (show_id nid)) : "  ║  " :
+    concat (indentInfChildren [s1])
+    where
+        (c', s1) = showTree' c f (getNode c dc)
+showTree' c f d@(nid, InfNodes a dc p (0, 0)) = withCache' c'' d $
+    ("<"++ f a ++ "> dc, p " ++ col Dull Blue (show_id nid)) : "  ║  " :
+    concat (indentInfChildren [s1, s2])
+    where
+        (c', s1) = showTree' c f (getNode c dc)
+        (c'', s2) = showTree' c' f (getNode c' p)
+showTree' c f d@(nid, InfNodes a dc (0, 0) n) = withCache' c'' d $
+    ("<"++ f a ++ "> dc, n " ++ col Dull Blue (show_id nid)) : "  ║  " :
+    concat (indentInfChildren [s1, r_p1])
+    where
+        (c', s1) = showTree' c f (getNode c dc)
+        (c'', r_p1) = showTree' c' f (getNode c' n)
+showTree' c f d@(nid, InfNodes a dc p n) = withCache' c''' d $
+    ("<"++ f a ++ "> dc, p, n " ++ col Dull Blue (show_id nid)) : "  ║  " :
+    concat (indentInfChildren [s1, r_p, r_n])
+    where
+        (c', r_p) = showTree' c f (getNode c p)
+        (c'', s1) = showTree' c' f (getNode c' dc)
+        (c''', r_n) = showTree' c'' f (getNode c'' n)
 
 showTree' c f d@(nid, EndInfNode cons) =
     let (c', s1) = showTree' c f (getNode c cons)
         res = ("<> " ++ col Dull Blue (show_id nid)) : "  ║  " : concat (indentInfChildren [s1])
     in withCache' c' d res
 
-showTree :: DrawOperatorContext -> Node -> String
-showTree c d = "\n" ++ unlines (showTree'' c show d)
+showTree :: MDD -> String
+showTree (MDD (nl, node)) = "\n" ++ unlines (showTree'' (init_draw_context nl) show node)
 
-showTree2 :: DrawOperatorContext -> Node -> String
-showTree2 c d = unlines (showTree'' c show d)
+showTree2 :: MDD -> String
+showTree2 (MDD (nl, node)) = unlines (showTree'' (init_draw_context nl) show node)
 
-showTree3 :: DrawOperatorContext -> Node -> String
-showTree3 c d = unlines (showTree'' c show d)
+showTree3 :: MDD -> String
+showTree3 (MDD (nl, node)) = unlines (showTree'' (init_draw_context nl) show node)
 
-drawTree2 :: DrawOperatorContext -> Node -> IO ()
-drawTree2 c d = putStrLn (showTree2 c d)
+drawTree2 :: MDD -> IO ()
+drawTree2 mdd = putStrLn (showTree2 mdd)
 
-drawTree3 :: DrawOperatorContext -> Node -> IO ()
-drawTree3 c x = putStrLn (showTree c x)
+drawTree3 :: MDD -> IO ()
+drawTree3 mdd = putStrLn (showTree mdd)
 
 -- ==========================================================================================================
 -- * String Representation
@@ -348,6 +365,7 @@ jsonwrap k v = "{ \""++ k ++    "\": \"" ++ v ++ "\" }"
 
 show_a_b :: (HasNodeLookup c) => c -> Node -> Node -> String
 show_a_b c a b = "\\n  ->   " ++ show_dd settings c a ++ "\\n  ->   " ++ show_dd settings c b
+
 
 myTrace :: String -> a -> a
 myTrace msg x = unsafePerformIO $ do

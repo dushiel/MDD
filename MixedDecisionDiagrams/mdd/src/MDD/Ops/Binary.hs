@@ -16,6 +16,7 @@ import MDD.Context
 import MDD.Manager
 import MDD.Stack
 import MDD.Traversal
+import MDD.Draw (debug_manipulation, debug_dc_traverse)
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Kind (Constraint)
@@ -88,8 +89,8 @@ class Dd1 a where
     endinf_case :: BinaryOperatorContext -> String -> NodeId -> NodeId -> NodeId -> NodeId -> (BinaryOperatorContext, Node)
 
 instance (DdF3 a, Dd1_helper a) => Dd1 a where
-    apply c s a b = apply' @a c s (getNode c a) (getNode c b)
-    apply'' c s a b = apply' @a c s a b
+    apply c s a b = debug_manipulation (apply' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)
+    apply'' c s a b = apply' @a c s a b  -- Internal function, no debug wrapper to avoid double printing
 
     apply' c s a@(_, Leaf _) b = leaf_cases @a c s a b
     apply' c s a b@(_, Leaf _) = leaf_cases @a c s a b
@@ -167,8 +168,8 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
 
 -- | ======================== DC versions (Argument B is DC type) ========================
 
-    applyDcB c s a b = applyDcB' @a c s (getNode c a) (getNode c b)
-    applyDcB'' c s a b = applyDcB' @a c s a b
+    applyDcB c s a b = debug_manipulation (applyDcB' @a c s (getNode c a) (getNode c b)) s (s ++ "DcB " ++ to_str @a) c (getNode c a) (getNode c b)
+    applyDcB'' c s a b = applyDcB' @a c s a b  -- Internal function, no debug wrapper to avoid double printing
 
     applyDcB' c s a@(_, Leaf _) b = dcB_leaf_cases @a c s a b
     applyDcB' c s a b@(_, Leaf _) = dcB_leaf_cases @a c s a b
@@ -230,8 +231,8 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
 
 -- | ======================== DcA versions (Argument A is DC type) ========================
 
-    applyDcA c s a b = applyDcA' @a c s (getNode c a) (getNode c b)
-    applyDcA'' c s a b = applyDcA' @a c s a b
+    applyDcA c s a b = debug_manipulation (applyDcA' @a c s (getNode c a) (getNode c b)) s (s ++ "DcA " ++ to_str @a) c (getNode c a) (getNode c b)
+    applyDcA'' c s a b = applyDcA' @a c s a b  -- Internal function, no debug wrapper to avoid double printing
 
     applyDcA' c s a@(_, Leaf _) b = dcA_leaf_cases @a c s a b
     applyDcA' c s a b@(_, Leaf _) = dcA_leaf_cases @a c s a b
@@ -343,7 +344,7 @@ applyInfA c s a@(a_id, _) b@(_, InfNodes positionB _ _ _) = let
 applyInfB :: forall a. (Dd1 a, DdF3 a, Dd1_helper a) => BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
 applyInfB c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
         (c', (r_id, _)) = applyElimRule @a c (EndInfNode b_id)
-        (c'', r') = insert c' $ InfNodes positionA (0,0) (0,0) r_id
+        (c'', r') = insert c' $ InfNodes positionA r_id (0,0) (0,0)
     in applyInf @a c'' s a r'
 
 -- | Helper wrapper for inferred node recursive calls

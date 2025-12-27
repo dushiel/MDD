@@ -152,10 +152,7 @@ n'dc'  = add_path ndc              (P' [(1, Neg0, P' [(1, Dc0, P'' [0])])])
 test :: IO ()
 test = do
     emptyFile
-    let failures = [show i | (i, False) <- zip [(0::Int)..] results]
-    if null failures
-        then putStrLn "All boolean logic tests passed!"
-        else putStrLn $ "Failures at indices: " ++ unwords failures
+    mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
     where
         results = [
 -- combining simple boolean DD's

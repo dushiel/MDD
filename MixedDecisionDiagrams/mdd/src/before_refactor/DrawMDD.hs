@@ -334,7 +334,7 @@ debug5 f s = if save_logs settings
 
 myTrace :: String -> a -> a
 myTrace msg x = unsafePerformIO $ do
-    msg `deepseq` return (trace msg x)
+    msg `deepseq` return x
 
 myDebugLog :: String -> a -> a
 myDebugLog msg x = unsafePerformIO $ do

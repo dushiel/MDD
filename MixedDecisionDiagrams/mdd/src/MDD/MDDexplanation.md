@@ -133,7 +133,153 @@ current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next
 
 
 Recent cleanups of code:
-- separate nodelookup from the function context, such that: MDDs are represented by (NodeLookup, Node), and when starting a operator function a fresh UnaryOperatorContext or a BinaryOperatorContext is made containing the appropriate cache, dc_stack and current_level fields are initialized and passed. For now implement it such that the (...)OperatorContext also contains the (merged) Nodelookups of the input MDD(s). Implement this similarly for a DrawOperatorContext.
-- Static type is treated differently
-- MDD has an Eq instance now.
-- Nodelookup and operator contexts are now split, such that the nodelookup is attached to a node to form an MDD type, and a fresh (operator/ draw) context is made each time an operator is used.
+
+**1. MDD Type Representation**
+- **Before**: MDD was a type synonym: `type MDD = (NodeLookup, Node)`
+- **After**: MDD is now a newtype wrapper: `newtype MDD = MDD { unMDD :: (NodeLookup, Node) }`
+- Added `Eq` instance that compares MDDs by their root NodeId (assuming canonical representation)
+- Added `Show` instance for better debugging and display
+
+**2. Context Architecture Refactoring**
+- **Before**: Single monolithic `Context` type containing all state (nodelookup, binary cache, unary cache, dc_stacks, static nodelookup, draw cache)
+- **After**: Split into operation-specific context types:
+  - `BinaryOperatorContext`: For binary operations (union, intersection) with `bin_cache`, `bin_dc_stack`, `bin_current_level`
+  - `UnaryOperatorContext`: For unary operations (negation) with `un_cache`, `un_dc_stack`, `un_current_level`
+  - `DrawOperatorContext`: For visualization operations with `draw_cache`
+- Each context type implements the `HasNodeLookup` typeclass for unified access to the NodeLookup
+
+**3. NodeLookup Separation and Lifecycle**
+- **Before**: NodeLookup was stored in the persistent Context object, which was passed around and mutated
+- **After**: NodeLookup is part of the MDD itself. When combining MDDs:
+  - NodeLookups are merged using `unionNodeLookup` before creating a fresh operator context
+  - A new operator context is created for each operation with the merged NodeLookup
+  - The context is ephemeral and only exists during the operation
+  - The resulting MDD contains the updated NodeLookup from the context
+
+**4. Static Type Handling**
+- **Before**: Static types (`DdStatic`, `NodeLookupStatic`) were embedded in the main `Context` as `nodelookup_static`
+- **After**: Static types moved to separate `MDD.Static` module:
+  - Renamed to `StaticNodeLookup` (was `NodeLookupStatic`)
+  - Static transformation (`to_static_form`) now takes `UnaryOperatorContext` and returns `(StaticNodeLookup, NodeStatic)`
+  - No longer part of the main operator contexts, treated as a separate visualization concern
+
+**5. Module Organization**
+- **Before**: Large monolithic `MDD.hs` file (695 lines) containing types, context, manager logic, hashing, construction, and utilities
+- **After**: Split into focused modules:
+  - `MDD.Types`: Core type definitions (MDD, Dd, Inf, NodeId, etc.)
+  - `MDD.Context`: Context types and initialization
+  - `MDD.Manager`: NodeLookup management, hashing, insertion logic
+  - `MDD.Static`: Static translation for visualization
+  - `MDD.Construction`: Path-based node construction
+  - `MDD.Ops.Binary` / `MDD.Ops.Unary`: Operation implementations
+  - `MDD.Interface`: Public API with operator overloading
+  - `MDD.Draw`: Visualization functions
+
+**6. Code Quality Improvements**
+- Removed debug/trace code and colorization utilities from core modules
+- Cleaner separation of concerns
+- More explicit type signatures
+- Better use of typeclasses (`HasNodeLookup`) for polymorphism
+
+**7. Detailed Code-Level Changes**
+
+**7.1. Removed Debug/Trace and Colorization from Core Modules**
+
+**Removed from `MDD.hs` (now in `MDD.Draw` only):**
+- `debug :: c -> String -> c` - trace wrapper function
+- `col :: ColorIntensity -> Color -> String -> String` - ANSI color formatting
+- `colorize :: String -> String -> String` - string colorization with named colors
+- `setColor24bit :: Int -> Int -> Int -> String` - 24-bit color codes
+- `resetColor :: String` - ANSI reset code
+- `import System.Console.ANSI` - removed from core module
+- `import Debug.Trace ( trace )` - removed from core module
+
+**Removed Show instances with colorization:**
+- `instance Show Context` - completely removed (was 7 lines with formatted output)
+- `instance Show Dd` - changed from custom 10-line implementation with colorization to `deriving Show` in Types.hs
+
+**Removed utility functions:**
+- `showNodeLookupDetails :: NodeLookup -> String` - formatted NodeLookup display (13 lines)
+- `show_context :: Context -> [Char]` - moved to Draw.hs with different signature: `show_context :: (HasNodeLookup c) => c -> String`
+- `show_dc_stack :: Context -> String` - moved to Draw.hs as `show_dc_stack_str :: BinaryOperatorContext -> String`
+- `show_id :: NodeId -> String` - moved to Draw.hs (same implementation)
+- `show_id' :: Node -> String` - moved to Draw.hs (same implementation)
+
+**7.2. Removed Functions**
+
+**Completely removed (no replacement found):**
+- `getDd_ :: NodeLookup -> NodeId -> Dd` - standalone version that took NodeLookup directly (was 6 lines)
+- `getEntry :: Context -> NodeId -> TableEntry` - utility to get TableEntry from Context (was 5 lines, used in commented-out dereference code)
+
+**7.3. Error Message Changes**
+
+**Fixed typos:**
+- Old: `"Node adress without Alternative..."` (typo: "adress")
+- New: `"Node address without Alternative..."` (fixed: "address")
+- Old: `"Node adress without Node..."` (typo: "adress")
+- New: `"Node address not in table/map..."` (fixed: "address")
+
+**Simplified error messages:**
+- Old: Included full context in error: `++ "\n\n with context:" ++ show c`
+- New: Only shows node_id: `++ show node_id`
+- Old: `++ "\n\n with nodelookup:"` (incomplete message)
+- New: Cleaner, more concise messages
+
+**7.4. Function Signature Changes**
+
+**Polymorphic via typeclass:**
+- `getDd`: Changed from `Context -> NodeId -> Dd` to `(HasNodeLookup c) => c -> NodeId -> Dd`
+- `getNode`: Changed from `Context -> NodeId -> Node` to `(HasNodeLookup c) => c -> NodeId -> Node`
+- `insert`: Changed from `Context -> Dd -> (Context, Node)` to `(HasNodeLookup c) => c -> Dd -> (c, Node)`
+
+**7.5. Interface/API Changes**
+
+**Binary operations (`.*.` and `.+`):**
+- **Old**: Called `apply'` then separately called `applyElimRule`:
+  ```haskell
+  (ctx', (_, r_dd)) = apply' @Dc ctx "inter" a b
+  (ctx'', r) = applyElimRule @Dc ctx' r_dd
+  ```
+- **New**: `apply` directly returns final result (elimination rules applied internally):
+  ```haskell
+  (ctx', r) = apply @Dc ctx "inter" (fst a) (fst b)
+  ```
+- **Note**: This suggests `applyElimRule` is now called internally within `apply'` via `uncurry (applyElimRule @a)`, consolidating what were previously two separate steps.
+
+**7.6. Potential Issues or Inconsistencies**
+
+1. **Missing `applyElimRule` call in interface?**: ✅ **CONFIRMED NON-ISSUE**. The old code explicitly called `applyElimRule` after `apply'` because `apply'` returned `(Context, Node)` where the Node contained a `Dd` (not yet eliminated). In the new code, `apply'` directly calls `applyElimRule` internally via `uncurry (applyElimRule @a)` or direct calls (see line 113 in Binary.hs), so `apply` already returns the final eliminated result. This is a correct refactoring that consolidates the two-step process into one.
+
+2. **Removed `getDd_` function**: This standalone function that took `NodeLookup` directly is no longer available. If any code outside the context system needed direct NodeLookup access, it would need to be updated.
+
+3. **Removed `getEntry` function**: This was used to access `TableEntry` (which includes `reference_count`). If reference counting inspection was needed, this functionality is now lost.
+
+4. **Show instance removal**: `Show Context` was completely removed. If code relied on `show` for Context debugging, it would now fail. However, this is likely fine since Contexts are now ephemeral.
+
+5. **Error message context loss**: The new error messages don't include the full context, which might make debugging harder, but the messages are cleaner and the contexts are now ephemeral anyway.
+
+6. **Debug output not showing in real-time**: ✅ **FIXED**. The new code removed `debug_manipulation` wrapper from `apply` calls:
+   - **Old**: `apply c s a b = debug_manipulation (apply' @a ...) ...` (line 83 in SODDmanipulation.hs)
+   - **New (before fix)**: `apply c s a b = apply' @a c s (getNode c a) (getNode c b)` (line 91 in Binary.hs)
+   - **New (after fix)**: `apply c s a b = debug_manipulation (apply' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)`
+   - **Impact**: Debug output was not showing from `apply` operations
+   - **Fix applied**:
+     - Added `debug_manipulation` wrapper to `apply`, `apply''`, `applyDcB`, `applyDcB''`, `applyDcA`, `applyDcA''` in Binary.hs
+     - Added `debug_dc_traverse` wrapper to `traverse_dc` in Traversal.hs
+     - Modified `myTrace` to flush stderr for real-time output: added `hPutStr stderr msg` and `hFlush stderr`
+     - Modified `debug5` to flush stderr: changed from simple `trace` to `unsafePerformIO` with explicit stderr flushing
+
+7. **`debug5` signature change**: ⚠️ **BREAKING CHANGE** (partially fixed). The signature changed:
+   - **Old**: `debug5 :: Node -> String -> Node` (used for logging test results)
+   - **New**: `debug5 :: Bool -> String -> Bool` (used for test assertions)
+   - **Impact**: While both work with infix notation `b \`debug5\` "msg"`, the old version logged the Node result, the new only traces the message. This may cause missing debug information.
+   - **Note**: The new version also doesn't check `save_logs settings` like the old version did.
+   - **Fix applied**: Modified `debug5` to flush stderr for real-time output using `unsafePerformIO` with `hPutStr` and `hFlush`
+
+
+to build the project use "cabal build" in the project home folder.
+
+
+
+future addons:
+- add colorized drawtree setting

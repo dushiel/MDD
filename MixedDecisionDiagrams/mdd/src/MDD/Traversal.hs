@@ -15,6 +15,7 @@ module MDD.Traversal where
 import MDD.Types
 import MDD.Context
 import MDD.Stack
+import MDD.Draw (debug_dc_traverse)
 import Data.Kind (Constraint)
 
 -- | Shared helper function to move down the tree based on semantic role.
@@ -88,14 +89,14 @@ instance DdF3 Dc where
     to_str = "Dc"
 
 instance DdF3 Pos where
-    inferNodeA f c s a@(a_id, _) (_, Node positionB _ _) =
+    inferNodeA f c s a@(a_id, _) b@(b_id, Node positionB _ _) =
         let (c', r) = insert c (Node positionB a_id (0,0))
-            (c'', (r_node_id, _)) = f c' s r (getNode c' (0,0))
+            (c'', (r_node_id, _)) = f c' s r (getNode c' b_id)
         in (c'', getDd c'' r_node_id)
 
-    inferNodeB f c s (_, Node positionA _ _) b@(b_id, _) =
+    inferNodeB f c s a@(a_id, Node positionA _ _) b@(b_id, _) =
         let (c', r) = insert c (Node positionA b_id (0,0))
-            (c'', (r_node_id, _)) = f c' s (getNode c' (0,0)) r
+            (c'', (r_node_id, _)) = f c' s (getNode c' a_id) r
         in (c'', getDd c'' r_node_id)
 
     -- applyElimRule :: BinaryOperatorContext -> Dd -> (BinaryOperatorContext, Node)
@@ -115,14 +116,14 @@ instance DdF3 Pos where
     to_str = "Pos"
 
 instance DdF3 Neg where
-    inferNodeA f c s a@(a_id, _) (_, Node positionB _ _) =
+    inferNodeA f c s a@(a_id, _) b@(b_id, Node positionB _ _) =
         let (c', r) = insert c (Node positionB (0,0) a_id)
-            (c'', (r_node_id, _)) = f c' s r (getNode c' (0,0))
+            (c'', (r_node_id, _)) = f c' s r (getNode c' b_id)
         in (c'', getDd c'' r_node_id)
 
-    inferNodeB f c s (_, Node positionA _ _) b@(b_id, _) =
+    inferNodeB f c s a@(a_id, Node positionA _ _) b@(b_id, _) =
         let (c', r) = insert c (Node positionA (0,0) b_id)
-            (c'', (r_node_id, _)) = f c' s (getNode c' (0,0)) r
+            (c'', (r_node_id, _)) = f c' s (getNode c' a_id) r
         in (c'', getDd c'' r_node_id)
 
     -- applyElimRule :: BinaryOperatorContext -> Dd -> (BinaryOperatorContext, Node)
@@ -147,7 +148,7 @@ class Dd1_helper (a :: Inf) where
     traverse_dc_generic :: String -> BinaryOperatorContext -> Node -> Node -> Node
 
 instance (DdF3 a) => Dd1_helper a where
-    traverse_dc s c a b =
+    traverse_dc s c a b = debug_dc_traverse s c a b $
         if to_str @a == "Dc" then c
         else
             let (dcAs, dcBs, dcRs) = bin_dc_stack c

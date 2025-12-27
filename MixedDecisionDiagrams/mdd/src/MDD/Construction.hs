@@ -8,6 +8,8 @@ import MDD.Context
 import Data.List (sortBy)
 import Data.Ord (Down(..))
 import Data.Hashable
+import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.Map as Map
 
 -- ==========================================================================================================
 -- * Basic construction of nodes and paths
@@ -44,13 +46,14 @@ path__ :: Path -> MDD
 path__ p = MDD $ path' (-1) (init_lookup, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
 
 path :: NodeLookup -> Path -> MDD
-path nl p = MDD $ path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+path nl p = MDD $  path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
 
 add_path :: MDD -> Path -> MDD
 add_path mdd p = let
     nl = (fst $ unMDD mdd)
     starting_default_trick_mdd = (l_u, Node (-5) l_u l_u)
-    in MDD $ path' (-1) (nl, starting_default_trick_mdd) (sortPathDesc p)
+    (nl', node) = path' (-1) (nl, starting_default_trick_mdd) (sortPathDesc p)
+    in MDD (nl', node)
 
 
 -- | Function to sort the Path data structure in a depth-first manner
