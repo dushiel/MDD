@@ -63,10 +63,10 @@ unk :: MDD
 unk = (c, unk_n)
 
 var :: Path -> MDD
-var p = let (c', n) = path init_lookup p in (getLookup c', n)
+var p = let (c', n) = path init_lookup p in (c', n)
 
 var' :: LevelL -> MDD
-var' l = let (c', n) = makeNode init_lookup l in (getLookup c', n)
+var' l = let (c', n) = makeNode init_lookup l in (c', n)
 
 (-.) :: MDD -> MDD
 (-.) (la, a) = neg la a

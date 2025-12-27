@@ -26,84 +26,42 @@ import Data.Ord (Down(..))
 -- * definition + initialization of manager
 -- ==========================================================================================================
 
--- | The distinct types of Contexts for different operations
 
--- | Common interface for accessing the NodeLookup
-class HasNodeLookup a where
-    getLookup :: a -> NodeLookup
-    setLookup :: NodeLookup -> a -> a
+data Context = Context {
+  nodelookup:: NodeLookup, -- hashmap of all nodes in the graph
 
+  -- process manager for binary operations
+  cache :: Cache,
+  dc_stack :: ([Node], [Node], [Node]), -- remember on what infnode what dc's there are when unknowns need to be resolved
+  current_level :: (Level', Level'), -- todo implement this still, so that hashing uses a level instead of position only
 
-instance HasNodeLookup NodeLookup where
-    getLookup = id
-    setLookup nl _ = nl
+  -- process manager for unary operations
+  cache_ :: SingleCache,
+  dc_stack_ :: ([Node], [Node]), -- remember on what infnode what dc's there are when unknowns need to be resolved for single
+  current_level_ :: Level',
 
--- | Context for Binary Operations (e.g., union, intersection)
-data BinaryOperatorContext = BinaryOperatorContext {
-  bin_nodelookup :: NodeLookup, -- hashmap of all nodes in the graph
-  bin_cache :: Cache,
-  bin_dc_stack :: ([Node], [Node], [Node]), -- remember on what infnode what dc's there are when unknowns need to be resolved
-  bin_current_level :: (Level', Level') -- todo implement this still, so that hashing uses a level instead of position only
+  -- hashmap for static version of Decision Diagram
+  nodelookup_static:: NodeLookupStatic,
+
+  -- manager for drawing functions
+  cache' :: ShowCache
 }
 
-instance HasNodeLookup BinaryOperatorContext where
-    getLookup = bin_nodelookup
-    setLookup nl ctx = ctx { bin_nodelookup = nl }
+init_manager :: Context
+init_manager = Context{
+    nodelookup = defaultNodeMap,
 
--- | Context for Unary Operations (e.g., negation)
-data UnaryOperatorContext = UnaryOperatorContext {
-  un_nodelookup :: NodeLookup,
-  un_cache :: SingleCache,
-  un_dc_stack :: ([Node], [Node]), -- remember on what infnode what dc's there are when unknowns need to be resolved for single
-  un_current_level :: Level'
-}
+    cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId) ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId),
+    dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)], [((0,0), Unknown)]),
+    current_level = ([(0, Dc)], [(0, Dc)]),
 
-instance HasNodeLookup UnaryOperatorContext where
-    getLookup = un_nodelookup
-    setLookup nl ctx = ctx { un_nodelookup = nl }
+    cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
+    dc_stack_ = ([((0,0), Unknown)], [((0,0), Unknown)]),
+    current_level_ = [(0, Dc)],
 
--- | Context for Drawing/Printing Operations
-data DrawOperatorContext = DrawOperatorContext {
-  draw_nodelookup :: NodeLookup,
-  draw_cache :: ShowCache
-}
-
-instance HasNodeLookup DrawOperatorContext where
-    getLookup = draw_nodelookup
-    setLookup nl ctx = ctx { draw_nodelookup = nl }
-
--- | MDD Data Type
-type MDD = (NodeLookup, NodeId)
-
--- | Static MDD Data Type
-type StaticMDD = (StaticNodeLookup, NodeStatic)
-
-
-init_lookup :: NodeLookup
-init_lookup = defaultNodeMap
-
-init_binary_context :: NodeLookup -> BinaryOperatorContext
-init_binary_context nl = BinaryOperatorContext {
-    bin_nodelookup = nl,
-    bin_cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId) ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId),
-    bin_dc_stack = ([(l_u, Unknown)], [(l_u, Unknown)], [(l_u, Unknown)]),
-    bin_current_level = ([(0, Dc)], [(0, Dc)])
-}
-
-init_unary_context :: NodeLookup -> UnaryOperatorContext
-init_unary_context nl = UnaryOperatorContext {
-    un_nodelookup = nl,
-    un_cache = HashMap.empty :: HashMap.HashMap NodeId NodeId,
-    un_dc_stack = ([(l_u, Unknown)], [(l_u, Unknown)]),
-    un_current_level = [(0, Dc)]
-}
-
-init_draw_context :: NodeLookup -> DrawOperatorContext
-init_draw_context nl = DrawOperatorContext {
-    draw_nodelookup = nl,
-    draw_cache = HashMap.empty
-}
-
+    nodelookup_static = defaultNodeMapStatic,
+    cache' = HashMap.empty
+    }
 
 defaultNodeMap :: NodeLookup
 defaultNodeMap = HashMap.fromList [
@@ -111,7 +69,7 @@ defaultNodeMap = HashMap.fromList [
     (1, Map.fromList [(0, Entry{dd = Leaf True, reference_count=1})] :: LookupEntry),
     (2, Map.fromList [(0, Entry{dd = Leaf False, reference_count=1})] :: LookupEntry)]
 
-defaultNodeMapStatic :: StaticNodeLookup
+defaultNodeMapStatic :: NodeLookupStatic
 defaultNodeMapStatic = HashMap.fromList [
     (0, Map.fromList [(0, Entry'{ddStatic = Unknown', reference_count'=1})] :: LookupEntryStatic),
     (1, Map.fromList [(0, Entry'{ddStatic = Leaf' True, reference_count'=1})] :: LookupEntryStatic),
@@ -178,53 +136,49 @@ instance Hashable Level where
         h x = position `hashWithSalt` x `hashWithSalt` hashWithSalt s (L ns i)
 
 
+-- hashLevel :: Level -> Dd -> HashedId
+-- hashLevel _ (Leaf b) = if b then 1 else 0
+-- hashLevel l (Node idx lc rc) = l `hashLevel` idx `hashLevel` fst lc `hashLevel` fst rc
+-- hashLevel l (InfNodes idx dc n1 n p1 p) = s `hashLevel` idx `hashLevel` fst dc `hashLevel` fst n1 `hashLevel` fst n `hashLevel` fst p1 `hashLevel` fst p
+-- hashLevel l (EndInfNode d) = s `hashLevel` fst d `hashLevel` (2::NodeId)
+
+
 type NodeLookup =  HashMap.HashMap HashedId LookupEntry
 type LookupEntry = Map.Map Int TableEntry
-
 data TableEntry = Entry {
   dd :: Dd,
   reference_count :: Int
-} deriving (Show, Generic)
-
+}
 type Node = (NodeId, Dd)
 
-insert :: (HasNodeLookup c) => c -> Dd -> (c, Node)
-insert c d =
-    let nm = getLookup c
-        (new_id, rnm) = insert_id (hash d) d nm
-    in (setLookup rnm c, (new_id, d)) --`debug` ("about to insert " ++ show d  ++ "  ,  " ++ (show new_id))
+insert :: Context -> Dd -> (Context, Node)
+insert c@Context{nodelookup = nm} d = let (new_id, rnm) = insert_id (hash d) d nm in (c{nodelookup = rnm}, (new_id, d)) --`debug` ("about to insert " ++ show d  ++ "  ,  " ++ (show new_id))
 
-getDd :: (HasNodeLookup c) => c -> NodeId -> Dd
-getDd c node_id =
-    let nm = getLookup c
-    in case HashMap.lookup (fst node_id) nm of
+getDd :: Context -> NodeId -> Dd
+getDd c@Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm of
        Just result -> case Map.lookup (snd node_id) result of
           Just result2 -> dd result2
-          Nothing -> error $"Node adress without Alternative in NodeLookup: " ++ show node_id
-       Nothing -> error$ "Node adress without Node in NodeLookup table/map: " ++ show node_id
+          Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with context:" ++ show c
+       Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with context:" ++ show c
 
-getNode :: (HasNodeLookup c) => c -> NodeId -> Node
-getNode c node_id =
-    let nm = getLookup c
-    in case HashMap.lookup (fst node_id) nm of
+getNode :: Context -> NodeId -> Node
+getNode c@Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm of
        Just result -> case Map.lookup (snd node_id) result of
           Just result2 -> (node_id, dd result2)
-          Nothing -> error $"Node adress without Alternative in NodeLookup: " ++ show node_id
-       Nothing -> error$ "Node adress without Node in NodeLookup table/map: " ++ show node_id
+          Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with context:" ++ show c
+       Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with context:" ++ show c
 
 
 getDd_ :: NodeLookup -> NodeId -> Dd
 getDd_ nm node_id = case HashMap.lookup (fst node_id) nm of
        Just result -> case Map.lookup (snd node_id) result of
           Just result2 -> dd result2
-          Nothing -> error $"Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with nodelookup:"
-       Nothing -> error$ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with nodelookup:"
+          Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with nodelookup:"
+       Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with nodelookup:"
 
 
-getEntry :: (HasNodeLookup c) => c -> NodeId -> TableEntry
-getEntry c node_id =
-    let nm = getLookup c
-    in case HashMap.lookup (fst node_id) nm of
+getEntry :: Context -> NodeId -> TableEntry
+getEntry Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm of
        Just result -> case Map.lookup (snd node_id) result of
           Just result2 -> result2
           Nothing -> error "Node adress without Alternative in NodeLookup"
@@ -261,6 +215,7 @@ insert_id k v nm = case HashMap.lookup k nm of
        Nothing -> -- key not found, insert current key with new alternatives map, and set its key 0 to value
         ((k, 0) :: NodeId, HashMap.insert k (Map.insert 0 Entry{dd = v, reference_count=1} Map.empty) nm)
         -- `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
+
 
 
 -- todo add referencing and dereferencing of nodes in manager
@@ -309,7 +264,7 @@ data DdStatic =  Node' [Int] NodeId NodeId               -- left = pos (solid li
                 | Unknown'
     deriving (Eq)
 
-type StaticNodeLookup =  HashMap.HashMap HashedId LookupEntryStatic
+type NodeLookupStatic =  HashMap.HashMap HashedId LookupEntryStatic
 type LookupEntryStatic = Map.Map Int TableEntryStatic
 data TableEntryStatic = Entry' {
   ddStatic :: DdStatic,
@@ -317,12 +272,12 @@ data TableEntryStatic = Entry' {
 }
 type NodeStatic = (NodeId, DdStatic)
 
-getNodeStatic :: StaticNodeLookup -> NodeId -> NodeStatic
-getNodeStatic nm node_id = case HashMap.lookup (fst node_id) nm of
+getNodeStatic :: Context -> NodeId -> NodeStatic
+getNodeStatic c@Context{nodelookup_static  = nm} node_id = case HashMap.lookup (fst node_id) nm of
        Just result -> case Map.lookup (snd node_id) result of
           Just result2 -> (node_id, ddStatic result2)
-          Nothing -> error $"Node adress without Alternative in NodeLookup: " ++ show node_id
-       Nothing -> error$ "Node adress without Node in NodeLookup table/map: " ++ show node_id
+          Nothing -> error $ "Node adress without Alternative in NodeLookup: " ++ show node_id ++ "\n\n with context:" ++ show c
+       Nothing -> error $ "Node adress without Node in NodeLookup table/map: " ++ show node_id ++ "\n\n with context:" ++ show c
 
 
 instance Hashable DdStatic where
@@ -350,7 +305,7 @@ match_alternative_static targetDD = Map.foldrWithKey' check Nothing
                         then Just (k, entry)
                         else acc
 
-insert_id_static :: HashedId -> DdStatic -> StaticNodeLookup -> (NodeId, StaticNodeLookup)
+insert_id_static :: HashedId -> DdStatic -> NodeLookupStatic -> (NodeId, NodeLookupStatic)
 insert_id_static k v nm = case HashMap.lookup k nm of
        Just result -> case match_alternative_static v result of -- there is something inserted at this key
          Just (nr, t_entry) -> -- increment the reference countshow_dd settings c b_id
@@ -365,8 +320,8 @@ insert_id_static k v nm = case HashMap.lookup k nm of
         -- `debug` (colorize "green" "insert: " ++ "new object with key: " ++ show k)
 
 
-insert_static :: StaticNodeLookup -> DdStatic -> (StaticNodeLookup, NodeStatic)
-insert_static nm d = let (new_id, rnm) = insert_id_static (hash d) d nm in (rnm, (new_id, d))
+insert_static :: Context -> DdStatic -> (Context, NodeStatic)
+insert_static c@Context{nodelookup_static = nm} d = let (new_id, rnm) = insert_id_static (hash d) d nm in (c{nodelookup_static = rnm}, (new_id, d))
 
 
 
@@ -381,31 +336,34 @@ type ShowCache =  HashMap.HashMap NodeId [String]
 
 
 -- A higher-order function for handling cache lookup and update
-withCache :: BinaryOperatorContext -> (Node, Node, String) -> (BinaryOperatorContext, Node) -> (BinaryOperatorContext, Node)
-withCache c@BinaryOperatorContext{bin_cache = nc, bin_dc_stack = dck} ((keyA, _), (keyB, _), keyFunc) func_with_args =
+withCache :: Context -> (Node, Node, String) -> (Context, Node) -> (Context, Node)
+withCache c@Context{cache = nc, dc_stack = dck} ((keyA, _), (keyB, _), keyFunc) func_with_args =
   case Map.lookup keyFunc nc of
     Just nc' -> case HashMap.lookup (keyA, keyB, dck) nc' of
       Just result -> (c, getNode c result) --`debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
       Nothing -> let
         (updatedContext, r@(result, _)) = func_with_args
-        new_dck = bin_dc_stack updatedContext
+        -- x = case getDd updatedContext result of
+        --   --(EndInfNode d) -> error ("EndInf to be inserted in func cache" ++ show d)
+        --   _ -> updatedContext
+        new_dck = dc_stack updatedContext
         updatedCache = Map.insert keyFunc (HashMap.insert (keyA, keyB, new_dck) result nc') nc
-        in (updatedContext { bin_cache = updatedCache }, r) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
+        in (updatedContext { cache = updatedCache }, r) -- `debug` (col Vivid Green "func cache:" ++ " adding new key`` " ++ show (keyA, keyB))
     Nothing -> error ("function not in map, bad initialisation?: " ++ show keyFunc)
 
-withCache_ :: UnaryOperatorContext -> Node -> (UnaryOperatorContext, Node) -> (UnaryOperatorContext, Node)
-withCache_ c@UnaryOperatorContext { un_cache = nc } (key, _) func_with_args =
+withCache_ :: Context -> Node -> (Context, Node) -> (Context, Node)
+withCache_ c@Context { cache_ = nc } (key, _) func_with_args =
   case HashMap.lookup key nc of
     Just result -> (c, (result, getDd c result))
     Nothing -> let
       (updatedContext, result@(nodeid, _)) = func_with_args
       updatedCache = HashMap.insert key nodeid nc
-      in (updatedContext { un_cache = updatedCache }, result)
+      in (updatedContext { cache_ = updatedCache }, result)
 
 showMerged = True
 
-withCache' :: DrawOperatorContext -> Node -> [String] -> (DrawOperatorContext, [String])
-withCache' c@DrawOperatorContext { draw_cache = nc } (key, _) func_with_args =
+withCache' :: Context -> Node -> [String] -> (Context, [String])
+withCache' c@Context { cache' = nc } (key, _) func_with_args =
   case HashMap.lookup key nc of
     Just result -> if showMerged
       then (c, ["{" ++ col Dull Magenta ("#" ++ show key) ++ "}"])
@@ -413,7 +371,7 @@ withCache' c@DrawOperatorContext { draw_cache = nc } (key, _) func_with_args =
     Nothing -> let
         result = func_with_args
         updatedCache = HashMap.insert key result nc
-      in (c{ draw_cache = updatedCache }, result)
+      in (c{ cache' = updatedCache }, result)
 
 
 -- ==========================================================================================================
@@ -423,14 +381,14 @@ withCache' c@DrawOperatorContext { draw_cache = nc } (key, _) func_with_args =
 
 
 leaf :: Bool -> Node
-leaf b = ((hash $Leaf b, 0), Leaf b)
+leaf b = ((hash $ Leaf b, 0), Leaf b)
 
 leafid :: Bool -> NodeId
-leafid b = (hash$ Leaf b, 0)
+leafid b = (hash $ Leaf b, 0)
 
-l_1 = (1, 0)
-l_0 = (2, 0)
-l_u = (0, 0)
+l1 = (1, 0)
+l0 = (2, 0)
+u = (0, 0)
 
 data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
     deriving (Eq, Show, Ord)
@@ -446,16 +404,16 @@ levelLtoPath :: LevelL -> Path
 levelLtoPath (Ll ((i, inf) : ns) int) = P' [(i, inf, levelLtoPath (Ll ns int))]
 levelLtoPath (Ll [] int) = P'' [int]
 
-makeNode :: NodeLookup -> LevelL -> (NodeLookup, Node)
-makeNode nl l = path nl (levelLtoPath l)
+makeNode :: Context -> LevelL -> (Context, Node)
+makeNode c l = path c (levelLtoPath l)
 
 
 data Path = P'' [Int]
             | P' [(Int, InfL, Path)] deriving Show
 
 
-path :: NodeLookup -> Path -> (NodeLookup, Node)
-path nl p = path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+path :: Context -> Path -> (Context, Node)
+path c p = path' (-1) (c, ((0,0), Node (-5) (0,0) (0,0))) (sortPathDesc p)
 
 -- Function to sort the Path data structure in a depth-first manner
 -- from highest to lowest on the integers.
@@ -471,36 +429,35 @@ sortPathDesc (P' taggedPaths) =
     in P' sortedTaggedPaths
 
 l0' b
-  | b == 0 = l_u
-  | otherwise = l_0
+  | b == 0 = u
+  | otherwise = l0
 l1' b
-  | b == 1 = l_u
-  | otherwise = l_1
+  | b == 1 = u
+  | otherwise = l1
 
 
-path' :: Int -> (NodeLookup, Node) -> Path -> (NodeLookup, Node)
+path' :: Int -> (Context, Node) -> Path -> (Context, Node)
 path' b (c, n) (P' ((i, inf, P'' nodelist) : pl))
-    | inf == Dc1 || inf == Dc0 = path' b (insert c' (InfNodes i rid l_u l_u)) (P' pl) -- breadth step
-    | inf == Pos1 = path' b (insert c' (InfNodes i (l0' b) rid l_u)) (P' pl) -- breadth step
-    | inf == Neg1 = path' b (insert c' (InfNodes i (l0' b) l_u rid)) (P' pl) -- breadth step
-    | inf == Pos0 = path' b (insert c' (InfNodes i (l1' b) rid l_u)) (P' pl) -- breadth step
-    | inf == Neg0 = path' b (insert c' (InfNodes i (l1' b) l_u rid)) (P' pl) -- breadth step
+    | inf == Dc1 || inf == Dc0 = path' b (insert c' (InfNodes i rid u u)) (P' pl) -- breadth step
+    | inf == Pos1 = path' b (insert c' (InfNodes i (l0' b) rid u)) (P' pl) -- breadth step
+    | inf == Neg1 = path' b (insert c' (InfNodes i (l0' b) u rid)) (P' pl) -- breadth step
+    | inf == Pos0 = path' b (insert c' (InfNodes i (l1' b) rid u)) (P' pl) -- breadth step
+    | inf == Neg0 = path' b (insert c' (InfNodes i (l1' b) u rid)) (P' pl) -- breadth step
       where
         (c',(rid,_)) = localpath' (c, n) inf nodelist -- depth first
 path' b (c, n) (P' ((i, inf, pc) : pl))
-    | inf == Dc1 || inf == Dc0 = path' b (insert cDc (InfNodes i ridDc l_u l_u)) (P' pl) -- breadth step
-    | inf == Pos1 = path' b (insert c1 (InfNodes i (l0' b) rid1 l_u)) (P' pl) -- breadth step
-    | inf == Neg1 = path' b (insert c1 (InfNodes i (l0' b) l_u rid1)) (P' pl) -- breadth step
-    | inf == Pos0 = path' b (insert c0 (InfNodes i (l1' b) rid0 l_u)) (P' pl) -- breadth step
-    | inf == Neg0 = path' b (insert c0 (InfNodes i (l1' b) l_u rid0)) (P' pl) -- breadth step
+    | inf == Dc1 || inf == Dc0 = path' b (insert cDc (InfNodes i ridDc u u)) (P' pl) -- breadth step
+    | inf == Pos1 = path' b (insert c1 (InfNodes i (l0' b) rid1 u)) (P' pl) -- breadth step
+    | inf == Neg1 = path' b (insert c1 (InfNodes i (l0' b) u rid1)) (P' pl) -- breadth step
+    | inf == Pos0 = path' b (insert c0 (InfNodes i (l1' b) rid0 u)) (P' pl) -- breadth step
+    | inf == Neg0 = path' b (insert c0 (InfNodes i (l1' b) u rid0)) (P' pl) -- breadth step
       where
         (c0,(rid0,_)) = path' 1 (c, n) pc -- depth first
         (c1,(rid1,_)) = path' 0 (c, n) pc -- depth first
         (cDc,(ridDc,_)) = path' b (c, n) pc -- depth first
 path' b (c, n) (P' []) = (c, n) -- end of breadth step, return accumelator to previous call
 
--- FIX: Changed signature to use NodeLookup directly as requested
-localpath' :: (NodeLookup, Node) -> InfL -> [Int] -> (NodeLookup, Node)
+localpath' :: (Context, Node) -> InfL -> [Int] -> (Context, Node)
 localpath' (c, n) inf nodeList
     | inf == Dc1 = loopDc c True nodeList n
     | inf == Pos1 = loopPos c True nodeList n
@@ -516,10 +473,10 @@ localpath' (c, n) inf nodeList
           (c', (next_iter,_)) = loopDc c b ns consequence in
             if n ==0 then
               if consequence == initNode then (c, leaf b)
-                else insert c' $ EndInfNode $ fst consequence
+                else insert c' $ EndInfNode $ fst consequence -- todo: figure out what the order is here, why did i have c instead of c' before this and why did that work..
             else if n >= 0
-                  then insert c' (Node n next_iter (leafid $not b))
-                  else insert c' (Node (abs n) (leafid$ not b) next_iter)
+                  then insert c' (Node n next_iter (leafid $ not b))
+                  else insert c' (Node (abs n) (leafid $ not b) next_iter)
 
         loopPos c b [] consequence = if consequence == initNode
             then (c, leaf b)
@@ -530,8 +487,8 @@ localpath' (c, n) inf nodeList
               if consequence == initNode then (c, leaf b)
                 else insert c' $ EndInfNode $ fst consequence
             else if n >= 0
-                  then insert c' (Node n next_iter l_u )
-                      else insert c' (Node (abs n) l_u next_iter )
+                  then insert c' (Node n next_iter u )
+                      else insert c' (Node (abs n) u next_iter )
 
         loopNeg c b [] consequence = if consequence == initNode
             then (c, leaf b)
@@ -542,10 +499,10 @@ localpath' (c, n) inf nodeList
               if consequence == initNode then (c, leaf b)
                 else insert c' $ EndInfNode $ fst consequence
             else if n >= 0
-                  then insert c' (Node n next_iter l_u)
-                      else insert c' (Node (abs n) l_u next_iter)
+                  then insert c' (Node n next_iter u)
+                      else insert c' (Node (abs n) u next_iter)
 
-        initNode = (l_u, Node (-5) l_u l_u) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout
+        initNode = ((0,0), Node (-5) (0,0) (0,0)) -- ugly hack for empty accumelator, didnt want to implement maybe type throughout
 
 
 -- | Helper function to nicely format the NodeLookup table
@@ -564,27 +521,21 @@ showNodeLookupDetails nl = unlines $ concatMap formatHashedEntry sortedEntries
         "    " ++ show_id (hid, altIdx) ++ " -> " ++ show (dd entry) ++
         " " ++ colorize "dark" ("[refs: " ++ show (reference_count entry) ++ "]")
 
-instance Show BinaryOperatorContext where
-  show c = "BinaryOperatorContext {\n" ++
-           "  -- Node Lookup Table (" ++ show (HashMap.size (bin_nodelookup c)) ++ " keys) --\n" ++
-           showNodeLookupDetails (bin_nodelookup c) ++
+instance Show Context where
+  show c = "Context {\n" ++
+           "  -- Node Lookup Table (" ++ show (HashMap.size (nodelookup c)) ++ " keys) --\n" ++
+           showNodeLookupDetails (nodelookup c) ++
            "\n  -- Process Managers --" ++
-           "\n  cache keys  = " ++ show (Map.map HashMap.size (bin_cache c)) ++
+           "\n  cache keys  = " ++ show (Map.map HashMap.size (cache c)) ++
+           "\n  cache_ keys = " ++ show (HashMap.size (cache_ c)) ++
            "\n}\n"
 
-instance Show UnaryOperatorContext where
-  show c = "UnaryOperatorContext {\n" ++
-           "  -- Node Lookup Table (" ++ show (HashMap.size (un_nodelookup c)) ++ " keys) --\n" ++
-           showNodeLookupDetails (un_nodelookup c) ++
-           "\n  -- Process Managers --" ++
-           "\n  cache_ keys = " ++ show (HashMap.size (un_cache c)) ++
-           "\n}\n"
+show_context :: Context -> [Char]
+show_context c = "Context nodelookup keys = " ++ show (HashMap.size (nodelookup c)) ++
+             "\\n\\t, cache_ keys = " ++ show (HashMap.size (cache_ c)) ++ "\\n"
 
-show_context :: (HasNodeLookup c) => c -> [Char]
-show_context c = "Context nodelookup keys = " ++ show (HashMap.size (getLookup c))
-
-show_dc_stack :: BinaryOperatorContext -> String
-show_dc_stack BinaryOperatorContext{bin_dc_stack = fs} = "\\n" ++ show fs
+show_dc_stack :: Context -> String
+show_dc_stack Context{dc_stack = fs} = "\\n" ++ show fs
 
 show_id' :: Node -> String
 show_id' (id, _) = show_id id
@@ -636,13 +587,49 @@ resetColor = "\ESC[0m"
 
 
 
--- | Merges two NodeLookups
--- All Dd entries from the second context (nl2) are merged into
--- the first context's (nl1) NodeLookup. Reference counts for identical Dds are summed.
-unionNodeLookup :: NodeLookup -> NodeLookup -> NodeLookup
-unionNodeLookup nl1 nl2 =
-    HashMap.foldlWithKey' mergeHashedIdEntryFromNL2IntoAcc nl1 nl2
+-- | Merges two Contexts, including their NodeLookups and caches.
+-- For NodeLookup: All Dd entries from the second context (ctx2) are merged into
+-- the first context's (ctx1) NodeLookup. Reference counts for identical Dds are summed.
+-- Dds are stored under their canonical HashedId.
+-- For caches ('cache', 'cache_', 'cache''): A union is performed. If a key exists
+-- in both, the value from ctx1 is preferred.
+-- Non-cache fields ('dc_stack', 'current_level') are taken from ctx1.
+unionContext :: Context -> Context -> Context
+unionContext ctx1 ctx2 =
+    Context
+        { nodelookup    = mergedNodeLookup,
+
+          cache         = mergedCache,
+          dc_stack    = ([],[],[]),
+          current_level = ([], []),
+
+          cache_        = mergedCache_,
+          dc_stack_    = ([],[]),
+          current_level_ = [],
+
+          nodelookup_static = mergedNodeLookupStatic,
+          cache'        = mergedCache'
+        }
   where
+    -- Cache merging (prefers ctx1 on collision for HashMap values)
+    mergedCache :: Cache
+    mergedCache = Map.unionWith HashMap.union (cache ctx1) (cache ctx2)
+
+    mergedCache_ :: SingleCache
+    mergedCache_ = HashMap.union (cache_ ctx1) (cache_ ctx2)
+
+    mergedCache' :: ShowCache
+    mergedCache' = HashMap.union (cache' ctx1) (cache' ctx2)
+
+    -- NodeLookup merging logic
+    -- Accumulator (accNL) starts as nl1.
+    mergedNodeLookup :: NodeLookup
+    mergedNodeLookup =
+      let nl1 = nodelookup ctx1
+          nl2 = nodelookup ctx2
+      in HashMap.foldlWithKey' mergeHashedIdEntryFromNL2IntoAcc nl1 nl2
+
+
     -- This function is called for each (HashedId, LookupEntry) pair from nl2.
     -- It merges all Dds within lookupEntryFromNL2 into accNL under hIdFromNL2.
     mergeHashedIdEntryFromNL2IntoAcc :: NodeLookup -> HashedId -> LookupEntry -> NodeLookup
@@ -652,6 +639,8 @@ unionNodeLookup nl1 nl2 =
       Map.foldlWithKey' (processSingleTableEntry hIdFromNL2) accNL lookupEntryFromNL2
 
     -- This function processes a single TableEntry (containing a Dd) from nl2.
+    -- hIdFromNL2 is the HashedId under which this Dd was found in nl2.
+    -- _altKeyFromNL2 is the original alternative key in nl2 (not directly used for insertion index).
     processSingleTableEntry :: HashedId -> NodeLookup -> Int -> TableEntry -> NodeLookup
     processSingleTableEntry hIdFromNL2 accNL _altKeyFromNL2 tableEntryFromNL2 =
       let ddToMerge       = dd tableEntryFromNL2
@@ -670,6 +659,36 @@ unionNodeLookup nl1 nl2 =
           -- Create a new LookupEntry (Map Int TableEntry) with the Dd as alternative 0.
           in HashMap.insert hIdFromNL2 (Map.singleton 0 newEntry) accNL
 
--- | Helper to create a merged Binary Context from two Lookups (used in operators)
-unionContext :: (HasNodeLookup a, HasNodeLookup b) => a -> b -> BinaryOperatorContext
-unionContext c1 c2 = init_binary_context (unionNodeLookup (getLookup c1) (getLookup c2))
+
+    mergedNodeLookupStatic :: NodeLookupStatic
+    mergedNodeLookupStatic =
+      let nl1s = nodelookup_static ctx1
+          nl2s = nodelookup_static ctx2
+      in HashMap.foldlWithKey' mergeHashedIdEntryFromNL2IntoAccStatic nl1s nl2s
+
+
+
+    mergeHashedIdEntryFromNL2IntoAccStatic :: NodeLookupStatic -> HashedId -> LookupEntryStatic -> NodeLookupStatic
+    mergeHashedIdEntryFromNL2IntoAccStatic accNL hIdFromNL2 lookupEntryFromNL2 =
+      -- Fold over the alternatives (TableEntry) within lookupEntryFromNL2.
+      -- The 'accNL' is passed through and updated by 'processSingleTableEntry'.
+      Map.foldlWithKey' (processSingleTableEntryStatic hIdFromNL2) accNL lookupEntryFromNL2
+
+
+    processSingleTableEntryStatic :: HashedId -> NodeLookupStatic -> Int -> TableEntryStatic -> NodeLookupStatic
+    processSingleTableEntryStatic hIdFromNL2 accNL _altKeyFromNL2 tableEntryFromNL2 =
+      let ddToMerge       = ddStatic tableEntryFromNL2
+          refCountToMerge = reference_count' tableEntryFromNL2
+      in
+      case HashMap.lookup hIdFromNL2 accNL of
+        Just existingAlternativesMap -> -- HashedId from nl2 already exists in the accumulator
+          case match_alternative_static ddToMerge existingAlternativesMap of
+            Just _ -> accNL -- DD structure also matches an existing alternative, so do nothing.
+            Nothing -> -- HashedId exists, but this Dd is a new alternative. Add it.
+              let newAltIdx = getFreeKey existingAlternativesMap
+                  newEntry  = Entry' { ddStatic = ddToMerge, reference_count' = refCountToMerge }
+              in HashMap.insert hIdFromNL2 (Map.insert newAltIdx newEntry existingAlternativesMap) accNL
+        Nothing -> -- HashedId from nl2 does not exist in accumulator. Add new HashedId entry with this Dd.
+          let newEntry = Entry' { ddStatic = ddToMerge, reference_count' = refCountToMerge }
+          -- Create a new LookupEntry (Map Int TableEntry) with the Dd as alternative 0.
+          in HashMap.insert hIdFromNL2 (Map.singleton 0 newEntry) accNL
