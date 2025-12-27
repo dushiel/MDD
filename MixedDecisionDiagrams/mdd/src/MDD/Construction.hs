@@ -36,12 +36,22 @@ levelLtoPath (Ll ((i, inf) : ns) int) = P' [(i, inf, levelLtoPath (Ll ns int))]
 levelLtoPath (Ll [] int) = P'' [int]
 
 -- | Top-level function to create a Mixed Decision Diagram node from a LevelL
-makeNode :: NodeLookup -> LevelL -> (NodeLookup, Node)
+makeNode :: NodeLookup -> LevelL -> MDD
 makeNode nl l = path nl (levelLtoPath l)
 
 -- | Main path construction logic
-path :: NodeLookup -> Path -> (NodeLookup, Node)
-path nl p = path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+path__ :: Path -> MDD
+path__ p = MDD $ path' (-1) (init_lookup, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+
+path :: NodeLookup -> Path -> MDD
+path nl p = MDD $ path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+
+add_path :: MDD -> Path -> MDD
+add_path mdd p = let
+    nl = (fst $ unMDD mdd)
+    starting_default_trick_mdd = (l_u, Node (-5) l_u l_u)
+    in MDD $ path' (-1) (nl, starting_default_trick_mdd) (sortPathDesc p)
+
 
 -- | Function to sort the Path data structure in a depth-first manner
 -- from highest to lowest on the integers.
@@ -73,6 +83,7 @@ path' b (c, n) (P' ((i, inf, pc) : pl))
         (c1, (rid1, _)) = path' 0 (c, n) pc
         (cDc, (ridDc, _)) = path' b (c, n) pc
 path' b (c, n) (P' []) = (c, n)
+
 
 -- | Builds a localized path within a specific infinity domain
 localpath' :: (NodeLookup, Node) -> InfL -> [Int] -> (NodeLookup, Node)

@@ -32,10 +32,12 @@ library
       MDD.Ops.Binary
 
       MDD.Static
-      MDD.Draw
-
       MDD.Construction
+      MDD.Draw
       MDD.Interface
+
+      MDD.Bool
+      MDD.Test
       -- DrawMDD
       -- MDD
       -- MDDi
@@ -43,11 +45,11 @@ library
       -- SupportMDD
       -- DotDD
       -- Example
-      TestMDD
+      -- TestMDD
       -- SMCDEL.Internal.Help
       -- SMCDEL.Internal.TexDisplay
       -- Internal.Language
-      Bool_MDD
+      -- Bool_MDD
       -- SMCDEL.Symbolic.S5_MDD
       -- SMCDEL.Symbolic.K_MDD
       -- SMCDEL.Examples.MuddyChildren

@@ -22,35 +22,35 @@ bot_n = (l_0, Leaf False)
 unk_n = (l_u, Unknown)
 
 top, bot, unk :: MDD
-top = (init_lookup, top_n)
-bot = (init_lookup, bot_n)
-unk = (init_lookup, unk_n)
+top = MDD (init_lookup, top_n)
+bot = MDD (init_lookup, bot_n)
+unk = MDD (init_lookup, unk_n)
 
 var :: Path -> MDD
-var p = let (c', n) = path init_lookup p in (getLookup c', n)
+var p = path init_lookup p
 
 var' :: LevelL -> MDD
-var' l = let (c', n) = makeNode init_lookup l in (getLookup c', n)
+var' l = makeNode init_lookup l
 
 (-.) :: MDD -> MDD
-(-.) (la, a) =
+(-.) (MDD (la, a)) =
     let ctx = init_unary_context la
         (ctx', r) = negation ctx a
-    in (getLookup ctx', r)
+    in MDD (getLookup ctx', r)
 
 infix 2 .*.   -- Conjunction / product
 (.*.) :: MDD -> MDD -> MDD
-(.*.) (la, a) (lb, b) =
+(.*.) (MDD (la, a)) (MDD (lb, b)) =
     let ctx = init_binary_context (unionNodeLookup la lb)
         (ctx', r) = apply @Dc ctx "inter" (fst a) (fst b)
-    in (getLookup ctx', r)
+    in MDD (getLookup ctx', r)
 
 infixl 3 .+.  -- Disjunction / sum
 (.+.) :: MDD -> MDD -> MDD
-(.+.) (la, a) (lb, b) =
+(.+.) (MDD (la, a)) (MDD (lb, b)) =
     let ctx = init_binary_context (unionNodeLookup la lb)
         (ctx', r) = apply @Dc ctx "union" (fst a) (fst b)
-    in (getLookup ctx', r)
+    in MDD (getLookup ctx', r)
 
 ite :: MDD -> MDD -> MDD -> MDD
 ite x y z = (x .*. y) .+. ((-.) x .*. z)
@@ -59,10 +59,10 @@ xor :: MDD -> MDD -> MDD
 xor a b = (a .*. (-.) b) .+. ((-.) a .*. b)
 
 restrict :: Position -> Bool -> MDD -> MDD
-restrict n b (l, d) =
+restrict n b (MDD (l, d)) =
     let ctx = init_unary_context l
         (ctx', r) = restrict_node_set @Dc ctx [0 : n] b d
-    in (getLookup ctx', r)
+    in MDD (getLookup ctx', r)
 
 -- | Relabel a DD with a list of pairs.
 relabelWith :: [(Position, Position)] -> MDD -> MDD
@@ -104,6 +104,6 @@ relabelWith r d = loop d disjointListOfLists where
 substitSimul :: [(Position, Node)] -> MDD -> MDD
 substitSimul [] m = m
 substitSimul ((n, psi) : ns) m =
-        ite (getLookup (fst m), psi)
+        ite (MDD (fst (unMDD m), psi))
         (substitSimul ns (restrict n True m))
         (substitSimul ns (restrict n False m))

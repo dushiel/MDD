@@ -335,11 +335,8 @@ myDebugLog msg x = unsafePerformIO $ do
 emptyFile :: IO ()
 emptyFile = writeFile "debug.log" "["
 
-debug5 :: Node -> String -> Node
-debug5 f s = if save_logs settings
-    then myDebugLog ("{\"test_nr\" : \"" ++ colorize "red" s ++ "\", \n \"inner\": [")
-            (myDebugLog ("], \"r\":\"" ++ colorize "dim red" (show $ fst f) ++ "\"\n},") (f) )
-    else myTrace (colorize "red" (s ++ "\n\n")) f
+debug5 :: Bool -> String -> Bool
+debug5 b s = trace (colorize "red" (s ++ "\n\n")) b
 
 settings :: Show_setting
 settings = ShowSetting {

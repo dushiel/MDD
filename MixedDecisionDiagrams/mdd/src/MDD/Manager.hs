@@ -14,8 +14,6 @@ import Data.List (sortBy)
 -- * definitions and hashmap methods for nodes
 -- ==========================================================================================================
 
-
-
 -- | Standard hash implementation for Dd to ensure canonical representation
 instance Hashable Dd where
   hash Unknown = 0

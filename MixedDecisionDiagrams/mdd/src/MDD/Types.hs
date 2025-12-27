@@ -13,8 +13,16 @@ import qualified Data.Map as Map
 -- * Core MDD Types
 -- ==========================================================================================================
 
--- | MDDs are represented by (NodeLookup, Node) as a self-contained unit
-type MDD = (NodeLookup, Node)
+-- | MDDs are represented by (NodeLookup, Node) as a self-contained unit.
+-- The Eq instance compares the NodeId of the root node, assuming a canonical representation
+-- within the manager context.
+newtype MDD = MDD { unMDD :: (NodeLookup, Node) }
+
+instance Eq MDD where
+  (MDD (_, (id1, _))) == (MDD (_, (id2, _))) = id1 == id2
+
+instance Show MDD where
+  show (MDD (_, (_, dd))) = show dd
 
 -- | Inference types for the edges of the Mixed Decision Diagram.
 data Inf = Dc | Neg | Pos
