@@ -38,6 +38,9 @@ library
 
       MDD.Bool
       MDD.Test
+      MDD.Dot
+
+      MDD.Example
       -- DrawMDD
       -- MDD
       -- MDDi
@@ -48,12 +51,12 @@ library
       -- TestMDD
       -- SMCDEL.Internal.Help
       -- SMCDEL.Internal.TexDisplay
-      -- Internal.Language
+      Internal.Language
       -- Bool_MDD
-      -- SMCDEL.Symbolic.S5_MDD
-      -- SMCDEL.Symbolic.K_MDD
-      -- SMCDEL.Examples.MuddyChildren
-      -- SMCDEL.Examples.SallyAnne
+      SMCDEL.Symbolic.S5_MDD
+      SMCDEL.Symbolic.K_MDD
+      SMCDEL.Examples.MuddyChildren
+      SMCDEL.Examples.SallyAnne
   other-modules:
   -- Correctly indented section
   hs-source-dirs:

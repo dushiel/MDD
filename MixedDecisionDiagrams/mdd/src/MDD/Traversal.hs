@@ -78,6 +78,12 @@ instance DdF3 Dc where
     applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
     applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
     applyElimRule c (EndInfNode (2,0)) = (c, ((2,0), Leaf False))
+    applyElimRule c (EndInfNode (0,0)) = (c, ((0,0), Unknown))
+    -- Eliminate EndInfNode if it points to a Leaf Bool or Unknown (general case)
+    applyElimRule c d@(EndInfNode r) = case getDd c r of
+        Leaf _ -> (c, getNode c r)  -- Eliminate EndInfNode if it points to any Leaf
+        Unknown -> (c, getNode c r)  -- Eliminate EndInfNode if it points to Unknown
+        _ -> insert c d
     applyElimRule c d@(InfNodes _ consq (0,0) (0,0)) = case getDd c consq of
         EndInfNode d' -> (c, getNode c d')
         _ -> insert c d
@@ -103,6 +109,11 @@ instance DdF3 Pos where
     applyElimRule c (Node _ posC (0, 0)) = (c, getNode c posC)
     applyElimRule c (InfNodes _ (0,0) (1,0) (0,0)) = (c, ((1,0), Leaf True))
     applyElimRule c (InfNodes _ (0,0) (2,0) (0,0)) = (c, ((2,0), Leaf False))
+    -- Eliminate EndInfNode if it points to a Leaf Bool or Unknown
+    applyElimRule c d@(EndInfNode r) = case getDd c r of
+        Leaf _ -> (c, getNode c r)  -- Eliminate EndInfNode if it points to any Leaf
+        Unknown -> (c, getNode c r)  -- Eliminate EndInfNode if it points to Unknown
+        _ -> insert c d
     applyElimRule c d = insert c d
 
     inferNode c position (n_id, n) = insert c (Node position n_id (0,0))
@@ -130,6 +141,11 @@ instance DdF3 Neg where
     applyElimRule c (Node _ (0, 0) negC) = (c, getNode c negC)
     applyElimRule c (InfNodes _ (0,0) (0,0) (1,0)) = (c, ((1,0), Leaf True))
     applyElimRule c (InfNodes _ (0,0) (0,0) (2,0)) = (c, ((2,0), Leaf False))
+    -- Eliminate EndInfNode if it points to a Leaf Bool or Unknown
+    applyElimRule c d@(EndInfNode r) = case getDd c r of
+        Leaf _ -> (c, getNode c r)  -- Eliminate EndInfNode if it points to any Leaf
+        Unknown -> (c, getNode c r)  -- Eliminate EndInfNode if it points to Unknown
+        _ -> insert c d
     applyElimRule c d = insert c d
 
     inferNode c position (n_id, n) = insert c (Node position (0,0) n_id)

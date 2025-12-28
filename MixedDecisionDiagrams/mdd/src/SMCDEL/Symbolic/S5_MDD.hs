@@ -10,15 +10,9 @@ import SMCDEL.Internal.Help (apply, powerset)
 import Internal.Language hiding (ite)
 import SMCDEL.Internal.TexDisplay
 
-import MDD hiding (Neg)
-import MDDi hiding (Form, Impl, PrpF, Bot, Top)
-import DrawMDD
-import SupportMDD (allVars)
-import Bool_MDD (ddOf')
-import DotDD (generateGraphImage, createDotGraph) -- For Tex rendering
-import System.IO.Unsafe (unsafePerformIO)
-import Control.Monad (when)
-
+import MDD.Types hiding (Neg)
+import MDD.Interface
+import MDD.Draw (settings, show_dd)
 import Debug.Trace (trace, traceShow)
 
 -- | Knowledge structures using a Mixed Decision Diagram.
@@ -105,7 +99,7 @@ mddOf kns@(KnS allprops lawmdd obs) (Ck ags form) =
     -- Fixed point iteration
     gfp op g =
         let next = op g
-        in if snd g == snd next then g else gfp op next
+        in if g == next then g else gfp op next
   in gfp operator initial_guess
 
 mddOf kns (Ckw ags form) = mddOf kns (Ck ags form) .+. mddOf kns (Ck ags (Neg form))
@@ -175,8 +169,8 @@ announce kns@(KnS props lawmdd obs) ags psi =
 evalViaMdd :: KnowScene -> Form -> Bool
 evalViaMdd (kns@(KnS allprops lawmdd _), s) f =
     let
-      stateValid = snd (s .->. lawmdd) == top'
-      formValid = snd (s .->. mddOf kns f) == top'
+      stateValid = (s .->. lawmdd) == top
+      formValid = (s .->. mddOf kns f) == top
     in if not stateValid
        then error ("evalViaMdd: State " ++ show s ++ " is not consistent with the Law.")
        else formValid
@@ -184,7 +178,7 @@ evalViaMdd (kns@(KnS allprops lawmdd _), s) f =
 -- | Check if a formula is valid in a knowledge structure.
 -- Validity means: Law -> Form is a tautology (Top).
 validViaMdd :: KnowStruct -> Form -> Bool
-validViaMdd kns@(KnS _ lawmdd _) f = (snd $ lawmdd .->. (mddOf kns f)) == top'
+validViaMdd kns@(KnS _ lawmdd _) f = (lawmdd .->. (mddOf kns f)) == top
 
 instance Semantics KnowScene where
   isTrue = evalViaMdd

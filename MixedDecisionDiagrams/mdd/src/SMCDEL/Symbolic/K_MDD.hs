@@ -14,9 +14,9 @@ import SMCDEL.Internal.TexDisplay
 import Internal.Language hiding (ite)
 import SMCDEL.Symbolic.S5_MDD (KnState, boolMddOf)
 
-import MDD hiding (Neg)
-import MDDi hiding (Form, Impl, PrpF, Bot, Top)
-import DrawMDD
+import MDD.Types hiding (Neg)
+import MDD.Interface
+import MDD.Draw (settings, show_dd)
 
 -- =============================================================================
 -- * Phase 1: Relational Infrastructure
@@ -38,33 +38,33 @@ mv = map mvP
 cp = map cpP
 
 data Dubbel
-type RelMDD = Tagged Dubbel (Context, Node)
+type RelMDD = Tagged Dubbel MDD
 
 -- | Shifts a standard MDD (domain 0) to the Copy/Target domain (domain 2)
-cpMdd :: [Prp] -> (Context, Node) -> RelMDD
-cpMdd vocab (c, n) =
+cpMdd :: [Prp] -> MDD -> RelMDD
+cpMdd vocab mdd =
     let relabeling = map (\p -> (toOrdinal p, toOrdinal (cpP p))) vocab
-    in Tagged $ relabelWith relabeling (c, n)
+    in Tagged $ relabelWith relabeling mdd
 
 -- | Shifts a standard MDD (domain 0) to the Model/Source domain (domain 1)
-mvMdd :: [Prp] -> (Context, Node) -> RelMDD
-mvMdd vocab (c, n) =
+mvMdd :: [Prp] -> MDD -> RelMDD
+mvMdd vocab mdd =
     let relabeling = map (\p -> (toOrdinal p, toOrdinal (mvP p))) vocab
-    in Tagged $ relabelWith relabeling (c, n)
+    in Tagged $ relabelWith relabeling mdd
 
 -- | Shifts a Relational MDD (domains 1) back to standard domain (0)
-unmvMdd :: [Prp] -> RelMDD -> (Context, Node)
+unmvMdd :: [Prp] -> RelMDD -> MDD
 unmvMdd vocab tagged_node =
-    let (ctx, node) = untag tagged_node
+    let mdd = untag tagged_node
         relabelingMv = map (\p -> (toOrdinal (mvP p), toOrdinal p)) vocab
-    in relabelWith relabelingMv (ctx, node)
+    in relabelWith relabelingMv mdd
 
 -- | Shifts a Relational MDD (domains 2) back to standard domain (0)
-uncpMdd :: [Prp] -> RelMDD -> (Context, Node)
+uncpMdd :: [Prp] -> RelMDD -> MDD
 uncpMdd vocab tagged_node =
-    let (ctx, node) = untag tagged_node
+    let mdd = untag tagged_node
         relabelingCp = map (\p -> (toOrdinal (cpP p), toOrdinal p)) vocab
-    in relabelWith relabelingCp (ctx, node)
+    in relabelWith relabelingCp mdd
 
 -- =============================================================================
 -- * Belief Structures
@@ -118,7 +118,7 @@ instance HasPrecondition Event where
 -- * Main Translation (Formula -> MDD)
 -- =============================================================================
 
-mddOf :: BelStruct -> Form -> (Context, Node)
+mddOf :: BelStruct -> Form -> MDD
 mddOf _   Top           = top
 mddOf _   Bot           = bot
 mddOf _   (PrpF (P n))  = var' n
@@ -152,7 +152,7 @@ mddOf bls@(BlS allprops lawmdd obdds) (K i form) =
 
   in
     -- 7. Map Source variables (mv) back to Standard variables
-    (unmvMdd allprops (Tagged forall_res))
+    unmvMdd allprops (Tagged forall_res)
 
 mddOf bls (Kw i form) =
   let
@@ -193,7 +193,7 @@ mddOf bls@(BlS voc lawmdd obdds) (Ck ags form) =
 
     gfp op g =
         let next = op g
-        in if snd g == snd next then g else gfp op next
+        in if g == next then g else gfp op next
 
   in gfp lambda top
 
@@ -244,15 +244,18 @@ mddOf bls (PubAnnounceW form1 form2) =
 validViaMdd :: BelStruct -> Form -> Bool
 validViaMdd bls@(BlS _ lawmdd _) f =
     let f_node = mddOf bls f
-    in snd (lawmdd .->. f_node) == top'
+    in (lawmdd .->. f_node) == top
 
 evalViaMdd :: BelScene -> Form -> Bool
-evalViaMdd (bls@(BlS _ lawmdd _), s) f = trace ("\nevaluating state s : " ++ show_dd settings (fst s) (snd s) ++ "\non formula : " ++ show f)
+evalViaMdd (bls@(BlS _ lawmdd _), s) f =
+    let (nl, node) = unMDD s
+        traceMsg = "\n \n   evaluating state s : " ++ show_dd settings nl node ++ "\n   on formula : " ++ show f
+    in trace traceMsg $
     (let
         f_node = mddOf bls f
         check_node = s .->. f_node
     in
-        snd check_node == top')
+        check_node == top)
 
 instance Semantics BelStruct where
   isTrue = validViaMdd
@@ -309,7 +312,7 @@ shiftPrepare (BlS props _ _) (Trf addprops addlaw changelaw eventObs) =
       changelawShifted = M.map (replPsInF shiftRel) changelaw
 
       -- For eventObs: The relations need to be shifted.
-      -- RelMDD contains Context+Node. We must relabel the Node.
+      -- RelMDD contains MDD. We must relabel the MDD.
       -- The shiftRel maps P -> P'. We need ordinals.
       shiftRelOrd = map (\(p,q) -> (toOrdinal p, toOrdinal q)) shiftRel
 
@@ -321,8 +324,8 @@ shiftPrepare (BlS props _ _) (Trf addprops addlaw changelaw eventObs) =
       fullShiftRelOrd = shiftRelMV ++ shiftRelCP
 
       eventObsShifted = M.map (\tagged ->
-          let (c, n) = untag tagged
-          in Tagged (relabelWith fullShiftRelOrd (c,n))) eventObs
+          let mdd = untag tagged
+          in Tagged (relabelWith fullShiftRelOrd mdd)) eventObs
 
   in (Trf shiftAddProps addlawShifted changelawShifted eventObsShifted, shiftRel)
 
@@ -409,10 +412,11 @@ instance Update BelScene Event where
           -- (a) Relabel s to copies: s(p) -> s(p_copy)
           r = relabelWith copyRelOrd s
           r' = existSet (map toOrdinal changeprops) (r)
-          s_copy = trace ("new state based on old state without the consequences." ++
-            "\n relabeling with: " ++ show copyRelOrd ++
-            "\n before quantification: " ++ (show_dd settings (fst r) (snd r)) ++
-            "\n after quantification : " ++ (show_dd settings (fst r') (snd r')))
+          s_copy =
+            --   trace ("new state based on old state without the consequences." ++
+            -- "\n relabeling with: " ++ show copyRelOrd ++
+            -- "\n before quantification: " ++ (show_dd settings (fst (unMDD r)) (snd (unMDD r))) ++
+            -- "\n after quantification : " ++ (show_dd settings (fst (unMDD r')) (snd (unMDD r'))))
             r
 
           -- (b) Intersect with assignments and event facts
@@ -456,8 +460,8 @@ announce bls@(BlS props lawmdd obdds) ags psi =
     newOfor i rel_tagged =
         let rel = untag rel_tagged
         in if i `elem` ags
-           then Tagged $ rel .*. (mv_k .<->. cp_k)
-           else Tagged $ rel .*. ((-.) cp_k)
+           then Tagged (rel .*. (mv_k .<->. cp_k))
+           else Tagged (rel .*. ((-.) cp_k))
 
     newobdds = M.mapWithKey newOfor obdds
 

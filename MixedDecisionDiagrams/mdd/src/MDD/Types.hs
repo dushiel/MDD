@@ -79,7 +79,7 @@ data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
 
 -- | A construction-time level used to define paths into the MDD.
 data LevelL = Ll [(Int, InfL)] Int
-    deriving (Eq, Show, Generic, Hashable)
+    deriving (Eq, Ord, Show, Generic, Hashable)
 
 -- | Path representation for creating MDDs from high-level descriptions.
 data Path = P'' [Int]

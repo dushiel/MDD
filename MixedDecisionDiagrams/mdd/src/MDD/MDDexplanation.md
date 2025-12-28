@@ -94,7 +94,110 @@ Pathing and Static Translation
 - Static Mapping: While manipulation occurs with relative positions to allow for dynamic variable insertion, a static translation is provided for visualization. This assigns a fixed global order to all declared variables for consistent Graphviz rendering.
 
 
-4. Codebase Mapping
+4. Codebase Mapping (After Refactor)
+
+The refactored codebase is organized into focused modules with clear responsibilities:
+
+**Core Type Definitions** (`MDD.Types`)
+- `MDD`: Newtype wrapper `newtype MDD = MDD { unMDD :: (NodeLookup, Node) }`
+- `Dd`: Core decision diagram data structure (Node, InfNodes, EndInfNode, Leaf, Unknown)
+- `Inf`: Inference types (Dc, Neg, Pos)
+- `NodeId`, `Node`, `NodeLookup`: Node identification and storage
+- `Level`, `Level'`, `Position`: Path and level representations
+- `Path`, `LevelL`, `InfL`: Construction-time path representations
+
+**Context Management** (`MDD.Context`)
+- `BinaryOperatorContext`: Context for binary operations (union, intersection)
+  - Contains: `bin_nodelookup`, `bin_cache`, `bin_dc_stack`, `bin_current_level`
+- `UnaryOperatorContext`: Context for unary operations (negation)
+  - Contains: `un_nodelookup`, `un_cache`, `un_dc_stack`, `un_current_level`
+- `DrawOperatorContext`: Context for visualization
+  - Contains: `draw_nodelookup`, `draw_cache`
+- `HasNodeLookup`: Typeclass for unified access to NodeLookup across context types
+- Initialization functions: `init_binary_context`, `init_unary_context`, `init_draw_context`
+
+**Node Management** (`MDD.Manager`)
+- `init_lookup`: Initial NodeLookup with standard leaf nodes
+- `insert_id`: Core insertion logic into NodeLookup
+- `unionNodeLookup`: Merges two NodeLookups, summing reference counts
+- `Hashable` instance for `Dd` for canonical representation
+
+**Operations** (`MDD.Ops.Binary`, `MDD.Ops.Unary`)
+- Binary operations: `apply` (union, intersection, etc.)
+- Unary operations: `negation`, `restrict_node_set`
+- Both modules use operation-specific contexts and caching
+
+**Construction** (`MDD.Construction`)
+- `path`: Creates MDD from Path description
+- `makeNode`: Creates MDD from LevelL
+- `add_path`: Adds a path to existing MDD
+
+**Public Interface** (`MDD.Interface`)
+- Constants: `top`, `bot`, `unk`
+- Operators: `(-.)`, `(.*.)`, `(.+.)`, `(.->.)`, `(.<->.)`
+- Helpers: `var`, `var'`, `ite`, `xor`, `restrict`
+- Set operations: `conSet`, `disSet`, `xorSet`
+- Quantification: `forall`, `exist`, `forallSet`, `existSet`
+- Utilities: `relabelWith`, `substitSimul`
+
+**Visualization** (`MDD.Draw`)
+- `settings`: Configuration for display
+- `show_dd`: String representation of MDD nodes
+- Graph generation and rendering utilities
+
+**Static Translation** (`MDD.Static`)
+- `to_static_form`: Converts MDD to static form for visualization
+- `StaticNodeLookup`, `NodeStatic`: Static representation types
+
+**SMCDEL Integration**
+- `SMCDEL.Symbolic.K_MDD`: Kripke-style knowledge structures using MDD
+  - `BelStruct`: Belief structures with MDD state laws
+  - `RelMDD`: Tagged MDD for relational operations
+  - `mddOf`: Formula to MDD translation for epistemic logic
+- `SMCDEL.Symbolic.S5_MDD`: S5 knowledge structures
+  - `KnowStruct`: Knowledge structures with MDD laws
+  - `boolMddOf`: Boolean formula to MDD translation
+  - `mddOf`: Epistemic formula to MDD translation
+
+**Import Patterns**
+
+For basic MDD operations:
+```haskell
+import MDD.Types
+import MDD.Interface
+```
+
+For visualization:
+```haskell
+import MDD.Draw (settings, show_dd, drawTree3)
+```
+
+For SMCDEL integration:
+```haskell
+import MDD.Types hiding (Neg)
+import MDD.Interface
+import MDD.Draw (settings, show_dd)
+```
+
+**Key Architectural Changes from Pre-Refactor**
+
+1. **MDD Type**: Changed from `type MDD = (NodeLookup, Node)` to `newtype MDD = MDD { unMDD :: (NodeLookup, Node) }`
+   - Requires explicit wrapping/unwrapping with `MDD` constructor and `unMDD` accessor
+   - Enables `Eq` and `Show` instances
+
+2. **Context Lifecycle**: Contexts are now ephemeral
+   - Created per operation via `init_binary_context` or `init_unary_context`
+   - NodeLookup is merged before context creation using `unionNodeLookup`
+   - Updated NodeLookup is extracted via `getLookup` and stored in result MDD
+
+3. **Module Organization**: Split monolithic `MDD.hs` into focused modules
+   - Each module has a single, clear responsibility
+   - Better separation of concerns
+   - Easier to maintain and test
+
+4. **Static Types**: Moved to separate `MDD.Static` module
+   - No longer part of main operator contexts
+   - Treated as separate visualization concern
 
 ...
 
@@ -132,7 +235,7 @@ current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next
 6. 0 in parsing paths for node initialization is taken as trick to represent Top (in Dc1) or Bot (in Dc0). a negative number in parsing paths for node initialization is taken to be a negative evaluation of the variable (should the pos / neg not already be able to indicate this? maybe we can fix this later).
 
 
-Recent cleanups of code:
+Recent refactor of code:
 
 **1. MDD Type Representation**
 - **Before**: MDD was a type synonym: `type MDD = (NodeLookup, Node)`
@@ -176,105 +279,12 @@ Recent cleanups of code:
   - `MDD.Draw`: Visualization functions
 
 **6. Code Quality Improvements**
-- Removed debug/trace code and colorization utilities from core modules
 - Cleaner separation of concerns
 - More explicit type signatures
 - Better use of typeclasses (`HasNodeLookup`) for polymorphism
 
-**7. Detailed Code-Level Changes**
 
-**7.1. Removed Debug/Trace and Colorization from Core Modules**
 
-**Removed from `MDD.hs` (now in `MDD.Draw` only):**
-- `debug :: c -> String -> c` - trace wrapper function
-- `col :: ColorIntensity -> Color -> String -> String` - ANSI color formatting
-- `colorize :: String -> String -> String` - string colorization with named colors
-- `setColor24bit :: Int -> Int -> Int -> String` - 24-bit color codes
-- `resetColor :: String` - ANSI reset code
-- `import System.Console.ANSI` - removed from core module
-- `import Debug.Trace ( trace )` - removed from core module
-
-**Removed Show instances with colorization:**
-- `instance Show Context` - completely removed (was 7 lines with formatted output)
-- `instance Show Dd` - changed from custom 10-line implementation with colorization to `deriving Show` in Types.hs
-
-**Removed utility functions:**
-- `showNodeLookupDetails :: NodeLookup -> String` - formatted NodeLookup display (13 lines)
-- `show_context :: Context -> [Char]` - moved to Draw.hs with different signature: `show_context :: (HasNodeLookup c) => c -> String`
-- `show_dc_stack :: Context -> String` - moved to Draw.hs as `show_dc_stack_str :: BinaryOperatorContext -> String`
-- `show_id :: NodeId -> String` - moved to Draw.hs (same implementation)
-- `show_id' :: Node -> String` - moved to Draw.hs (same implementation)
-
-**7.2. Removed Functions**
-
-**Completely removed (no replacement found):**
-- `getDd_ :: NodeLookup -> NodeId -> Dd` - standalone version that took NodeLookup directly (was 6 lines)
-- `getEntry :: Context -> NodeId -> TableEntry` - utility to get TableEntry from Context (was 5 lines, used in commented-out dereference code)
-
-**7.3. Error Message Changes**
-
-**Fixed typos:**
-- Old: `"Node adress without Alternative..."` (typo: "adress")
-- New: `"Node address without Alternative..."` (fixed: "address")
-- Old: `"Node adress without Node..."` (typo: "adress")
-- New: `"Node address not in table/map..."` (fixed: "address")
-
-**Simplified error messages:**
-- Old: Included full context in error: `++ "\n\n with context:" ++ show c`
-- New: Only shows node_id: `++ show node_id`
-- Old: `++ "\n\n with nodelookup:"` (incomplete message)
-- New: Cleaner, more concise messages
-
-**7.4. Function Signature Changes**
-
-**Polymorphic via typeclass:**
-- `getDd`: Changed from `Context -> NodeId -> Dd` to `(HasNodeLookup c) => c -> NodeId -> Dd`
-- `getNode`: Changed from `Context -> NodeId -> Node` to `(HasNodeLookup c) => c -> NodeId -> Node`
-- `insert`: Changed from `Context -> Dd -> (Context, Node)` to `(HasNodeLookup c) => c -> Dd -> (c, Node)`
-
-**7.5. Interface/API Changes**
-
-**Binary operations (`.*.` and `.+`):**
-- **Old**: Called `apply'` then separately called `applyElimRule`:
-  ```haskell
-  (ctx', (_, r_dd)) = apply' @Dc ctx "inter" a b
-  (ctx'', r) = applyElimRule @Dc ctx' r_dd
-  ```
-- **New**: `apply` directly returns final result (elimination rules applied internally):
-  ```haskell
-  (ctx', r) = apply @Dc ctx "inter" (fst a) (fst b)
-  ```
-- **Note**: This suggests `applyElimRule` is now called internally within `apply'` via `uncurry (applyElimRule @a)`, consolidating what were previously two separate steps.
-
-**7.6. Potential Issues or Inconsistencies**
-
-1. **Missing `applyElimRule` call in interface?**: ✅ **CONFIRMED NON-ISSUE**. The old code explicitly called `applyElimRule` after `apply'` because `apply'` returned `(Context, Node)` where the Node contained a `Dd` (not yet eliminated). In the new code, `apply'` directly calls `applyElimRule` internally via `uncurry (applyElimRule @a)` or direct calls (see line 113 in Binary.hs), so `apply` already returns the final eliminated result. This is a correct refactoring that consolidates the two-step process into one.
-
-2. **Removed `getDd_` function**: This standalone function that took `NodeLookup` directly is no longer available. If any code outside the context system needed direct NodeLookup access, it would need to be updated.
-
-3. **Removed `getEntry` function**: This was used to access `TableEntry` (which includes `reference_count`). If reference counting inspection was needed, this functionality is now lost.
-
-4. **Show instance removal**: `Show Context` was completely removed. If code relied on `show` for Context debugging, it would now fail. However, this is likely fine since Contexts are now ephemeral.
-
-5. **Error message context loss**: The new error messages don't include the full context, which might make debugging harder, but the messages are cleaner and the contexts are now ephemeral anyway.
-
-6. **Debug output not showing in real-time**: ✅ **FIXED**. The new code removed `debug_manipulation` wrapper from `apply` calls:
-   - **Old**: `apply c s a b = debug_manipulation (apply' @a ...) ...` (line 83 in SODDmanipulation.hs)
-   - **New (before fix)**: `apply c s a b = apply' @a c s (getNode c a) (getNode c b)` (line 91 in Binary.hs)
-   - **New (after fix)**: `apply c s a b = debug_manipulation (apply' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)`
-   - **Impact**: Debug output was not showing from `apply` operations
-   - **Fix applied**:
-     - Added `debug_manipulation` wrapper to `apply`, `apply''`, `applyDcB`, `applyDcB''`, `applyDcA`, `applyDcA''` in Binary.hs
-     - Added `debug_dc_traverse` wrapper to `traverse_dc` in Traversal.hs
-     - Modified `myTrace` to flush stderr for real-time output: added `hPutStr stderr msg` and `hFlush stderr`
-     - Modified `debug5` to flush stderr: changed from simple `trace` to `unsafePerformIO` with explicit stderr flushing
-
-7. **`debug5` signature change**: ⚠️ **BREAKING CHANGE** (partially fixed). The signature changed:
-   - **Old**: `debug5 :: Node -> String -> Node` (used for logging test results)
-   - **New**: `debug5 :: Bool -> String -> Bool` (used for test assertions)
-   - **Impact**: While both work with infix notation `b \`debug5\` "msg"`, the old version logged the Node result, the new only traces the message. This may cause missing debug information.
-   - **Note**: The new version also doesn't check `save_logs settings` like the old version did.
-   - **Fix applied**: Modified `debug5` to flush stderr for real-time output using `unsafePerformIO` with `hPutStr` and `hFlush`
 
 
 to build the project use "cabal build" in the project home folder.
@@ -283,3 +293,6 @@ to build the project use "cabal build" in the project home folder.
 
 future addons:
 - add colorized drawtree setting
+- add better equality check for eq instance of MDD
+- fix absorb for unary stuff
+- double check whether elim rules are applied to path constructurs eventhough the parse input gets eliminated (e.g. -1 in neg1)

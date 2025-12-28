@@ -5,7 +5,7 @@ import Data.List (nub,intercalate,(\\), inits)
 import Data.Dynamic
 import Data.Maybe (fromMaybe)
 
-import MDD hiding (Neg)
+import MDD.Types hiding (Neg)
 -- import Test.QuickCheck
 import SMCDEL.Internal.Help (powerset)
 import SMCDEL.Internal.TexDisplay

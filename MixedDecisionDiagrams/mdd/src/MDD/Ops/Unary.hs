@@ -8,6 +8,9 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Move brackets to avoid $" #-}
+{-# HLINT ignore "Use second" #-}
 
 module MDD.Ops.Unary where
 
@@ -33,6 +36,53 @@ withCache_ c@UnaryOperatorContext { un_cache = nc } (key, _) func_with_args =
       (updatedContext, result@(nodeid, _)) = func_with_args
       updatedCache = HashMap.insert key nodeid nc
       in (updatedContext { un_cache = updatedCache }, result)
+
+-- ==========================================================================================================
+-- * Unary Elimination Rules
+-- ==========================================================================================================
+
+-- | Apply elimination rules for unary operations (similar to binary but for UnaryOperatorContext)
+-- This uses a temporary binary context to leverage the existing applyElimRule logic from DdF3
+applyElimRule_unary :: forall a. (DdF3 a) => UnaryOperatorContext -> Dd -> (UnaryOperatorContext, Node)
+applyElimRule_unary c d =
+    -- Convert to binary context temporarily to use the existing applyElimRule logic
+    -- This works because applyElimRule only uses HasNodeLookup methods, not the stack
+    let binCtx = init_binary_context (getLookup c)
+        (binCtx', result) = applyElimRule @a binCtx d
+    in (c { un_nodelookup = getLookup binCtx' }, result)
+
+-- | Apply elimination rules for unary operations (takes tuple form)
+applyElimRule'_unary :: forall a. (DdF3 a) => (UnaryOperatorContext, Dd) -> (UnaryOperatorContext, Node)
+applyElimRule'_unary (c, d) = applyElimRule_unary @a c d
+
+-- ==========================================================================================================
+-- * Redundancy Elimination (absorb) for Unary
+-- ==========================================================================================================
+
+absorb_unary :: (UnaryOperatorContext, Node) -> (UnaryOperatorContext, Node)
+absorb_unary (c, n) = absorb'_unary (c, n)
+
+absorb'_unary :: (UnaryOperatorContext, Node) -> (UnaryOperatorContext, Node)
+-- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = (dcs, dc@(_, Unknown) : fs) }, a)  =
+    let (c', r) = absorb'_unary (c{un_dc_stack = (dcs, fs)}, a) in (c, r)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = (_, dc : fs) }, a@(_, Unknown)) = (c, a)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = (_, dc : fs) }, a@(_, Leaf _))
+    | a == dc = (c, ((0,0), Unknown))
+    | otherwise = (c,a)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = (_, dc@(_, Leaf _)  : fs) }, a@(_, InfNodes _ d p n))  =  let
+    (_, r1) = absorb'_unary (c, getNode c d)
+    (_, r2) = absorb'_unary (c, getNode c p)
+    (_, r3) = absorb'_unary (c, getNode c n)
+    in if r1 == r2 && r2 == r3 then (c, ((0,0), Unknown)) else (c, a)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = (_, dc@(_, Leaf _)  : fs) }, a@(_, EndInfNode a_child)) = if getNode c a_child == dc then (c, ((0,0), Unknown)) else (c, a)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = (_, dc@(_, EndInfNode dc') : fs) }, a@(_, EndInfNode a'))
+    | a' == dc' = (c, ((0,0), Unknown))
+    | otherwise = (c,a)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = (_, dc : fs) }, a)
+    | a == dc = (c, ((0,0), Unknown))
+    | otherwise = (c,a)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = (_, []) }, a) = (c, a)
 
 -- ==========================================================================================================
 -- * Negation Logic
@@ -63,8 +113,6 @@ negation' c u@(_, Unknown) = (c, u)
 
 type DdUnary :: Inf -> Constraint
 class DdUnary a where
-    swap_node_set :: UnaryOperatorContext -> [Position] -> Node -> (UnaryOperatorContext, Node)
-    swap_node_set' :: UnaryOperatorContext -> [Position] -> Node -> (UnaryOperatorContext, Node)
     restrict_node_set :: UnaryOperatorContext -> [Position] -> Bool -> Node -> (UnaryOperatorContext, Node)
     restrict_node_set' :: UnaryOperatorContext -> [Position] -> Bool -> Node -> (UnaryOperatorContext, Node)
     traverse_dc_unary :: String -> UnaryOperatorContext -> NodeId -> UnaryOperatorContext
@@ -81,65 +129,6 @@ instance (DdF3 a) => DdUnary a where
       where
         -- Helper to satisfy traverse_dc_generic signature which expects Binary context
         dummyBin u = init_binary_context (getLookup u)
-
-    swap_node_set c (na : nas) d@(node_id, Node position pos_child neg_child)  = let
-        (b, nas') = if (reverse $ map fst $ un_current_level c) ++ [position] == na
-            then (True, nas)
-            else (False, na : nas)
-
-        (c1, posR) = if nas' /= []
-            then (fst traverse_pos, fst $ snd traverse_pos)
-            else (c, pos_child) -- terminal case, all vars have been replaced
-        traverse_pos = swap_node_set @a c_ nas' (getNode c pos_child)
-        c_ = traverse_dc_unary @a "pos child" c pos_child
-
-
-        (c2, negR) = if nas' /= []
-            then (fst traverse_neg, fst $ snd traverse_neg)
-            else (c, neg_child) -- terminal case, all vars have been replaced
-        traverse_neg = swap_node_set @a c1_ nas' (getNode c1 neg_child)
-        c1_ = traverse_dc_unary @a "neg child" (reset_stack_un c1 c) neg_child
-
-        -- Use a dummy BinaryOperatorContext to perform elimination since it's shared logic
-        in if b
-            then undefined -- logic from original: requires crossover to Binary logic
-            else undefined
-
-
-    swap_node_set c nas d@(node_id, InfNodes position dc p n) =  let
-        c_ = add_to_stack_ (position, Dc) (((0, 0), Unknown), ((0, 0), Unknown)) c
-        (c1, dcR) = swap_node_set @Dc (traverse_dc_unary @a "inf dc" c_ dc) nas (getNode c dc)
-        c2_ = add_to_stack_ (position, Neg) (getNode c1 dc, dcR) (reset_stack_un c1 c)
-        (c2, nR) = swap_node_set @Neg (traverse_dc_unary @a "inf neg" c2_ n) nas (getNode c1 n)
-        c3_ = add_to_stack_ (position, Pos) (getNode c2 dc, dcR) (reset_stack_un c2 c)
-        (c3, pR) = swap_node_set @Pos (traverse_dc_unary @a "inf pos" c3_ p) nas (getNode c2 p)
-
-        in undefined -- todo for absorb; we should infer nodes for zdd side...
-
-
-    swap_node_set c nas d@(node_id, EndInfNode child) =  let
-        (c_, inf) = pop_stack_ c
-        c' = traverse_dc_unary @a "endinf" c_ node_id
-        (c'', (r, _)) = case inf of
-             Dc -> swap_node_set @Dc c' nas (getNode c child)
-             Pos -> swap_node_set @Pos c' nas (getNode c child)
-             Neg -> swap_node_set @Neg c' nas (getNode c child)
-        in undefined
-
-    swap_node_set c nas b@(_, Leaf _) = (c, b)
-    swap_node_set c nas u@(_, Unknown) = (c, u)
-
-    -- do inference whenever the node which should be swapped is eliminated
-    swap_node_set' c (na : nas) d@(node_id, Node position pos_child neg_child) = if (reverse $ map fst $ un_current_level c) ++ [position] > na
-        then let (c', d') = inferNode @a c (last na) d
-            in swap_node_set @a c' (na : nas) d'
-        else swap_node_set @a c (na : nas) d
-    swap_node_set' c (na : nas) d@(node_id, InfNodes position dc p n) = if (reverse $ map fst $ un_current_level c) ++ [position] > na
-        -- todo! infer the infnode which is needed to reach the flip node
-        then let (c', d') = inferInfNode @a c (last na) d
-            in swap_node_set @a c' (na : nas) d'
-        else swap_node_set @a c (na : nas) d
-    swap_node_set' c (na : nas) d = swap_node_set @a c (na : nas) d
 
     restrict_node_set c (na : nas) b d@(node_id, Node position pos_child neg_child)  = let
         (b', nas') = if (reverse $ map fst $ un_current_level c) ++ [position] == na
@@ -158,7 +147,11 @@ instance (DdF3 a) => DdUnary a where
         traverse_neg = restrict_node_set @a c1_ nas' b (getNode c1 neg_child)
         c1_ = traverse_dc_unary @a "neg child" (reset_stack_un c1 c) neg_child
 
-        in undefined
+        in if b'  -- hit, so remove na from nas
+            then if b  -- depending on b, take positive or negative evaluation
+                then applyElimRule_unary @a c2 $ Node position posR posR
+                else applyElimRule_unary @a c2 $ Node position negR negR
+            else applyElimRule_unary @a c2 $ Node position posR negR  -- otherwise continue with original nas and no quantification
 
     restrict_node_set c nas b d@(node_id, InfNodes position dc p n) =
         let
@@ -169,7 +162,7 @@ instance (DdF3 a) => DdUnary a where
         c3_ = add_to_stack_ (position, Pos) (getNode c2 dc, dcR) (reset_stack_un c2 c)
         (c3, pR) = restrict_node_set @Pos (traverse_dc_unary @a "inf pos" c3_ p) nas b (getNode c2 p)
 
-        in undefined
+        in absorb_unary $ applyElimRule_unary @a (reset_stack_un c3 c) $ InfNodes position (fst dcR) (fst pR) (fst nR)
 
     restrict_node_set c nas b d@(node_id, EndInfNode child) =  let
         (c_, inf) = pop_stack_ c
@@ -178,9 +171,9 @@ instance (DdF3 a) => DdUnary a where
              Dc -> restrict_node_set @Dc c' nas b (getNode c child)
              Pos -> restrict_node_set @Pos c' nas b (getNode c child)
              Neg -> restrict_node_set @Neg c' nas b (getNode c child)
-        in undefined
+        in absorb_unary $ applyElimRule'_unary @a (reset_stack_un c'' c, EndInfNode r)
 
-    restrict_node_set c nas _ b@(_, Leaf _) = (c, b)
+    restrict_node_set c nas _ b@(_, Leaf _) = absorb_unary (c, b)
     restrict_node_set c nas _ u@(_, Unknown) = (c, u)
 
     restrict_node_set c n a b = error ("nonexhaustive " ++ "\n c: \n" ++ show (getLookup c) ++ "\n n: \n" ++ show n ++ "\n a: \n" ++ show a ++ "\n b: \n" ++ show b)

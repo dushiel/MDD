@@ -9,9 +9,9 @@ import Internal.Language
 import SMCDEL.Symbolic.S5_MDD
 import qualified SMCDEL.Symbolic.K_MDD as K
 import Data.Tagged (Tagged(..), untag)
-import MDD hiding (Neg)
-import MDDi
-import DrawMDD
+import MDD.Types hiding (Neg)
+import MDD.Interface
+import MDD.Draw (settings, show_dd, drawTree3, debug)
 
 -- | The default domain index for variables in this puzzle.
 vocabAsPropsDomain :: [(Int, InfL)]
@@ -91,8 +91,14 @@ makeEquivRel vocab obsVars = Tagged final_mdd
     combine mdd_acc p =
         let
              mdd_std = boolMddOf (PrpF p)
-             Tagged (mdd_mv) = K.mvMdd vocab mdd_std
-             Tagged (mdd_cp) = K.cpMdd vocab mdd_std
+
+             tagged_mv = K.mvMdd vocab mdd_std
+             Tagged mdd_mv = tagged_mv
+
+             tagged_cp = K.cpMdd vocab mdd_std
+             Tagged mdd_cp = tagged_cp
+
+
              mdd_eq = mdd_mv .<->. mdd_cp
              mdd_res = mdd_acc .*. mdd_eq
 
@@ -109,7 +115,7 @@ mudScnInitK n m = (K.BlS vocab law obs_map, actual)
     actual = var (P' [(0, Neg1, P'' [1..m])])
     buildObs i =
         let
-            my_obs_vars = delete (intToPrp vocabAsPropsDomain i) vocab
+            my_obs_vars = sort $ delete (intToPrp vocabAsPropsDomain i) vocab
             rel = makeEquivRel vocab my_obs_vars
         in (show i, rel)
     obs_list = map buildObs [1..n]
@@ -128,8 +134,8 @@ runMuddyK n m = do
   let afterFather@(K.BlS _ statelaw obs_laws, _) = unsafeUpdate startState (father n)
   putStrLn "Round 0: Father announces 'At least one child is muddy'."
 
-  -- putStrLn "State Law first one:"
-  -- drawTree3 statelaw
+  putStrLn "State Law first one:"
+  drawTree3 statelaw
 
 
   -- putStrLn "Observation Laws:"
@@ -137,7 +143,7 @@ runMuddyK n m = do
   --     putStrLn $ "Agent " ++ agent
   --     drawTree3 (untag rel)
   --   ) (M.toList obs_laws)
-  -- putStrLn "==================================="
+  putStrLn "==================================="
 
   -- 3. Loop
   loopK 1 afterFather
@@ -156,8 +162,8 @@ runMuddyK n m = do
                 putStrLn $ "Round " ++ show round ++ ": Nobody knows. Announcing 'Nobody knows'..."
                 let nextScene@(K.BlS _ law obs_laws, _) = unsafeUpdate currentScene (nobodyknows n)
 
-                -- putStrLn "State Law: ---------------- "
-                -- drawTree3 law
+                putStrLn "State Law: ---------------- "
+                drawTree3 law
 
                 -- putStrLn "Observation Laws:"
                 -- mapM_ (\(agent, rel) -> do

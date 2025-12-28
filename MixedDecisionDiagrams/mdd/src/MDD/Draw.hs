@@ -382,3 +382,6 @@ emptyFile = writeFile "debug.log" "["
 
 debug5 :: Bool -> String -> Bool
 debug5 b s = trace (colorize "red" (s ++ "\n\n")) b
+
+debug :: a -> String -> a
+debug f s = trace (colorize "green" (s ++ "\n\n")) f

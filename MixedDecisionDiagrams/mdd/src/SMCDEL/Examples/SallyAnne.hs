@@ -7,11 +7,9 @@ import Data.Tagged (Tagged(..), untag)
 import Internal.Language
 import SMCDEL.Symbolic.K_MDD
 import SMCDEL.Symbolic.S5_MDD (boolMddOf)
-import MDD (Context, Node, InfL(..), Path(..))
-import MDDi
-
--- import MDDi (top, bot, var)
-import DrawMDD
+import MDD.Types (InfL(..), Path(..))
+import MDD.Interface
+import MDD.Draw (settings, show_dd)
 import Debug.Trace (trace)
 
 -- =============================================================================
@@ -38,8 +36,10 @@ allsameMdd ps =
     let
         mddList = map (\p ->
             let
-                mv_node = mddOf undefined (PrpF $ mvP p) -- context doesn't matter for single var
-                cp_node = mddOf undefined (PrpF $ cpP p)
+                -- Create temporary BelStruct for single variable
+                tempBls = BlS [p] top M.empty
+                mv_node = mddOf tempBls (PrpF $ mvP p)
+                cp_node = mddOf tempBls (PrpF $ cpP p)
             in mv_node .<->. cp_node
             ) ps
     in Tagged (conSet mddList)
@@ -69,12 +69,10 @@ sallyInit :: BelScene
 sallyInit = (BlS vocab law obs, actual)
   where
     vocab  = [pp, tt]
-    -- Law: Sally is present (pp) and Marble NOT in basket (not tt)?
-    -- Wait, usually Sally puts it in first.
-    -- SallyAnne.hs says: law = pp AND not tt. (She hasn't put it in yet).
+    -- Law: It is publicly known that Sally is present (pp) and Marble NOT in basket (She hasn't put it in yet).
     law    = boolMddOf (Conj [PrpF pp, Neg (PrpF tt)])
     obs    = fromList [ ("Sally", totalRelMdd), ("Anne", totalRelMdd) ]
-    -- Actual: pp, not tt (Matches law)
+    -- Actual: pp, not tt (inferred in neg1) (Matches law)
     actual = var (P' [(0, Neg1, P'' [1])])
 
 -- =============================================================================
@@ -171,15 +169,17 @@ runSallyAnne = do
     putStrLn "\n[2] Action: Sally leaves the room."
     printStatus scene2
 
+    error "stop"
+
     -- 3. Anne moves marble
     let scene3 = unsafeUpdate scene2 anneMovesMarble
     putStrLn "\n[3] Action: Anne moves marble to box (Sally doesn't see)."
     printStatus scene3
 
-    -- -- 4. Sally returns
-    -- let scene4 = unsafeUpdate scene3 sallyReturns
-    -- putStrLn "\n[4] Action: Sally returns."
-    -- printStatus scene4
+    -- 4. Sally returns
+    let scene4 = unsafeUpdate scene3 sallyReturns
+    putStrLn "\n[4] Action: Sally returns."
+    printStatus scene4
 
     putStrLn "\n--- Final Belief Check ---"
 
@@ -200,14 +200,11 @@ printStatus scn = do
     let p = evalViaMdd scn (PrpF pp)
     let t = evalViaMdd scn (PrpF tt)
     putStrLn $ "    Status: Sally Present=" ++ show p ++ ", Marble in Basket=" ++ show t
-    -- Does Anne know marble is NOT in basket? (True)
-    -- let anneKnowsGone = evalViaMdd scn (K "Anne" (Neg (PrpF tt)))
-    -- putStrLn $ "Does Anne know marble is gone? " ++ show anneKnowsGone
+    -- Does Anne know marble is NOT in basket?
+    let anneKnowsGone = evalViaMdd scn (K "Anne" (Neg (PrpF tt)))
+    putStrLn $ "Does Anne believe that the marble is not in the basket? " ++ show anneKnowsGone
 
-    -- -- Does Sally know marble is NOT in basket? (False - she thinks it's there)
-    -- let sallyKnowsGone = evalViaMdd scn (K "Sally" (Neg (PrpF tt)))
-    -- putStrLn $ "Does Sally know marble is gone? " ++ show sallyKnowsGone
 
-    -- -- Does Sally believe marble IS in basket? (True)
-    -- let sallyBelievesHere = evalViaMdd scn (K "Sally" (PrpF tt))
-    -- putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere
+    -- Does Sally believe marble IS in basket?
+    let sallyBelievesHere = evalViaMdd scn (K "Sally" (PrpF tt))
+    putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere

@@ -9,9 +9,10 @@ import MDD.Manager
 import MDD.Construction
 import MDD.Ops.Binary
 import MDD.Ops.Unary
-import MDD.Draw (settings, show_dd)
+import MDD.Draw (settings, show_dd, debug)
 import Data.List
 import Data.Maybe (fromJust)
+import Data.List (foldl')
 
 -- |======================================== Dd Manipulation operators interactive ==============================================
 
@@ -64,6 +65,36 @@ restrict n b (MDD (l, d)) =
         (ctx', r) = restrict_node_set @Dc ctx [0 : n] b d
     in MDD (getLookup ctx', r)
 
+-- | Convert a Position to a Path representation for BDD construction
+position_as_BDD :: Position -> Bool -> Path
+position_as_BDD [] _ = error "no list provided"
+position_as_BDD [n] b = if b then P'' [n] else P'' [-n]
+position_as_BDD (n : ns) b = P' [(n, Dc1, position_as_BDD ns b)]
+
+-- | Swap variables in an MDD by swapping two lists of positions
+ddSwapVars :: MDD -> [Position] -> [Position] -> MDD
+ddSwapVars (MDD (mgr, z)) [n1] [n2] =
+        ite (var $ position_as_BDD n2 True)
+        (ite (var $ position_as_BDD n1 True) a11 a10)
+        (ite (var $ position_as_BDD n1 True) a01 a00)
+    where
+      a11 = restrict n2 True (restrict n1 True (MDD (mgr, z)))
+      a10 = restrict n2 False (restrict n1 True (MDD (mgr, z)))
+      a01 = restrict n2 True (restrict n1 False (MDD (mgr, z)))
+      a00 = restrict n2 False (restrict n1 False (MDD (mgr, z)))
+ddSwapVars (MDD (mgr, z)) (n1:ns1) (n2:ns2) =
+        let (MDD (l', r)) = ite (var $ position_as_BDD n2 True)
+                (ite (var $ position_as_BDD n1 True) a11 a10)
+                (ite (var $ position_as_BDD n1 True) a01 a00)
+            r'' = ddSwapVars (MDD (l', r)) ns1 ns2
+        in  r''
+    where
+      a11 = restrict n2 True (restrict n1 True (MDD (mgr, z)))
+      a10 = restrict n2 False (restrict n1 True (MDD (mgr, z)))
+      a01 = restrict n2 True (restrict n1 False (MDD (mgr, z)))
+      a00 = restrict n2 False (restrict n1 False (MDD (mgr, z)))
+ddSwapVars (MDD (mgr, z)) n1 n2 = error $ "not covered case? \n" ++ intercalate ", \n" [show_dd settings mgr z, show n1, show n2]
+
 -- | Relabel a DD with a list of pairs.
 relabelWith :: [(Position, Position)] -> MDD -> MDD
 relabelWith r d = loop d disjointListOfLists where
@@ -82,23 +113,14 @@ relabelWith r d = loop d disjointListOfLists where
   newOverlap l1 l2 = (fst $ getOverlap l1 l2, map ((l1 !!) . fromJust) (indexesNotOverlap l1 l2))
 
   splitCompare [] [] = []
+  splitCompare [] _ = error "varlists used for relabeling do not have equal length."
+  splitCompare _ [] = error "varlists used for relabeling do not have equal length."
   splitCompare l1 l2 = (l1 \\ fst (getOverlap l1 l2), l2 \\ snd (getOverlap l1 l2)) : uncurry splitCompare (newOverlap l1 l2)
 
   disjointListOfLists = splitCompare listVars1 listVars2
 
   loop d_ [] = d_
-  loop d_ (n:ns) = loop (ddSwapVars d_ n) ns
-
-  ddSwapVars m (n1:ns1, n2:ns2) = ite (var $ position_as_BDD n2 True)
-                                     (ite (var $ position_as_BDD n1 True) a11 a10)
-                                     (ite (var $ position_as_BDD n1 True) a01 a00)
-    where a11 = restrict n2 True (restrict n1 True m)
-          a10 = restrict n2 False (restrict n1 True m)
-          a01 = restrict n2 True (restrict n1 False m)
-          a00 = restrict n2 False (restrict n1 False m)
-          position_as_BDD ([p]) val = if val then P'' [p] else P'' [-p]
-          position_as_BDD (p:ps) val = P' [(p, Dc1, position_as_BDD ps val)]
-          position_as_BDD _ _ = error "empty pos"
+  loop d_ (n:ns) = loop (uncurry (ddSwapVars d_) n) ns
 
 -- | Simultaneous substitution.
 substitSimul :: [(Position, Node)] -> MDD -> MDD
@@ -107,3 +129,48 @@ substitSimul ((n, psi) : ns) m =
         ite (MDD (fst (unMDD m), psi))
         (substitSimul ns (restrict n True m))
         (substitSimul ns (restrict n False m))
+
+-- | Implication operator
+infixl 1 .->.
+(.->.) :: MDD -> MDD -> MDD
+(.->.) a b = (-.) a .+. b
+
+-- | Equivalence operator
+infixl 1 .<->.
+(.<->.) :: MDD -> MDD -> MDD
+(.<->.) a b = (a .*. b) .+. ((-.) a .*. (-.) b)
+
+-- | Conjunction over a list
+conSet :: [MDD] -> MDD
+conSet [] = top
+conSet (d:ds) = foldl' (.*.) d ds
+
+-- | Disjunction over a list
+disSet :: [MDD] -> MDD
+disSet [] = bot
+disSet (d:ds) = foldl' (.+.) d ds
+
+-- | XOR over a list
+xorSet :: [MDD] -> MDD
+xorSet [] = top
+xorSet (d:ds) = foldl' xor d ds
+
+-- | Universal quantification over a single position
+forall :: Position -> MDD -> MDD
+forall n d = (restrict n False d) .*. (restrict n True d)
+
+-- | Existential quantification over a single position
+exist :: Position -> MDD -> MDD
+exist n d = (restrict n False d) .+. (restrict n True d)
+
+-- | Universal quantification over a list of positions
+forallSet :: [Position] -> MDD -> MDD
+forallSet [] d = d
+forallSet [n] d = forall n d
+forallSet (n : ns) d = (restrict n False (forallSet ns d)) .*. (restrict n True (forallSet ns d))
+
+-- | Existential quantification over a list of positions
+existSet :: [Position] -> MDD -> MDD
+existSet [] d = d
+existSet [n] d = exist n d
+existSet (n : ns) d = (restrict n False (existSet ns d)) .+. (restrict n True (existSet ns d))
