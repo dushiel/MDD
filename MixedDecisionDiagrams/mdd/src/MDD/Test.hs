@@ -140,14 +140,6 @@ n'dc'  = add_path ndc              (P' [(1, Neg0, P' [(1, Dc0, P'' [0])])])
 
 -- |======================================== Actual test cases ==============================================
 
--- negation is very simple to implement and does not need its own test category
--- some categories do not yet have test cases, as i add them as i develop
-
--- goals:
--- 1) i would like to have a monad for passing the context around
--- 2) improve struturing of tests further, such that the categories are more consistent and complete
--- in such a way that it is easy to add / remove / adjust tests in each category
--- 3) if there is someway to automate some of the test writing, that would be very nice (some tests contain symmetries)
 
 test :: IO ()
 test = do
@@ -354,4 +346,98 @@ testAdvancedOps = do
     let failures = [show i | (i, False) <- zip [(0::Int)..] results]
     if null failures
         then putStrLn "All advanced operations tests passed!"
+        else putStrLn $ "Failures at indices: " ++ unwords failures
+
+
+-- todo: create forall and exists tests
+-- test forall: forall[1] ( 1 -> 2 AND (neg 1) -> (2 OR 3) ) ==  2
+-- test exists: exists[1] ( 1 -> 2 AND (neg 1) -> 3 ) ==  2 OR 3
+-- Level 1: Basic Identities & XOR
+-- 1. Identity: Forall 1, (1 or 2) is true only if 2 is true.
+-- test_01: forall[1] ( 1 OR 2 ) == 2
+
+-- 2. Implication: Exists 1 such that (1 implies 2) is always true (since if 1 is false, it's true).
+-- test_02: exists[1] ( 1 -> 2 ) == 1
+
+-- 3. XOR: Forall 1, (1 XOR 2) is never a tautology because it depends on 1's state.
+-- test_03: forall[1] ( 1 XOR 2 ) == 0
+
+-- Level 2: Distribution and Case Logic
+-- 4. Bi-conditional: There exists a value for 1 that matches 2.
+-- test_04: exists[1] ( 1 <-> 2 ) == 1
+
+-- 5. Distribution: Forall 1, (1 AND 2) OR (1 AND 3) is always false (when 1 is false).
+-- test_05: forall[1] ( (1 AND 2) OR (1 AND 3) ) == 0
+
+-- 6. If-Then-Else: The classic "selection" logic you started with.
+-- test_06: exists[1] ( (1 -> 2) AND (neg 1 -> 3) ) == 2 OR 3
+
+-- Level 3: Nested Quantifiers (Variable Elimination)
+-- 7. Universal Overlap: For (1 OR 2) to be true for all 1 and all 2, it is impossible.
+-- test_07: forall[1] forall[2] ( 1 OR 2 ) == 0
+
+-- 8. Existential Overlap: Can we find a 1 and 2 such that both are true? Yes.
+-- test_08: exists[1] exists[2] ( 1 AND 2 ) == 1
+
+-- 9. Alternating Quantifiers: For every 1, does there exist a 2 that makes them equal? Yes (2 = 1).
+-- test_09: forall[1] exists[2] ( 1 <-> 2 ) == 1
+
+-- Level 4: The Challenge (Consensus Theorem)
+-- 10. Forall 1, the consensus of (1,2) and (neg 1, 3) is just (2 and 3).
+-- test_10: forall[1] ( (1 AND 2) OR (neg 1 AND 3) OR (2 AND 3) ) == 2 AND 3
+
+-- | Test forall and exists quantifiers
+testForallExists :: IO ()
+testForallExists = do
+    putStrLn "Running Forall and Exists Tests..."
+    emptyFile
+    let results = [
+            -- Level 1: Basic Identities & XOR
+            -- 1. Identity: Forall 1, (1 or 2) is true only if 2 is true.
+            (forall [1, 1] (ddOf t_c $ Or (Var dc1) (Var dc2)) == (ddOf t_c $ Var dc2))
+                `debug5` "test_01: forall[1] ( 1 OR 2 ) == 2"
+
+            -- 2. Implication: Exists 1 such that (1 implies 2) is always true (since if 1 is false, it's true).
+            , (exist [1, 1] (ddOf t_c $ Impl (Var dc1) (Var dc2)) == (ddOf t_c Top))
+                `debug5` "test_02: exists[1] ( 1 -> 2 ) == Top"
+
+            -- 3. XOR: Forall 1, (1 XOR 2) is never a tautology because it depends on 1's state.
+            , (forall [1, 1] (xor (ddOf t_c $ Var dc1) (ddOf t_c $ Var dc2)) == (ddOf t_c Bot))
+                `debug5` "test_03: forall[1] ( 1 XOR 2 ) == Bot"
+
+            -- Level 2: Distribution and Case Logic
+            -- 4. Bi-conditional: There exists a value for 1 that matches 2.
+            , (exist [1, 1] ((ddOf t_c $ Var dc1) .<->. (ddOf t_c $ Var dc2)) == (ddOf t_c Top))
+                `debug5` "test_04: exists[1] ( 1 <-> 2 ) == Top"
+
+            -- 5. Distribution: Forall 1, (1 AND 2) OR (1 AND 3) is always false (when 1 is false).
+            , (forall [1, 1] (ddOf t_c $ Or (And (Var dc1) (Var dc2)) (And (Var dc1) (Var dc3))) == (ddOf t_c Bot))
+                `debug5` "test_05: forall[1] ( (1 AND 2) OR (1 AND 3) ) == Bot"
+
+            -- 6. If-Then-Else: The classic "selection" logic you started with.
+            , (exist [1, 1] (ddOf t_c $ And (Impl (Var dc1) (Var dc2)) (Impl (Negate $ Var dc1) (Var dc3))) == (ddOf t_c $ Or (Var dc2) (Var dc3)))
+                `debug5` "test_06: exists[1] ( (1 -> 2) AND (neg 1 -> 3) ) == 2 OR 3"
+
+            -- Level 3: Nested Quantifiers (Variable Elimination)
+            -- 7. Universal Overlap: For (1 OR 2) to be true for all 1 and all 2, it is impossible.
+            , (forallSet [[1, 1], [1, 2]] (ddOf t_c $ Or (Var dc1) (Var dc2)) == (ddOf t_c Bot))
+                `debug5` "test_07: forall[1] forall[2] ( 1 OR 2 ) == Bot"
+
+            -- 8. Existential Overlap: Can we find a 1 and 2 such that both are true? Yes.
+            , (existSet [[1, 1], [1, 2]] (ddOf t_c $ And (Var dc1) (Var dc2)) == (ddOf t_c Top))
+                `debug5` "test_08: exists[1] exists[2] ( 1 AND 2 ) == Top"
+
+            -- 9. Alternating Quantifiers: For every 1, does there exist a 2 that makes them equal? Yes (2 = 1).
+            , (forall [1, 1] (exist [1, 2] ((ddOf t_c $ Var dc1) .<->. (ddOf t_c $ Var dc2))) == (ddOf t_c Top))
+                `debug5` "test_09: forall[1] exists[2] ( 1 <-> 2 ) == Top"
+
+            -- Level 4: The Challenge (Consensus Theorem)
+            -- 10. Forall 1, the consensus of (1,2) and (neg 1, 3) is just (2 and 3).
+            , (forall [1, 1] (ddOf t_c $ Or (Or (And (Var dc1) (Var dc2)) (And (Negate $ Var dc1) (Var dc3))) (And (Var dc2) (Var dc3))) == (ddOf t_c $ And (Var dc2) (Var dc3)))
+                `debug5` "test_10: forall[1] ( (1 AND 2) OR (neg 1 AND 3) OR (2 AND 3) ) == 2 AND 3"
+            ]
+    mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
+    let failures = [show i | (i, False) <- zip [(0::Int)..] results]
+    if null failures
+        then putStrLn "All forall/exists tests passed!"
         else putStrLn $ "Failures at indices: " ++ unwords failures

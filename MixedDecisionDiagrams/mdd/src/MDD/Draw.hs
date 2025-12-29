@@ -8,6 +8,7 @@ import MDD.Types
 import MDD.Context
 import MDD.Manager
 import MDD.Construction
+import qualified Data.HashMap.Strict as HashMapStrict
 
 import System.IO
 import System.Console.ANSI
@@ -64,7 +65,7 @@ settings = ShowSetting {
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
-            ,   debug_on = False
+            ,   debug_on = True
             ,   save_logs = False
 
             ,   debug_open = True
@@ -316,6 +317,88 @@ check_skip_display a_id b_id =
     not (a_id `elem` [l_1, l_0] && b_id `elem` [l_1, l_0]) &&
     not (a_id == l_u && b_id == l_u) &&
     not ((a_id `elem` [l_1, l_0] || b_id `elem` [l_1, l_0]) && not (display_leaf_cases settings))
+
+check_skip_display_unary :: NodeId -> Bool
+check_skip_display_unary a_id =
+    debug_on settings &&
+    not (a_id `elem` [l_1, l_0]) &&
+    not (a_id == l_u) &&
+    not (a_id `elem` [l_1, l_0] && not (display_leaf_cases settings))
+
+-- | Debug wrapper for unary operations (similar to debug_manipulation for binary operations).
+-- | Provides debugging output for restrict_node_set and other unary operations.
+debug_manipulation_unary :: (UnaryOperatorContext, Node) -> String -> String -> UnaryOperatorContext -> Node -> [Position] -> Bool -> (UnaryOperatorContext, Node)
+debug_manipulation_unary result_pair f_key f_name old_c@UnaryOperatorContext{un_cache = nc, un_dc_stack=dcs} a@(a_id, a_d) nas b_val
+    | getDd old_c a_id == a_d = if not $ save_logs settings then
+    let
+    leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
+                    "\n  ->   " ++ show_dd settings old_c a ++
+                    "\n  ->   restrict: " ++ show nas ++ " to " ++ show b_val ++ "\n"
+    (c,r) = if debug_on settings && debug_open settings && check_skip_display_unary a_id
+            then if debug_dc_stack settings
+                then myTrace (leaf_msg ++ display_func_stack_unary old_c) result_pair
+                else myTrace leaf_msg result_pair
+            else result_pair
+    in
+    if debug_on settings && debug_close settings && check_skip_display_unary a_id
+        then if a_id `elem` [l_1, l_0]
+            then if not $ display_leaf_cases settings
+                then (c{un_dc_stack=dcs}, r)
+                else myTrace (colorize "green" (f_name ++ " : ") ++
+                    "\n  " ++ show_dd settings c a ++
+                    " (restrict: " ++ show nas ++ " to " ++ show b_val ++ ")" ++
+                    " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+                    "\n") (c, r)
+            else
+            myTrace (
+            case HashMap.lookup a_id nc of
+                Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
+                    ++ colorize "green" (f_name ++ " : ") ++
+                    (if not $ debug_shorten_close settings then
+                        "\n  ->   " ++ show_dd settings c a ++
+                        "\n  ->   restrict: " ++ show nas ++ " to " ++ show b_val
+                    else "") ++
+                    "\n  =>   " ++ show_dd settings c r ++
+                    "\n"
+                Nothing ->
+                    colorize "green" (f_name ++ " : ") ++
+                    (if not $ debug_shorten_close settings then
+                        "\n  ->   " ++ show_dd settings c a ++
+                        "\n  ->   restrict: " ++ show nas ++ " to " ++ show b_val
+                    else "") ++
+                    "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+                    "\n"
+            ) (c{un_dc_stack=dcs}, r)
+        else (c{un_dc_stack=dcs}, r)
+    else
+    let
+    start_msg = ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c a) ++
+                ("\\n" ++ colorize "orange" "  ->   restrict: " ++ show nas ++ " to " ++ show b_val ++ "\\n")
+    (c,r) = if check_skip_display_unary a_id
+            then myDebugLog "\"inner\":[" result_pair
+            else result_pair
+    in
+    if check_skip_display_unary a_id
+        then myDebugLog ("{\"" ++ colorize "green" f_name ++"\": {" ++ "\"func_stack before\": [\"" ++ show_dc_stack_str_unary old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
+            case HashMap.lookup a_id nc of
+                Just rt -> myDebugLog ("],\n\"" ++ colorize "chill blue" "found cached result"++"\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
+                    ++ show_dd settings c (getNode c rt) ++ "\\n\"}},") (old_c, (getNode old_c rt))
+                Nothing ->
+                    myDebugLog ("],\n\"result\": \"\\n" ++ colorize "green" "  =>   " ++ show_dd settings c r ++ " " ++ col Vivid Blue (show_id' r)
+                    ++ "\\n\"}},") (c{un_dc_stack=dcs}, r)
+        else (c{un_dc_stack=dcs}, r)
+    | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a)
+
+show_dc_stack_str_unary :: UnaryOperatorContext -> String
+show_dc_stack_str_unary ctx = show (un_dc_stack ctx)
+
+display_func_stack_unary :: UnaryOperatorContext -> String
+display_func_stack_unary c@UnaryOperatorContext{un_dc_stack = dcs} = let
+            dcRs' = intercalate separator1 $ map (show_dd settings c) dcs
+            separator1 = " , \n"
+        in
+            (if display_level settings then colorize "purple" "func level : " ++ show (un_current_level c) else "") ++
+            (if display_dcRs settings then colorize "blue" "\n DcR : \n" ++ dcRs' else "") ++ "\n"
 
 debug_func :: String -> (BinaryOperatorContext, Node) -> (BinaryOperatorContext, Node)
 debug_func f_name f = if save_logs settings

@@ -164,12 +164,13 @@ runSallyAnne = do
     putStrLn "\n[1] Action: Sally puts marble in basket."
     printStatus scene1
 
+    error "stop"
+
     -- 2. Sally leaves
     let scene2 = unsafeUpdate scene1 sallyLeaves
     putStrLn "\n[2] Action: Sally leaves the room."
     printStatus scene2
 
-    error "stop"
 
     -- 3. Anne moves marble
     let scene3 = unsafeUpdate scene2 anneMovesMarble

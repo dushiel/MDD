@@ -52,9 +52,9 @@ reset_stack_bin new old = new { bin_dc_stack = bin_dc_stack old, bin_current_lev
 -- ==========================================================================================================
 
 add_to_stack_ :: (Int, Inf) -> (Node, Node) -> UnaryOperatorContext -> UnaryOperatorContext
-add_to_stack_ inf (dc, dcR) ctx@UnaryOperatorContext{un_dc_stack = (dcs, dcRs)} =
+add_to_stack_ inf (dc, dcR) ctx@UnaryOperatorContext{un_dc_stack = dcRs} =
     let lvs = un_current_level ctx in
-    ctx{un_dc_stack = (dc : dcs, dcR : dcRs), un_current_level = (inf : lvs)}
+    ctx{un_dc_stack = dcR : dcRs, un_current_level = (inf : lvs)}  -- Only track dcR, dc is unused
 
 add_to_level_ :: (Int, Inf) -> UnaryOperatorContext -> UnaryOperatorContext
 add_to_level_ inf ctx =
@@ -62,11 +62,11 @@ add_to_level_ inf ctx =
     ctx{un_current_level = inf : lvs}
 
 pop_stack_ :: UnaryOperatorContext -> (UnaryOperatorContext, Inf)
-pop_stack_ ctx@UnaryOperatorContext{un_dc_stack = (dcs, dcRs), un_current_level = lvs} =
+pop_stack_ ctx@UnaryOperatorContext{un_dc_stack = dcRs, un_current_level = lvs} =
     let (_ : lv@(_, inf) : lvs') = lvs
         n = (length lvs') - 1
         trim k xs = if length xs <= k then xs else drop (length xs - k) xs
-    in (ctx{un_dc_stack = (trim n dcs, trim n dcRs), un_current_level = lv : lvs'}, inf)
+    in (ctx{un_dc_stack = trim n dcRs, un_current_level = lv : lvs'}, inf)  -- Only track dcRs
 
 reset_stack_un :: UnaryOperatorContext -> UnaryOperatorContext -> UnaryOperatorContext
 reset_stack_un new old = new { un_dc_stack = un_dc_stack old, un_current_level = un_current_level old }

@@ -46,11 +46,13 @@ instance HasNodeLookup BinaryOperatorContext where
     setLookup nl ctx = ctx { bin_nodelookup = nl }
 
 -- | Context for Unary Operations (e.g., negation).
--- un_dc_stack tracks (dc, dcR) for single-input resolutions.
+-- un_dc_stack tracks dcR (resulting continuous branches) for absorption/elimination checks.
+-- Unlike binary operations, unary operations don't need to track the original input's dc branches
+-- since Unknown resolution is not needed (Unknown is returned as-is in unary operations).
 data UnaryOperatorContext = UnaryOperatorContext {
   un_nodelookup :: NodeLookup,
   un_cache :: SingleCache,
-  un_dc_stack :: ([Node], [Node]),
+  un_dc_stack :: [Node],  -- Only dcR (resulting continuous branches), no dcs needed
   un_current_level :: Level'
 }
 
@@ -88,7 +90,7 @@ init_unary_context :: NodeLookup -> UnaryOperatorContext
 init_unary_context nl = UnaryOperatorContext {
     un_nodelookup = nl,
     un_cache = HashMap.empty,
-    un_dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)]),
+    un_dc_stack = [((0,0), Unknown)],  -- Only dcR, no dcs needed
     un_current_level = [(0, Dc)]
 }
 

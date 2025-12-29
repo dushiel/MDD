@@ -46,6 +46,17 @@ move_dc c m node =
         _ -> error $ "processStackElement: Unhandled Node pattern"
 
 -- | Elimination and Inference rule typeclass (DdF3).
+-- |
+-- | This typeclass defines the inference and elimination rules for the three inference types:
+-- |   - Dc (Don't-care): Nodes where both positive and negative evaluations lead to the same child are eliminated
+-- |   - Pos (Positive literal): Nodes where only the positive evaluation is valid (negative leads to Unknown) are eliminated
+-- |   - Neg (Negative literal): Nodes where only the negative evaluation is valid (positive leads to Unknown) are eliminated
+-- |
+-- | Each instance implements:
+-- |   - infer(Inf)NodeA/infer(Inf)NodeB: Create inferred nodes when one argument is missing a variable at the lowest position of the two
+-- |   - applyElimRule: Apply the elimination rule to remove redundant nodes
+-- |   - catchup: Synchronize dc_stack traversal when main traversal skips variables
+-- |   - to_str: String representation for debugging
 class DdF3 (a :: Inf) where
     -- | Infers a node for Argument A when Argument B is at a lower position.
     inferNodeA :: (BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node))
@@ -71,30 +82,42 @@ instance DdF3 Dc where
             (c'', (neg_result, _)) = f c' s (getNode c neg_childA) b
         in (c'', Node positionA pos_result neg_result)
 
-    -- applyElimRule :: BinaryOperatorContext -> Dd -> (BinaryOperatorContext, Node)
+    -- | Dc elimination rule: Eliminate nodes where pos and neg branches are equal.
+    -- | Case 1: Node with equal pos and neg children -> eliminate, return either child
+    -- | Case 2-4: InfNodes with only dc branch set (pos/neg empty) -> simplify to Leaf/Unknown
+    -- | Case 5-7: EndInfNode pointing to Leaf/Unknown -> eliminate EndInfNode wrapper
+    -- | Case 8: EndInfNode pointing to Leaf/Unknown (general) -> eliminate wrapper
+    -- | Case 9: InfNodes with only dc branch, and dc points to EndInfNode -> unwrap
+    -- | Case 10: Default -> insert node as-is
     applyElimRule c d@(Node _ p n) = if p == n then (c, getNode c p) else insert c d
-    applyElimRule c (InfNodes _ (1,0) (0,0) (0,0)) = (c, ((1,0), Leaf True))
-    applyElimRule c (InfNodes _ (2,0) (0,0) (0,0)) = (c, ((2,0), Leaf False))
-    applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
-    applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))
-    applyElimRule c (EndInfNode (2,0)) = (c, ((2,0), Leaf False))
-    applyElimRule c (EndInfNode (0,0)) = (c, ((0,0), Unknown))
+    applyElimRule c (InfNodes _ (1,0) (0,0) (0,0)) = (c, ((1,0), Leaf True))  -- Only dc=True -> Leaf True
+    applyElimRule c (InfNodes _ (2,0) (0,0) (0,0)) = (c, ((2,0), Leaf False))  -- Only dc=False -> Leaf False
+    applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))  -- Only dc=Unknown -> Unknown
+    applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))  -- EndInfNode to True -> True
+    applyElimRule c (EndInfNode (2,0)) = (c, ((2,0), Leaf False))  -- EndInfNode to False -> False
+    applyElimRule c (EndInfNode (0,0)) = (c, ((0,0), Unknown))  -- EndInfNode to Unknown -> Unknown
     -- Eliminate EndInfNode if it points to a Leaf Bool or Unknown (general case)
     applyElimRule c d@(EndInfNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)  -- Eliminate EndInfNode if it points to any Leaf
         Unknown -> (c, getNode c r)  -- Eliminate EndInfNode if it points to Unknown
         _ -> insert c d
     applyElimRule c d@(InfNodes _ consq (0,0) (0,0)) = case getDd c consq of
-        EndInfNode d' -> (c, getNode c d')
+        EndInfNode d' -> (c, getNode c d')  -- Elim InfNode and EndInfNode if they immediatly follow up on each other
         _ -> insert c d
     applyElimRule c d = insert c d
 
     inferNode c position (n_id, n) = insert c (Node position n_id n_id)
     inferInfNode c position (n_id, n) = insert c $ InfNodes position n_id (0,0) (0,0)
+    -- | Dc catchup: No catchup needed for Dc (both branches are valid, no inference needed).
     catchup _ _ n _ = n
     to_str = "Dc"
 
+-- | Instance for Pos (Positive literal) inference/elimination rule.
+-- |
+-- | Pos rule: Nodes where only the positive evaluation is valid (negative leads to Unknown)
+-- | are eliminated. This means the variable must be positive (True) for the path to be valid.
 instance DdF3 Pos where
+    -- | Pos rule: Create a Node with pos branch = a_id, neg branch = (0,0) (Unknown).
     inferNodeA f c s a@(a_id, _) b@(b_id, Node positionB _ _) =
         let (c', r) = insert c (Node positionB a_id (0,0))
             (c'', (r_node_id, _)) = f c' s r (getNode c' b_id)
@@ -105,10 +128,14 @@ instance DdF3 Pos where
             (c'', (r_node_id, _)) = f c' s (getNode c' a_id) r
         in (c'', getDd c'' r_node_id)
 
-    -- applyElimRule :: BinaryOperatorContext -> Dd -> (BinaryOperatorContext, Node)
-    applyElimRule c (Node _ posC (0, 0)) = (c, getNode c posC)
-    applyElimRule c (InfNodes _ (0,0) (1,0) (0,0)) = (c, ((1,0), Leaf True))
-    applyElimRule c (InfNodes _ (0,0) (2,0) (0,0)) = (c, ((2,0), Leaf False))
+    -- | Pos elimination rule: Eliminate nodes where neg branch is Unknown (only pos is valid).
+    -- | Case 1: Node with neg = (0,0) (Unknown) -> eliminate, return pos branch
+    -- | Case 2-3: InfNodes with only pos branch set (dc/neg empty) -> simplify to Leaf
+    -- | Case 4-5: EndInfNode pointing to Leaf/Unknown -> eliminate wrapper
+    -- | Case 6: Default -> insert node as-is
+    applyElimRule c (Node _ posC (0, 0)) = (c, getNode c posC)  -- Only pos valid -> return pos
+    applyElimRule c (InfNodes _ (0,0) (1,0) (0,0)) = (c, ((1,0), Leaf True))  -- Only pos=True -> True
+    applyElimRule c (InfNodes _ (0,0) (2,0) (0,0)) = (c, ((2,0), Leaf False))  -- Only pos=False -> False
     -- Eliminate EndInfNode if it points to a Leaf Bool or Unknown
     applyElimRule c d@(EndInfNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)  -- Eliminate EndInfNode if it points to any Leaf
@@ -116,31 +143,51 @@ instance DdF3 Pos where
         _ -> insert c d
     applyElimRule c d = insert c d
 
+    -- | Create inferred Node at position: pos branch set, neg = Unknown (only pos valid).
     inferNode c position (n_id, n) = insert c (Node position n_id (0,0))
+    -- | Create inferred InfNodes at position: only pos branch set (dc/neg empty).
     inferInfNode c position (n_id, n) = insert c $ InfNodes position (0,0) n_id (0,0)
 
+    -- | Pos catchup: When dc_stack lags behind main traversal, infer missing nodes.
+    -- | Uses Pos inference rule: follow the pos branch (neg leads to Unknown).
+    -- | Case 1: idx == -1 (terminal reached) -> recursively catchup following pos branch
+    -- | Case 2: idx > positionA (need to catch up to idx) -> recursively catchup following pos branch
+    -- | Case 3: Otherwise -> already caught up, return node
     catchup s c n@(_, Node positionA _ _) idx
-        | idx == -1 = catchup @Pos s c (move_dc c s n ) idx
-        | idx > positionA = catchup @Pos s c (move_dc c s n ) idx
+        | idx == -1 = catchup @Pos s c (move_dc c s n ) idx  -- Follow pos branch
+        | idx > positionA = catchup @Pos s c (move_dc c s n ) idx  -- Follow pos branch
         | otherwise = n
-    catchup _ _ n _ = n
+    catchup _ _ n _ = n  -- Non-Node: no catchup needed
     to_str = "Pos"
 
+-- | Instance for Neg (Negative literal) inference/elimination rule.
+-- |
+-- | Neg rule: Nodes where only the negative evaluation is valid (positive leads to Unknown)
+-- | are eliminated. This means the variable must be negative (False) for the path to be valid.
 instance DdF3 Neg where
+    -- | Infers a node for A at positionB when B has a variable there.
+    -- | Neg rule: Create a Node with pos branch = (0,0) (Unknown), neg branch = a_id.
+    -- | This represents that A's value at positionB must be negative (False).
     inferNodeA f c s a@(a_id, _) b@(b_id, Node positionB _ _) =
-        let (c', r) = insert c (Node positionB (0,0) a_id)
+        let (c', r) = insert c (Node positionB (0,0) a_id)  -- pos=Unknown, neg=a_id
             (c'', (r_node_id, _)) = f c' s r (getNode c' b_id)
         in (c'', getDd c'' r_node_id)
 
+    -- | Infers a node for B at positionA when A has a variable there.
+    -- | Neg rule: Create a Node with pos branch = (0,0) (Unknown), neg branch = b_id.
     inferNodeB f c s a@(a_id, Node positionA _ _) b@(b_id, _) =
-        let (c', r) = insert c (Node positionA (0,0) b_id)
+        let (c', r) = insert c (Node positionA (0,0) b_id)  -- pos=Unknown, neg=b_id
             (c'', (r_node_id, _)) = f c' s (getNode c' a_id) r
         in (c'', getDd c'' r_node_id)
 
-    -- applyElimRule :: BinaryOperatorContext -> Dd -> (BinaryOperatorContext, Node)
-    applyElimRule c (Node _ (0, 0) negC) = (c, getNode c negC)
-    applyElimRule c (InfNodes _ (0,0) (0,0) (1,0)) = (c, ((1,0), Leaf True))
-    applyElimRule c (InfNodes _ (0,0) (0,0) (2,0)) = (c, ((2,0), Leaf False))
+    -- | Neg elimination rule: Eliminate nodes where pos branch is Unknown (only neg is valid).
+    -- | Case 1: Node with pos = (0,0) (Unknown) -> eliminate, return neg branch
+    -- | Case 2-3: InfNodes with only neg branch set (dc/pos empty) -> simplify to Leaf
+    -- | Case 4-5: EndInfNode pointing to Leaf/Unknown -> eliminate wrapper
+    -- | Case 6: Default -> insert node as-is
+    applyElimRule c (Node _ (0, 0) negC) = (c, getNode c negC)  -- Only neg valid -> return neg
+    applyElimRule c (InfNodes _ (0,0) (0,0) (1,0)) = (c, ((1,0), Leaf True))  -- Only neg=True -> True
+    applyElimRule c (InfNodes _ (0,0) (0,0) (2,0)) = (c, ((2,0), Leaf False))  -- Only neg=False -> False
     -- Eliminate EndInfNode if it points to a Leaf Bool or Unknown
     applyElimRule c d@(EndInfNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)  -- Eliminate EndInfNode if it points to any Leaf
@@ -148,44 +195,85 @@ instance DdF3 Neg where
         _ -> insert c d
     applyElimRule c d = insert c d
 
+    -- | Create inferred Node at position: pos = Unknown, neg branch set (only neg valid).
     inferNode c position (n_id, n) = insert c (Node position (0,0) n_id)
+    -- | Create inferred InfNodes at position: only neg branch set (dc/pos empty).
     inferInfNode c position (n_id, n) = insert c $ InfNodes position (0,0) (0,0) n_id
 
+    -- | Neg catchup: When dc_stack lags behind main traversal, infer missing nodes.
+    -- | Uses Neg inference rule: follow the neg branch (pos leads to Unknown).
+    -- | Case 1: idx == -1 (terminal reached) -> recursively catchup following neg branch
+    -- | Case 2: idx > positionA (need to catch up to idx) -> recursively catchup following neg branch
+    -- | Case 3: Otherwise -> already caught up, return node
     catchup s c n@(_, Node positionA _ _) idx
-        | idx == -1 = catchup @Neg s c (move_dc c s n) idx
-        | idx > positionA = catchup @Neg s c (move_dc c s n) idx
+        | idx == -1 = catchup @Neg s c (move_dc c s n) idx  -- Follow neg branch
+        | idx > positionA = catchup @Neg s c (move_dc c s n) idx  -- Follow neg branch
         | otherwise = n
-    catchup _ _ n _ = n
+    catchup _ _ n _ = n  -- Non-Node: no catchup needed
     to_str = "Neg"
 
 -- | Traversal Helper (Dd1_helper).
+-- |
+-- | This typeclass provides functions to synchronize the dc_stack traversal with the main
+-- | MDD traversal. When the main traversal skips variables (due to elimination rules),
+-- | the dc_stack needs to "catch up" to stay synchronized.
 class Dd1_helper (a :: Inf) where
+    -- | Synchronizes the dc_stack with the main traversal for two NodeIds.
+    -- | Updates all dc branches (dcA, dcB, dcR) in the stack to match the current position.
     traverse_dc :: String -> BinaryOperatorContext -> NodeId -> NodeId -> BinaryOperatorContext
+    -- | Synchronizes a single dc branch node with a reference node.
+    -- | Uses the inference rule @a@ to catch up when positions don't match.
     traverse_dc_generic :: String -> BinaryOperatorContext -> Node -> Node -> Node
 
 instance (DdF3 a) => Dd1_helper a where
+    -- | Synchronizes the entire dc_stack with the main traversal.
+    -- | If inference type is Dc, no synchronization needed (both branches valid).
+    -- | Otherwise, update all dc branches in the stack using traverse_dc_generic.
     traverse_dc s c a b = debug_dc_traverse s c a b $
-        if to_str @a == "Dc" then c
+        if to_str @a == "Dc" then c  -- Dc: no catchup needed -- todo this is not true! fix this in the future.
         else
             let (dcAs, dcBs, dcRs) = bin_dc_stack c
+                -- Update dcA branches using reference node A
                 new_dcAs = map (traverse_dc_generic @a s c (getNode c a)) dcAs
+                -- Update dcB branches using reference node B
                 new_dcBs = map (traverse_dc_generic @a s c (getNode c b)) dcBs
+                -- Update dcR branches using reference node A (should be at the same level as B)
                 new_dcRs = map (traverse_dc_generic @a s c (getNode c a)) dcRs
             in c { bin_dc_stack = (new_dcAs, new_dcBs, new_dcRs) }
 
+    -- | Synchronizes a single dc branch node with a reference node.
+    -- | This handles the "catch-up" logic when the main traversal skips variables.
+    -- |
+    -- | Case 1: Both dcNode and refNode are Nodes
+    -- |   -> If positions match: move down dcNode following the move string
+    -- |   -> If dcNode position > refNode position: dcNode ahead, return as-is
+    -- |   -> If dcNode position < refNode position: dcNode behind, catch up using inference rule
+    -- | Case 2: dcNode is Node, refNode is Leaf/EndInfNode (terminal)
+    -- |   -> Catch up dcNode to terminal (idx=-1) using inference rule
+    -- | Case 3: Both are EndInfNodes
+    -- |   -> Move down both following the move string
+    -- | Case 4: refNode is Unknown
+    -- |   -> Move down dcNode (Unknown doesn't block traversal)
+    -- | Case 5: dcNode is Unknown
+    -- |   -> Return as-is (Unknown will resolve from stack later)
+    -- | Case 6: Both are InfNodes
+    -- |   -> If positions match: move down dcNode
+    -- |   -> If dcNode position > refNode position: dcNode ahead, return as-is
+    -- |   -> If dcNode position < refNode position: dcNode behind, return as-is (no catchup for InfNodes)
+    -- | Case 7: Default -> return dcNode as-is
     traverse_dc_generic s c refNode dcNode =
         case (dcNode, refNode) of
             ( tNode@(_, Node position _ _), rNode@(_, Node idx _ _) ) ->
-                if | position > idx -> dcNode
-                    | position == idx -> move_dc c s dcNode
-                    | position < idx -> move_dc c s (catchup @a s c dcNode idx)
-            ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchup @a s c dcNode (-1))
-            ( (_, Node{}), (_, EndInfNode{}) ) -> move_dc c s (catchup @a s c dcNode (-1))
-            ( (_, EndInfNode{}), (_, EndInfNode{}) ) -> move_dc c s dcNode
-            ( _, (_, Unknown) ) -> move_dc c s dcNode
-            ( (_, Unknown), _ ) -> dcNode
+                if | position > idx -> dcNode  -- dcNode ahead: no catchup needed
+                    | position == idx -> move_dc c s dcNode  -- Positions match: move down
+                    | position < idx -> move_dc c s (catchup @a s c dcNode idx)  -- dcNode behind: catch up
+            ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchup @a s c dcNode (-1))  -- Catch up to terminal
+            ( (_, Node{}), (_, EndInfNode{}) ) -> move_dc c s (catchup @a s c dcNode (-1))  -- Catch up to terminal
+            ( (_, EndInfNode{}), (_, EndInfNode{}) ) -> move_dc c s dcNode  -- Both EndInfNodes: move down
+            ( _, (_, Unknown) ) -> move_dc c s dcNode  -- refNode Unknown: move down dcNode
+            ( (_, Unknown), _ ) -> dcNode  -- dcNode Unknown: return as-is (resolves from stack)
             ( (_, InfNodes position _ _ _), (_, InfNodes idx _ _ _) ) ->
-                if | position > idx -> dcNode
-                    | position == idx -> move_dc c s dcNode
-                    | position < idx -> dcNode
-            _ -> dcNode
+                if | position > idx -> dcNode  -- dcNode ahead: no catchup
+                    | position == idx -> move_dc c s dcNode  -- Positions match: move down
+                    | position < idx -> dcNode  -- dcNode behind: no catchup (InfNodes handled separately)
+            _ -> dcNode  -- Default: return as-is
