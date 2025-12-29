@@ -70,7 +70,7 @@ settings = ShowSetting {
 
             ,   debug_open = True
             ,   debug_close = True
-            ,   debug_shorten_close = True
+            ,   debug_shorten_close = False
 
             ,   debug_dc_stack = False
             ,   display_level = False
@@ -468,3 +468,6 @@ debug5 b s = trace (colorize "red" (s ++ "\n\n")) b
 
 debug :: a -> String -> a
 debug f s = trace (colorize "green" (s ++ "\n\n")) f
+
+show_node :: (HasNodeLookup c) => c -> Node -> String
+show_node c n = show_dd settings c n

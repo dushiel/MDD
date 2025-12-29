@@ -17,10 +17,11 @@ import MDD.Manager
 import MDD.Stack
 import MDD.Traversal
 import MDD.Draw (debug_manipulation, debug_dc_traverse)
+import MDD.Ops.Unary (absorb_unary)
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Kind (Constraint)
-
+import Debug.Trace (trace)
 -- ==========================================================================================================
 -- * Binary Caching Helper
 -- ==========================================================================================================
@@ -50,8 +51,31 @@ withCache c@BinaryOperatorContext{bin_cache = nc, bin_dc_stack = dck} ((keyA, _)
 -- * Redundancy Elimination (absorb)
 -- ==========================================================================================================
 
--- todo: use the absorb when first calling absorb with a binary context, transform the binary context to unary context and call the unary implementation of absorb. when passing back the result, place the new nodelookup carried in unarycontext back in binary context again.
--- e.g. absorb_binary c n = let (c', n') = absorb_unary (toUnary c) n in (toBinary c', n')
+-- | Main entry point for the absorb function for binary operations.
+-- | The absorb function maintains canonical representation by eliminating redundant branches.
+absorb :: (BinaryOperatorContext, Node) -> (BinaryOperatorContext, Node)
+absorb (c, n) =
+    let
+        -- Extract dcR from binary context (third element of bin_dc_stack tuple)
+        (_, _, dcRs) = bin_dc_stack c
+        -- Extract first element from bin_current_level (unary only tracks one level)
+        (lvA, _) = bin_current_level c
+        -- Convert to unary context
+        unaryCtx = UnaryOperatorContext {
+            un_nodelookup = bin_nodelookup c,
+            un_cache = HashMap.empty,  -- Cache not needed for absorb
+            un_dc_stack = dcRs,  -- Use dcR from binary context
+            un_current_level = lvA  -- Use first level from binary context
+        }
+        -- Call unary absorb
+        (unaryCtx', n') = absorb_unary (unaryCtx, n)
+    in
+        (BinaryOperatorContext {
+            bin_nodelookup = un_nodelookup unaryCtx',  -- Updated nodelookup from unary context
+            bin_cache = bin_cache c,  -- Preserve original cache
+            bin_dc_stack = bin_dc_stack c, -- Preserve original stack
+            bin_current_level = bin_current_level c  -- Preserve original current level
+        }, n')
 
 -- ==========================================================================================================
 -- * Binary Operation Typeclass (Dd1)
@@ -174,7 +198,7 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     leaf_cases c s a@(_, Unknown) b@(_, Unknown) = (c , a)  -- Both Unknown: return first (they'll resolve the same as in dcR, no matter whether union or intersection is used)
     leaf_cases c s a@(_, Unknown) b =
         let (c', dcA) = pop_dcA' c
-        in applyDcA'' @a c' s dcA b
+        in applyDcA' @a c' s dcA b
     leaf_cases c s a b@(_, Unknown) =
         let (c', dcB) = pop_dcB' c
         in applyDcB' @a c' s a dcB
@@ -414,19 +438,19 @@ applyInf c s a@(_, EndInfNode _) b@(_, InfNodes{}) = applyInfA @a c s a b  -- Wr
 applyInf c s a b = error ("apply inf error: " ++ s)
 
 
-applyInfA :: forall a. (Dd1 a, DdF3 a, Dd1_helper a) => BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
-applyInfA c s a@(a_id, _) b@(_, InfNodes positionB _ _ _) = let
-        -- todo this is wrong it should be DdF3 a dependent: inference is different based on the current elimination type
-        (c', (r_id, _)) = applyElimRule @a c (EndInfNode a_id)
-        (c'', r') = insert c' $ InfNodes positionB r_id (0,0) (0,0)
+applyInfA :: forall a. (DdF3 a) => BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+applyInfA c s (a_id, _) b@(_, InfNodes positionB _ _ _) = let
+        (c', r) = insert c (EndInfNode a_id)
+        (c'', r') = inferInfNode @a c' positionB r
     in applyInf @a c'' s r' b
+applyInfA _ _ _ _ = error "should not be possible"
 
-applyInfB :: forall a. (Dd1 a, DdF3 a, Dd1_helper a) => BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+applyInfB :: forall a. (DdF3 a) => BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
 applyInfB c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
-        -- todo this is wrong it should be DdF3 a dependent: inference is different based on the current elimination type
-        (c', (r_id, _)) = applyElimRule @a c (EndInfNode b_id)
-        (c'', r') = insert c' $ InfNodes positionA r_id (0,0) (0,0)
+        (c', r) = insert c (EndInfNode b_id)
+        (c'', r') = inferInfNode @a c' positionA r
     in applyInf @a c'' s a r'
+applyInfB _ _ _ _ = error "should not be possible"
 
 -- | Helper wrapper for inferred node recursive calls.
 -- | These functions bridge between the Dd1 typeclass (which works with Nodes) and the DdF3

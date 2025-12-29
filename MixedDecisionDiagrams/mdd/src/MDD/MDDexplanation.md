@@ -144,6 +144,7 @@ The refactored codebase is organized into focused modules with clear responsibil
 - `settings`: Configuration for display
 - `show_dd`: String representation of MDD nodes
 - Graph generation and rendering utilities
+- debugging code
 
 **Static Translation** (`MDD.Static`)
 - `to_static_form`: Converts MDD to static form for visualization
@@ -159,50 +160,9 @@ The refactored codebase is organized into focused modules with clear responsibil
   - `boolMddOf`: Boolean formula to MDD translation
   - `mddOf`: Epistemic formula to MDD translation
 
-**Import Patterns**
-
-For basic MDD operations:
-```haskell
-import MDD.Types
-import MDD.Interface
-```
-
-For visualization:
-```haskell
-import MDD.Draw (settings, show_dd, drawTree3)
-```
-
-For SMCDEL integration:
-```haskell
-import MDD.Types hiding (Neg)
-import MDD.Interface
-import MDD.Draw (settings, show_dd)
-```
-
-**Key Architectural Changes from Pre-Refactor**
-
-1. **MDD Type**: Changed from `type MDD = (NodeLookup, Node)` to `newtype MDD = MDD { unMDD :: (NodeLookup, Node) }`
-   - Requires explicit wrapping/unwrapping with `MDD` constructor and `unMDD` accessor
-   - Enables `Eq` and `Show` instances
-
-2. **Context Lifecycle**: Contexts are now ephemeral
-   - Created per operation via `init_binary_context` or `init_unary_context`
-   - NodeLookup is merged before context creation using `unionNodeLookup`
-   - Updated NodeLookup is extracted via `getLookup` and stored in result MDD
-
-3. **Module Organization**: Split monolithic `MDD.hs` into focused modules
-   - Each module has a single, clear responsibility
-   - Better separation of concerns
-   - Easier to maintain and test
-
-4. **Static Types**: Moved to separate `MDD.Static` module
-   - No longer part of main operator contexts
-   - Treated as separate visualization concern
-
-...
 
 
-5. Questions and answers:
+1. Questions and answers:
 
 
 1. The dc_stack structure: In MDD.hs, dc_stack is defined as ([Node], [Node], [Node]). Is it used to track the hierarchy of Infnodes as you descend into sub-classes?
@@ -215,73 +175,18 @@ dcA and dcB are the dc components of the input arguments when calling applyinf, 
 
 As a previous layer of the dc's can also evaluate to Unkown, all previous layers are tracked along and Unknown evaluations can be resolved by cascading along the list. The latest encountered dc branches are in the first position of the stack.
 
-2. What is the function of catchup?
-2. catchup is used in traverse_dc, where the dc_stack is traversed while also traversing the 2 input MDDs in a binary operator function. the dc components (dcA, dcB, dcR) can only lag behind if the "normal" traversal skipped positions due to eliminated nodes (which are not eliminated in the dc's). The catchup uses the elimination/inference rule of the current input branches (indicated by the type DdF3 a ) to infer the appropriate nodes.
 
-3. The Unknown leaf vs. Bot: Is Unknown treated as a "lazy" evaluation that must eventually resolve to a Leaf, or can an MDD validly contain Unknown at the end of a computation if no continuous branch provides a value?
-3. finalized MDD's can validly contain Unknowns as leaf values. Their evaluation can always be inferred from the dc layers above, as a valid MDD should not have a Unknown evaluation as a leaf of its dc branch on the uppermost level.
 
-4. Does EndInfNode act as a pointer back to a specific class level?
-4. For a path containing variable evaluations, EndInfNode indicates the end of the current class, going back a hierachical level up to the previous InfNode class variable.
+1. Does EndInfNode act as a pointer back to a specific class level?
+1. For a path containing variable evaluations, EndInfNode indicates the end of the current class, going back a hierachical level up to the previous InfNode class variable.
 
 An example will make this clearer:
 
 current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next node is a 5 then the next position would be [dc 1, neg 3, neg 5]. If first a endinfnode is encountered and then a node with position 5 then the position would be [dc 1, neg 5].
 
-5. How does the DdF3 function?
-5. The project uses Haskell's TypeApplications (e.g., @Dc, @Pos, @Neg) to track the logical context of a traversal. The DdF3 typeclass abstracts how nodes are inferred when one branch is "missing" a variable relative to another.
 
-6. parsing paths to nodes in MDD.hs use weird int comparison tricks?
-6. 0 in parsing paths for node initialization is taken as trick to represent Top (in Dc1) or Bot (in Dc0). a negative number in parsing paths for node initialization is taken to be a negative evaluation of the variable (should the pos / neg not already be able to indicate this? maybe we can fix this later).
-
-
-Recent refactor of code:
-
-**1. MDD Type Representation**
-- **Before**: MDD was a type synonym: `type MDD = (NodeLookup, Node)`
-- **After**: MDD is now a newtype wrapper: `newtype MDD = MDD { unMDD :: (NodeLookup, Node) }`
-- Added `Eq` instance that compares MDDs by their root NodeId (assuming canonical representation)
-- Added `Show` instance for better debugging and display
-
-**2. Context Architecture Refactoring**
-- **Before**: Single monolithic `Context` type containing all state (nodelookup, binary cache, unary cache, dc_stacks, static nodelookup, draw cache)
-- **After**: Split into operation-specific context types:
-  - `BinaryOperatorContext`: For binary operations (union, intersection) with `bin_cache`, `bin_dc_stack`, `bin_current_level`
-  - `UnaryOperatorContext`: For unary operations (negation) with `un_cache`, `un_dc_stack`, `un_current_level`
-  - `DrawOperatorContext`: For visualization operations with `draw_cache`
-- Each context type implements the `HasNodeLookup` typeclass for unified access to the NodeLookup
-
-**3. NodeLookup Separation and Lifecycle**
-- **Before**: NodeLookup was stored in the persistent Context object, which was passed around and mutated
-- **After**: NodeLookup is part of the MDD itself. When combining MDDs:
-  - NodeLookups are merged using `unionNodeLookup` before creating a fresh operator context
-  - A new operator context is created for each operation with the merged NodeLookup
-  - The context is ephemeral and only exists during the operation
-  - The resulting MDD contains the updated NodeLookup from the context
-
-**4. Static Type Handling**
-- **Before**: Static types (`DdStatic`, `NodeLookupStatic`) were embedded in the main `Context` as `nodelookup_static`
-- **After**: Static types moved to separate `MDD.Static` module:
-  - Renamed to `StaticNodeLookup` (was `NodeLookupStatic`)
-  - Static transformation (`to_static_form`) now takes `UnaryOperatorContext` and returns `(StaticNodeLookup, NodeStatic)`
-  - No longer part of the main operator contexts, treated as a separate visualization concern
-
-**5. Module Organization**
-- **Before**: Large monolithic `MDD.hs` file (695 lines) containing types, context, manager logic, hashing, construction, and utilities
-- **After**: Split into focused modules:
-  - `MDD.Types`: Core type definitions (MDD, Dd, Inf, NodeId, etc.)
-  - `MDD.Context`: Context types and initialization
-  - `MDD.Manager`: NodeLookup management, hashing, insertion logic
-  - `MDD.Static`: Static translation for visualization
-  - `MDD.Construction`: Path-based node construction
-  - `MDD.Ops.Binary` / `MDD.Ops.Unary`: Operation implementations
-  - `MDD.Interface`: Public API with operator overloading
-  - `MDD.Draw`: Visualization functions
-
-**6. Code Quality Improvements**
-- Cleaner separation of concerns
-- More explicit type signatures
-- Better use of typeclasses (`HasNodeLookup`) for polymorphism
+2. parsing paths to nodes in MDD.hs use weird int comparison tricks?
+2. 0 in parsing paths for node initialization is taken as trick to represent Top (in Dc1) or Bot (in Dc0). a negative number in parsing paths for node initialization is taken to be a negative evaluation of the variable (should the pos / neg not already be able to indicate this? maybe we can fix this later).
 
 
 
@@ -292,7 +197,12 @@ to build the project use "cabal build" in the project home folder.
 
 
 future addons:
+- fix applyInfA and applyInfB
+
+- fix absorb for unary stuff
+- refactor elimrules
+
 - add colorized drawtree setting
 - add better equality check for eq instance of MDD
-- fix absorb for unary stuff
 - double check whether elim rules are applied to path constructurs eventhough the parse input gets eliminated (e.g. -1 in neg1)
+- clean up type signatures

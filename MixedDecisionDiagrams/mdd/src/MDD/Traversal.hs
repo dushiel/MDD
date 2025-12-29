@@ -17,8 +17,9 @@ module MDD.Traversal where
 import MDD.Types
 import MDD.Context
 import MDD.Stack
-import MDD.Draw (debug_dc_traverse)
+import MDD.Draw (debug_dc_traverse, show_node)
 import Data.Kind (Constraint)
+import Debug.Trace (trace)
 
 -- | Shared helper function to move down the tree based on semantic role.
 -- Used to step into sub-branches during recursive traversal.
@@ -80,16 +81,20 @@ instance DdF3 Dc where
         in (c'', Node positionB pos_result neg_result)
 
     inferNodeB f c s (_, Node positionA pos_childA neg_childA) b =
-        let (c', (pos_result, _)) = f c s (getNode c pos_childA) b
-            (c'', (neg_result, _)) = f c' s (getNode c neg_childA) b
-        in (c'', Node positionA pos_result neg_result)
+        -- trace ("inferB at : " ++ show positionA
+        --     ++ " \n posA: " ++ show_node c (getNode c pos_childA)
+        --     ++ " \n neg: " ++ show_node c (getNode c neg_childA)) (
+            let
+                (c', (pos_result, _)) = f c s (getNode c pos_childA) b
+                (c'', (neg_result, _)) = f c' s (getNode c neg_childA) b
+            in (c'', Node positionA pos_result neg_result)
 
 
     applyElimRule c d@(Node _ p n) = if p == n then (c, getNode c p) else insert c d
     applyElimRule c (InfNodes _ (1,0) (0,0) (0,0)) = (c, ((1,0), Leaf True))
     applyElimRule c (InfNodes _ (2,0) (0,0) (0,0)) = (c, ((2,0), Leaf False))
     applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
-    applyElimRule c d@(InfNodes _ (0,0) (0,0) consq) = case getDd c consq of
+    applyElimRule c d@(InfNodes _ consq (0,0) (0,0)) = case getDd c consq of
         EndInfNode d' -> (c, getNode c d') -- Elim InfNode and EndInfNode pair if they immediatly follow up on each other
         _ -> insert c d
     applyElimRule c d@(EndInfNode r) = case getDd c r of
@@ -122,7 +127,7 @@ instance DdF3 Pos where
     applyElimRule c (InfNodes _ (0,0) (1,0) (0,0)) = (c, ((1,0), Leaf True))
     applyElimRule c (InfNodes _ (0,0) (2,0) (0,0)) = (c, ((2,0), Leaf False))
     applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
-    applyElimRule c d@(InfNodes _ (0,0) (0,0) consq) = case getDd c consq of
+    applyElimRule c d@(InfNodes _ (0,0) consq (0,0)) = case getDd c consq of
         EndInfNode d' -> (c, getNode c d')
         _ -> insert c d
     applyElimRule c d@(EndInfNode r) = case getDd c r of

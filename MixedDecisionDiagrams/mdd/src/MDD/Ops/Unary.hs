@@ -183,7 +183,7 @@ absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc@(_, EndInfNode dc') : fs 
 absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc : fs }, a)
     | a == dc = (c, ((0,0), Unknown))
     | otherwise = (c,a)
-absorb'_unary (c@UnaryOperatorContext{un_dc_stack = [] }, a) = error "empty dc stack in absorb?"
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = [] }, a) = (c, a) -- error "empty dc stack in absorb?"
 
 
 

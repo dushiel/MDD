@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TupleSections #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use camelCase" #-}
 
 module MDD.Context where
 
@@ -80,7 +82,6 @@ init_binary_context nl = BinaryOperatorContext {
     bin_nodelookup = nl,
     bin_cache = Map.fromList (map (, HashMap.empty)
         ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]),
-    -- Initial stack represents the default "Unknown" context at the top level.
     bin_dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)], [((0,0), Unknown)]),
     bin_current_level = ([(0, Dc)], [(0, Dc)])
 }
@@ -90,7 +91,7 @@ init_unary_context :: NodeLookup -> UnaryOperatorContext
 init_unary_context nl = UnaryOperatorContext {
     un_nodelookup = nl,
     un_cache = HashMap.empty,
-    un_dc_stack = [((0,0), Unknown)],  -- Only dcR, no dcs needed
+    un_dc_stack = [((0,0), Unknown)],  -- Only dcR, no dcs needed, -- todo make it into ((1,0), Leaf True)
     un_current_level = [(0, Dc)]
 }
 
