@@ -65,7 +65,7 @@ settings = ShowSetting {
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
-            ,   debug_on = True
+            ,   debug_on = False
             ,   save_logs = False
 
             ,   debug_open = True

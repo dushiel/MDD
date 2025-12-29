@@ -9,6 +9,8 @@
 {-# LANGUAGE FlexibleInstances #-}     -- Required for the instance Dd1_helper a
 {-# LANGUAGE UndecidableInstances #-}  -- Required because the constraint DdF3 a is not smaller than the head Dd1_helper a
 {-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use camelCase" #-}
 
 module MDD.Traversal where
 
@@ -82,27 +84,17 @@ instance DdF3 Dc where
             (c'', (neg_result, _)) = f c' s (getNode c neg_childA) b
         in (c'', Node positionA pos_result neg_result)
 
-    -- | Dc elimination rule: Eliminate nodes where pos and neg branches are equal.
-    -- | Case 1: Node with equal pos and neg children -> eliminate, return either child
-    -- | Case 2-4: InfNodes with only dc branch set (pos/neg empty) -> simplify to Leaf/Unknown
-    -- | Case 5-7: EndInfNode pointing to Leaf/Unknown -> eliminate EndInfNode wrapper
-    -- | Case 8: EndInfNode pointing to Leaf/Unknown (general) -> eliminate wrapper
-    -- | Case 9: InfNodes with only dc branch, and dc points to EndInfNode -> unwrap
-    -- | Case 10: Default -> insert node as-is
+
     applyElimRule c d@(Node _ p n) = if p == n then (c, getNode c p) else insert c d
-    applyElimRule c (InfNodes _ (1,0) (0,0) (0,0)) = (c, ((1,0), Leaf True))  -- Only dc=True -> Leaf True
-    applyElimRule c (InfNodes _ (2,0) (0,0) (0,0)) = (c, ((2,0), Leaf False))  -- Only dc=False -> Leaf False
-    applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))  -- Only dc=Unknown -> Unknown
-    applyElimRule c (EndInfNode (1,0)) = (c, ((1,0), Leaf True))  -- EndInfNode to True -> True
-    applyElimRule c (EndInfNode (2,0)) = (c, ((2,0), Leaf False))  -- EndInfNode to False -> False
-    applyElimRule c (EndInfNode (0,0)) = (c, ((0,0), Unknown))  -- EndInfNode to Unknown -> Unknown
-    -- Eliminate EndInfNode if it points to a Leaf Bool or Unknown (general case)
-    applyElimRule c d@(EndInfNode r) = case getDd c r of
-        Leaf _ -> (c, getNode c r)  -- Eliminate EndInfNode if it points to any Leaf
-        Unknown -> (c, getNode c r)  -- Eliminate EndInfNode if it points to Unknown
+    applyElimRule c (InfNodes _ (1,0) (0,0) (0,0)) = (c, ((1,0), Leaf True))
+    applyElimRule c (InfNodes _ (2,0) (0,0) (0,0)) = (c, ((2,0), Leaf False))
+    applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
+    applyElimRule c d@(InfNodes _ (0,0) (0,0) consq) = case getDd c consq of
+        EndInfNode d' -> (c, getNode c d') -- Elim InfNode and EndInfNode pair if they immediatly follow up on each other
         _ -> insert c d
-    applyElimRule c d@(InfNodes _ consq (0,0) (0,0)) = case getDd c consq of
-        EndInfNode d' -> (c, getNode c d')  -- Elim InfNode and EndInfNode if they immediatly follow up on each other
+    applyElimRule c d@(EndInfNode r) = case getDd c r of
+        Leaf _ -> (c, getNode c r)
+        Unknown -> (c, getNode c r)
         _ -> insert c d
     applyElimRule c d = insert c d
 
@@ -113,9 +105,6 @@ instance DdF3 Dc where
     to_str = "Dc"
 
 -- | Instance for Pos (Positive literal) inference/elimination rule.
--- |
--- | Pos rule: Nodes where only the positive evaluation is valid (negative leads to Unknown)
--- | are eliminated. This means the variable must be positive (True) for the path to be valid.
 instance DdF3 Pos where
     -- | Pos rule: Create a Node with pos branch = a_id, neg branch = (0,0) (Unknown).
     inferNodeA f c s a@(a_id, _) b@(b_id, Node positionB _ _) =
@@ -129,17 +118,16 @@ instance DdF3 Pos where
         in (c'', getDd c'' r_node_id)
 
     -- | Pos elimination rule: Eliminate nodes where neg branch is Unknown (only pos is valid).
-    -- | Case 1: Node with neg = (0,0) (Unknown) -> eliminate, return pos branch
-    -- | Case 2-3: InfNodes with only pos branch set (dc/neg empty) -> simplify to Leaf
-    -- | Case 4-5: EndInfNode pointing to Leaf/Unknown -> eliminate wrapper
-    -- | Case 6: Default -> insert node as-is
-    applyElimRule c (Node _ posC (0, 0)) = (c, getNode c posC)  -- Only pos valid -> return pos
-    applyElimRule c (InfNodes _ (0,0) (1,0) (0,0)) = (c, ((1,0), Leaf True))  -- Only pos=True -> True
-    applyElimRule c (InfNodes _ (0,0) (2,0) (0,0)) = (c, ((2,0), Leaf False))  -- Only pos=False -> False
-    -- Eliminate EndInfNode if it points to a Leaf Bool or Unknown
+    applyElimRule c (Node _ posC (0, 0)) = (c, getNode c posC)
+    applyElimRule c (InfNodes _ (0,0) (1,0) (0,0)) = (c, ((1,0), Leaf True))
+    applyElimRule c (InfNodes _ (0,0) (2,0) (0,0)) = (c, ((2,0), Leaf False))
+    applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
+    applyElimRule c d@(InfNodes _ (0,0) (0,0) consq) = case getDd c consq of
+        EndInfNode d' -> (c, getNode c d')
+        _ -> insert c d
     applyElimRule c d@(EndInfNode r) = case getDd c r of
-        Leaf _ -> (c, getNode c r)  -- Eliminate EndInfNode if it points to any Leaf
-        Unknown -> (c, getNode c r)  -- Eliminate EndInfNode if it points to Unknown
+        Leaf _ -> (c, getNode c r)
+        Unknown -> (c, getNode c r)
         _ -> insert c d
     applyElimRule c d = insert c d
 
@@ -161,43 +149,31 @@ instance DdF3 Pos where
     to_str = "Pos"
 
 -- | Instance for Neg (Negative literal) inference/elimination rule.
--- |
--- | Neg rule: Nodes where only the negative evaluation is valid (positive leads to Unknown)
--- | are eliminated. This means the variable must be negative (False) for the path to be valid.
 instance DdF3 Neg where
-    -- | Infers a node for A at positionB when B has a variable there.
     -- | Neg rule: Create a Node with pos branch = (0,0) (Unknown), neg branch = a_id.
-    -- | This represents that A's value at positionB must be negative (False).
     inferNodeA f c s a@(a_id, _) b@(b_id, Node positionB _ _) =
         let (c', r) = insert c (Node positionB (0,0) a_id)  -- pos=Unknown, neg=a_id
             (c'', (r_node_id, _)) = f c' s r (getNode c' b_id)
         in (c'', getDd c'' r_node_id)
-
-    -- | Infers a node for B at positionA when A has a variable there.
-    -- | Neg rule: Create a Node with pos branch = (0,0) (Unknown), neg branch = b_id.
     inferNodeB f c s a@(a_id, Node positionA _ _) b@(b_id, _) =
         let (c', r) = insert c (Node positionA (0,0) b_id)  -- pos=Unknown, neg=b_id
             (c'', (r_node_id, _)) = f c' s (getNode c' a_id) r
         in (c'', getDd c'' r_node_id)
-
-    -- | Neg elimination rule: Eliminate nodes where pos branch is Unknown (only neg is valid).
-    -- | Case 1: Node with pos = (0,0) (Unknown) -> eliminate, return neg branch
-    -- | Case 2-3: InfNodes with only neg branch set (dc/pos empty) -> simplify to Leaf
-    -- | Case 4-5: EndInfNode pointing to Leaf/Unknown -> eliminate wrapper
-    -- | Case 6: Default -> insert node as-is
-    applyElimRule c (Node _ (0, 0) negC) = (c, getNode c negC)  -- Only neg valid -> return neg
-    applyElimRule c (InfNodes _ (0,0) (0,0) (1,0)) = (c, ((1,0), Leaf True))  -- Only neg=True -> True
-    applyElimRule c (InfNodes _ (0,0) (0,0) (2,0)) = (c, ((2,0), Leaf False))  -- Only neg=False -> False
-    -- Eliminate EndInfNode if it points to a Leaf Bool or Unknown
+    applyElimRule c (Node _ (0, 0) negC) = (c, getNode c negC)
+    applyElimRule c (InfNodes _ (0,0) (0,0) (1,0)) = (c, ((1,0), Leaf True))
+    applyElimRule c (InfNodes _ (0,0) (0,0) (2,0)) = (c, ((2,0), Leaf False))
+    applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
+    applyElimRule c d@(InfNodes _ (0,0) (0,0) consq) = case getDd c consq of
+        EndInfNode d' -> (c, getNode c d')
+        _ -> insert c d
     applyElimRule c d@(EndInfNode r) = case getDd c r of
-        Leaf _ -> (c, getNode c r)  -- Eliminate EndInfNode if it points to any Leaf
-        Unknown -> (c, getNode c r)  -- Eliminate EndInfNode if it points to Unknown
+        Leaf _ -> (c, getNode c r)
+        Unknown -> (c, getNode c r)
         _ -> insert c d
     applyElimRule c d = insert c d
 
-    -- | Create inferred Node at position: pos = Unknown, neg branch set (only neg valid).
+
     inferNode c position (n_id, n) = insert c (Node position (0,0) n_id)
-    -- | Create inferred InfNodes at position: only neg branch set (dc/pos empty).
     inferInfNode c position (n_id, n) = insert c $ InfNodes position (0,0) (0,0) n_id
 
     -- | Neg catchup: When dc_stack lags behind main traversal, infer missing nodes.

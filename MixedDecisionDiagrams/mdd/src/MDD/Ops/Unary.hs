@@ -11,6 +11,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
 {-# HLINT ignore "Use second" #-}
+{-# HLINT ignore "Use camelCase" #-}
 
 module MDD.Ops.Unary where
 
@@ -57,21 +58,35 @@ withDebug_restrict c nas b d restrict_func =
     in debug_manipulation_unary result func_key func_name c d nas b
 
 -- ==========================================================================================================
--- * Unary Elimination Rules
+-- * Unary DC Traversal Helper
 -- ==========================================================================================================
 
--- | Apply elimination rules for unary operations (similar to binary but for UnaryOperatorContext).
--- |
--- | This function applies the same elimination rules as binary operations (see DdF3 in MDD.Traversal),
--- | but works directly with UnaryOperatorContext without needing a binary context workaround.
--- |
+-- | Synchronizes a single dc branch node with a reference node for unary operations.
+traverse_dc_generic_unary :: forall a. (DdF3 a) => String -> UnaryOperatorContext -> Node -> Node -> Node
+traverse_dc_generic_unary s c refNode dcNode =
+    case (dcNode, refNode) of
+        ( tNode@(_, Node position _ _), rNode@(_, Node idx _ _) ) ->
+            if | position > idx -> dcNode  -- dcNode ahead: no catchup needed
+                | position == idx -> move_dc c s dcNode  -- Positions match: move down
+                | position < idx -> move_dc c s (catchup @a s c dcNode idx)  -- dcNode behind: catch up
+        ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchup @a s c dcNode (-1))  -- Catch up to terminal
+        ( (_, Node{}), (_, EndInfNode{}) ) -> move_dc c s (catchup @a s c dcNode (-1))  -- Catch up to terminal
+        ( (_, EndInfNode{}), (_, EndInfNode{}) ) -> move_dc c s dcNode  -- Both EndInfNodes: move down
+        ( _, (_, Unknown) ) -> move_dc c s dcNode  -- refNode Unknown: move down dcNode
+        ( (_, Unknown), _ ) -> dcNode  -- dcNode Unknown: return as-is (resolves from stack)
+        ( (_, InfNodes position _ _ _), (_, InfNodes idx _ _ _) ) ->
+            if | position > idx -> dcNode  -- dcNode ahead: no catchup
+                | position == idx -> move_dc c s dcNode  -- Positions match: move down
+                | position < idx -> dcNode  -- dcNode behind: no catchup (InfNodes handled separately)
+        _ -> dcNode  -- Default: return as-is
+
+-- ==========================================================================================================
+-- * Elimination Rules
+-- ==========================================================================================================
 -- | The elimination rules are:
 -- |   - Dc: Eliminate nodes where pos and neg branches are equal
 -- |   - Pos: Eliminate nodes where neg branch is Unknown (only pos is valid)
 -- |   - Neg: Eliminate nodes where pos branch is Unknown (only neg is valid)
--- |
--- | This is a dedicated implementation that mirrors the logic from DdF3 instances but works
--- | directly with UnaryOperatorContext, avoiding the need for context conversions.
 applyElimRule_unary :: forall a. (DdF3 a) => UnaryOperatorContext -> Dd -> (UnaryOperatorContext, Node)
 applyElimRule_unary c d = case to_str @a of
     "Dc" -> applyElimRule_dc c d
@@ -85,9 +100,6 @@ applyElimRule_unary c d = case to_str @a of
     applyElimRule_dc c' (InfNodes _ (1,0) (0,0) (0,0)) = (c', ((1,0), Leaf True))
     applyElimRule_dc c' (InfNodes _ (2,0) (0,0) (0,0)) = (c', ((2,0), Leaf False))
     applyElimRule_dc c' (InfNodes _ (0,0) (0,0) (0,0)) = (c', ((0,0), Unknown))
-    applyElimRule_dc c' (EndInfNode (1,0)) = (c', ((1,0), Leaf True))
-    applyElimRule_dc c' (EndInfNode (2,0)) = (c', ((2,0), Leaf False))
-    applyElimRule_dc c' (EndInfNode (0,0)) = (c', ((0,0), Unknown))
     applyElimRule_dc c' d'@(EndInfNode r) = case getDd c' r of
         Leaf _ -> (c', getNode c' r)
         Unknown -> (c', getNode c' r)
@@ -102,9 +114,13 @@ applyElimRule_unary c d = case to_str @a of
     applyElimRule_pos c' (Node _ posC (0, 0)) = (c', getNode c' posC)
     applyElimRule_pos c' (InfNodes _ (0,0) (1,0) (0,0)) = (c', ((1,0), Leaf True))
     applyElimRule_pos c' (InfNodes _ (0,0) (2,0) (0,0)) = (c', ((2,0), Leaf False))
+    applyElimRule_pos c' (InfNodes _ (0,0) (0,0) (0,0)) = (c', ((0,0), Unknown))
     applyElimRule_pos c' d'@(EndInfNode r) = case getDd c' r of
         Leaf _ -> (c', getNode c' r)
         Unknown -> (c', getNode c' r)
+        _ -> insert c' d'
+    applyElimRule_pos c' d'@(InfNodes _ (0,0) consq (0,0)) = case getDd c' consq of
+        EndInfNode d'' -> (c', getNode c' d'')
         _ -> insert c' d'
     applyElimRule_pos c' d' = insert c' d'
 
@@ -113,6 +129,10 @@ applyElimRule_unary c d = case to_str @a of
     applyElimRule_neg c' (Node _ (0, 0) negC) = (c', getNode c' negC)
     applyElimRule_neg c' (InfNodes _ (0,0) (0,0) (1,0)) = (c', ((1,0), Leaf True))
     applyElimRule_neg c' (InfNodes _ (0,0) (0,0) (2,0)) = (c', ((2,0), Leaf False))
+    applyElimRule_neg c' (InfNodes _ (0,0) (0,0) (0,0)) = (c', ((0,0), Unknown))
+    applyElimRule_neg c' d'@(InfNodes _ (0,0) (0,0) consq) = case getDd c' consq of
+        EndInfNode d'' -> (c', getNode c' d'')
+        _ -> insert c' d'
     applyElimRule_neg c' d'@(EndInfNode r) = case getDd c' r of
         Leaf _ -> (c', getNode c' r)
         Unknown -> (c', getNode c' r)
@@ -135,56 +155,37 @@ applyElimRule'_unary (c, d) = applyElimRule_unary @a c d
 absorb_unary :: (UnaryOperatorContext, Node) -> (UnaryOperatorContext, Node)
 absorb_unary (c, n) = absorb'_unary (c, n)
 
--- | Recursively checks if a node's evaluation matches the continuous background (dcR) at the current level.
--- | If it matches, the node is "absorbed" (replaced with Unknown) to maintain minimal graph representation.
--- |
--- | **Note**: The unary dc_stack structure is `[Node]` (dcRs only), containing:
--- |   - `dcRs`: List of resulting continuous branches (for absorption comparison)
--- | Unlike binary operations which track both input dc branches (dcA, dcB) for Unknown resolution,
--- | unary operations don't need to track the original input's dc branches since Unknown is
--- | returned as-is in unary operations (no resolution needed).
--- |
--- | Case 1: dcR is Unknown (lazy evaluation from deeper layer)
--- |   -> Pop the Unknown from stack and recurse on remaining layers
--- | Case 2: Node a is Unknown
--- |   -> Cannot compare, return as-is (Unknown will resolve during evaluation)
--- | Case 3: Both a and dcR are Leaf values
--- |   -> If they match, replace a with Unknown (absorbed into continuous background)
--- |   -> Otherwise, keep a as discrete exception
--- | Case 4: dcR is Leaf, a is InfNodes
--- |   -> Recursively check all three branches (dc, pos, neg) of the InfNode
--- |   -> If all three branches match dcR, the entire InfNode is redundant -> replace with Unknown
--- |   -> Otherwise, keep the InfNode (it represents exceptions to the continuous background)
--- | Case 5: dcR is Leaf, a is EndInfNode
--- |   -> Check if the child of EndInfNode matches dcR
--- |   -> If yes, absorb (replace with Unknown); otherwise keep
--- | Case 6: Both dcR and a are EndInfNodes
--- |   -> Compare their child nodes; if equal, absorb
--- | Case 7: Generic comparison (dcR is a Node or other structure)
--- |   -> If a structurally equals dcR, absorb; otherwise keep
--- | Case 8: Empty dc_stack (top level, no continuous background to compare against)
--- |   -> Return as-is (no absorption possible)
 absorb'_unary :: (UnaryOperatorContext, Node) -> (UnaryOperatorContext, Node)
 -- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")
-absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc@(_, Unknown) : fs }, a)  =
-    let (c', r) = absorb'_unary (c{un_dc_stack = fs}, a) in (c, r)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc@(_, Unknown) : fs }, a) = absorb'_unary (c{un_dc_stack = fs}, a) -- resolve Unknown in dc traversal to a previous layer
 absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc : fs }, a@(_, Unknown)) = (c, a)
 absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc : fs }, a@(_, Leaf _))
     | a == dc = (c, ((0,0), Unknown))
     | otherwise = (c,a)
-absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc@(_, Leaf _)  : fs }, a@(_, InfNodes _ d p n))  =  let
-    (_, r1) = absorb'_unary (c, getNode c d)
-    (_, r2) = absorb'_unary (c, getNode c p)
-    (_, r3) = absorb'_unary (c, getNode c n)
-    in if r1 == r2 && r2 == r3 then (c, ((0,0), Unknown)) else (c, a)
-absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc@(_, Leaf _)  : fs }, a@(_, EndInfNode a_child)) = if getNode c a_child == dc then (c, ((0,0), Unknown)) else (c, a)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc  : fs }, a@(_, InfNodes int d p n))  = (c, a) -- warning! temporary fix, not correct
+    -- todo: make absorb'_unary a DdF3 typed traversal function and implement the code below, since parts can be absorbed leading to eliminated nodes.
+    -- let
+    -- (c', r1) = absorb'_unary (c, getNode c d)
+    -- (c'', r2) = absorb'_unary (c', getNode c p)
+    -- (c''', r3) = absorb'_unary (c'', getNode c n)
+    -- absorbed_inf = applyElimRule_unary @a $ InfNodes int r1 r2 r3
+    -- in if absorbed_inf == dc then (c''', ((0,0), Unknown)) else insert c''' absorbed_inf
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc  : fs }, a@(_, Node int p n))  = (c, a) -- warning! temporary fix, not correct
+    -- todo: make absorb'_unary a DdF3 typed traversal function and implement the code below, since parts can be absorbed leading to eliminated nodes.
+    -- let
+    -- (c', r1) = absorb'_unary (c', getNode c p)
+    -- (c'', r2) = absorb'_unary (c'', getNode c n)
+    -- absorbed_inf = applyElimRule_unary @a $ Node int r1 r2 r3
+    -- in if absorbed_inf == dc then (c''', ((0,0), Unknown)) else insert c''' absorbed_inf
 absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc@(_, EndInfNode dc') : fs }, a@(_, EndInfNode a'))
     | a' == dc' = (c, ((0,0), Unknown))
     | otherwise = (c,a)
 absorb'_unary (c@UnaryOperatorContext{un_dc_stack = dc : fs }, a)
     | a == dc = (c, ((0,0), Unknown))
     | otherwise = (c,a)
-absorb'_unary (c@UnaryOperatorContext{un_dc_stack = [] }, a) = (c, a)
+absorb'_unary (c@UnaryOperatorContext{un_dc_stack = [] }, a) = error "empty dc stack in absorb?"
+
+
 
 -- ==========================================================================================================
 -- * Negation Logic
@@ -227,40 +228,14 @@ class DdUnary a where
 
 instance (DdF3 a) => DdUnary a where
     -- | Synchronizes the dc_stack with the main traversal for unary operations.
-    -- | Similar to binary's `traverse_dc`, but for unary context.
-    -- |
-    -- | Synchronizes the dc_stack with the main traversal for unary operations.
-    -- | Similar to binary's `traverse_dc`, but for unary context.
-    -- |
-    -- | **Potential Issue**: This implementation uses a dummy binary context (`dummyBin`) to call
-    -- | `traverse_dc_generic`, which expects a BinaryOperatorContext. This is a workaround that
-    -- | may not correctly handle all cases, as the binary and unary contexts have different
-    -- | stack structures. The unary stack is `[Node]` (dcRs only) while binary is `(dcA, dcB, dcR)`.
-    -- |
-    -- | Case 1: Inference type is Dc (don't-care)
-    -- |   -> No synchronization needed (both branches valid, no catchup required)
-    -- | Case 2: Inference type is Neg or Pos
-    -- |   -> Update all dcR branches in the stack using traverse_dc_generic
-    -- |   -> Uses the inference rule @a@ to catch up when positions don't match
     traverse_dc_unary s c@UnaryOperatorContext{un_dc_stack = dcRs, un_current_level = lv} d =
         if to_str @a == "Dc" then c
             else let
-                -- Logic depends on which context is being used (unary/binary)
-                -- **Note**: Using dummyBin is a workaround - may not handle all cases correctly
-                new_dcRs = map (traverse_dc_generic @a s (dummyBin c) (getNode c d)) dcRs  -- Update dcR branches
+                new_dcRs = map (traverse_dc_generic_unary @a s c (getNode c d)) dcRs
             in c{un_dc_stack = new_dcRs, un_current_level=lv}
-      where
-        -- Helper to satisfy traverse_dc_generic signature which expects Binary context
-        -- **Potential Issue**: This creates a binary context with only the nodelookup, missing
-        -- the binary-specific stack structure. This may cause issues if traverse_dc_generic
-        -- accesses binary-specific stack fields.
-        dummyBin u = init_binary_context (getLookup u)
 
     -- | Restricts/quantifies variables in a Node (variable node).
     -- |
-    -- | This function implements universal/existential quantification by restricting variables
-    -- | to specific boolean values. The `nas` parameter is a list of positions to restrict,
-    -- | and `b` determines whether to restrict to True (universal) or False (existential).
     -- | The position matching logic `(reverse $ map fst $ un_current_level c) ++ [position] == na`  compares the current path with the target position. This is by design.
     -- |
     -- | Algorithm:
