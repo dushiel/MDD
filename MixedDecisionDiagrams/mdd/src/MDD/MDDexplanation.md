@@ -107,9 +107,9 @@ The refactored codebase is organized into focused modules with clear responsibil
 - `Path`, `LevelL`, `InfL`: Construction-time path representations
 
 **Context Management** (`MDD.Context`)
-- `BinaryOperatorContext`: Context for binary operations (union, intersection)
+- `BiOpContext`: Context for binary operations (union, intersection)
   - Contains: `bin_nodelookup`, `bin_cache`, `bin_dc_stack`, `bin_current_level`
-- `UnaryOperatorContext`: Context for unary operations (negation)
+- `UnOpContext`: Context for unary operations (negation)
   - Contains: `un_nodelookup`, `un_cache`, `un_dc_stack`, `un_current_level`
 - `DrawOperatorContext`: Context for visualization
   - Contains: `draw_nodelookup`, `draw_cache`
@@ -197,8 +197,6 @@ to build the project use "cabal build" in the project home folder.
 
 
 future addons:
-- fix applyInfA and applyInfB
-
 - fix absorb for unary stuff
 - refactor elimrules
 

@@ -20,6 +20,8 @@ import MDD.Stack
 import MDD.Draw (debug_dc_traverse, show_node)
 import Data.Kind (Constraint)
 import Debug.Trace (trace)
+import qualified Data.HashMap.Strict as HashMap
+
 
 -- | Shared helper function to move down the tree based on semantic role.
 -- Used to step into sub-branches during recursive traversal.
@@ -62,17 +64,88 @@ move_dc c m node =
 -- |   - to_str: String representation for debugging
 class DdF3 (a :: Inf) where
     -- | Infers a node for Argument A when Argument B is at a lower position.
-    inferNodeA :: (BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node))
-               -> BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Dd)
+    inferNodeA :: (BiOpContext -> String -> Node -> Node -> (BiOpContext, Node))
+               -> BiOpContext -> String -> Node -> Node -> (BiOpContext, Dd)
     -- | Infers a node for Argument B when Argument A is at a lower position.
-    inferNodeB :: (BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node))
-               -> BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Dd)
+    inferNodeB :: (BiOpContext -> String -> Node -> Node -> (BiOpContext, Node))
+               -> BiOpContext -> String -> Node -> Node -> (BiOpContext, Dd)
 
-    applyElimRule :: BinaryOperatorContext -> Dd -> (BinaryOperatorContext, Node)
+    applyElimRule :: (HasNodeLookup c) => c -> Dd -> (c, Node)
     inferNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
     inferInfNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
     catchup :: (HasNodeLookup c) => String -> c -> Node -> Int -> Node
     to_str :: String
+
+applyElimRule' :: forall a. (DdF3 a) => (UnOpContext, Dd) -> (UnOpContext, Node)
+applyElimRule' (c, d) = applyElimRule @a c d
+
+
+-- ==========================================================================================================
+-- * Redundancy Elimination (absorb)
+-- ==========================================================================================================
+
+-- | Absorb is a unary MDD manipulation
+-- | The absorb function maintains canonical representation by eliminating redundant branches.
+
+-- | Calling this from a binary operator function needs a context adjusment
+absorb :: forall a. (DdF3 a) => (BiOpContext, Node) -> (BiOpContext, Node)
+absorb (c, n) =
+    let
+        -- Extract dcR from binary context (third element of bin_dc_stack tuple)
+        (_, _, dcRs) = bin_dc_stack c
+        -- Extract first element from bin_current_level (unary only tracks one level)
+        (lvA, _) = bin_current_level c
+        -- Convert to unary context
+        unaryCtx = UCxt {
+            un_nodelookup = bin_nodelookup c,
+            un_cache = HashMap.empty,  -- Cache not needed for absorb
+            un_dc_stack = dcRs,  -- Use dcR from binary context
+            un_current_level = lvA  -- Use first level from binary context
+        }
+        -- Call unary absorb (using Dc inference type since we're comparing with continuous background)
+        (unaryCtx', n') = absorb_unary @a (unaryCtx, n)
+    in
+        (BCxt {
+            bin_nodelookup = un_nodelookup unaryCtx',  -- Updated nodelookup from unary context
+            bin_cache = bin_cache c,  -- Preserve original cache
+            bin_dc_stack = bin_dc_stack c, -- Preserve original stack
+            bin_current_level = bin_current_level c  -- Preserve original current level
+        }, n')
+
+
+-- | Main entry point for the absorb function for unary operations.
+absorb_unary :: forall a. (DdF3 a) => (UnOpContext, Node) -> (UnOpContext, Node)
+absorb_unary (c, n) = absorb' @a (c, n)
+
+absorb' :: forall a. (DdF3 a) => (UnOpContext, Node) -> (UnOpContext, Node)
+-- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")
+absorb' (c@UCxt{un_dc_stack = dc@(_, Unknown) : fs }, a) = absorb' @a (c{un_dc_stack = fs}, a) -- resolve Unknown in dc traversal to a previous layer
+absorb' (c@UCxt{un_dc_stack = dc : fs }, a@(_, Unknown)) = (c, a)
+absorb' (c@UCxt{un_dc_stack = dc : fs }, a@(_, Leaf _))
+    | a == dc = (c, ((0,0), Unknown))
+    | otherwise = (c,a)
+absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, InfNodes int d p n))
+    | a == dc = (c, ((0,0), Unknown))
+    | otherwise =
+        let (c', r1) = absorb' @a (c, getNode c d)
+            (c'', r2) = absorb' @a (c', getNode c p)
+            (c''', r3) = absorb' @a (c'', getNode c n)
+            absorbed_inf = applyElimRule @a c''' $ InfNodes int (fst r1) (fst r2) (fst r3)
+        in if (snd absorbed_inf) == dc then (c, ((0,0), Unknown)) else absorbed_inf
+absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, Node int p n))  =
+    let (c', r1) = absorb' @a (c, getNode c p)
+        (c'', r2) = absorb' @a (c', getNode c n)
+        absorbed_node = applyElimRule @a c'' $ Node int (fst r1) (fst r2)
+    in if (snd absorbed_node) == dc then (c, ((0,0), Unknown)) else absorbed_node
+
+absorb' (c@UCxt{un_dc_stack = dc@(_, EndInfNode dc') : fs }, a@(_, EndInfNode a'))
+    | a == dc = (c, ((0,0), Unknown))
+    | otherwise = absorb' @a (c{un_dc_stack = getNode c dc' : fs}, getNode c a')
+-- todo: need to add many traversal cases still (?), where inference happens.
+absorb' (c@UCxt{un_dc_stack = dc : fs }, a)
+    | a == dc = (c, ((0,0), Unknown))
+    | otherwise = (c,a)
+absorb' (c@UCxt{un_dc_stack = [] }, a) = (c, a) -- error "empty dc stack in absorb?"
 
 instance DdF3 Dc where
     inferNodeA f c s a (_, Node positionB pos_childB neg_childB) =
@@ -201,10 +274,10 @@ instance DdF3 Neg where
 class Dd1_helper (a :: Inf) where
     -- | Synchronizes the dc_stack with the main traversal for two NodeIds.
     -- | Updates all dc branches (dcA, dcB, dcR) in the stack to match the current position.
-    traverse_dc :: String -> BinaryOperatorContext -> NodeId -> NodeId -> BinaryOperatorContext
+    traverse_dc :: String -> BiOpContext -> NodeId -> NodeId -> BiOpContext
     -- | Synchronizes a single dc branch node with a reference node.
     -- | Uses the inference rule @a@ to catch up when positions don't match.
-    traverse_dc_generic :: String -> BinaryOperatorContext -> Node -> Node -> Node
+    traverse_dc_generic :: String -> BiOpContext -> Node -> Node -> Node
 
 instance (DdF3 a) => Dd1_helper a where
     -- | Synchronizes the entire dc_stack with the main traversal.

@@ -36,14 +36,14 @@ type ShowCache = HashMap.HashMap NodeId [String]
 -- It represents (dcA, dcB, dcR) respectively.
 -- - dcR is the resulting continuous dc branch used for absorption/elimination checks.
 -- - dcA and dcB are the dc components of the inputs, used to resolve Unknown leaves.
-data BinaryOperatorContext = BinaryOperatorContext {
+data BiOpContext = BCxt {
   bin_nodelookup :: NodeLookup,
   bin_cache :: Cache,
   bin_dc_stack :: ([Node], [Node], [Node]), -- (dcA, dcB, dcR)
   bin_current_level :: (Level', Level')
 }
 
-instance HasNodeLookup BinaryOperatorContext where
+instance HasNodeLookup BiOpContext where
     getLookup = bin_nodelookup
     setLookup nl ctx = ctx { bin_nodelookup = nl }
 
@@ -51,14 +51,14 @@ instance HasNodeLookup BinaryOperatorContext where
 -- un_dc_stack tracks dcR (resulting continuous branches) for absorption/elimination checks.
 -- Unlike binary operations, unary operations don't need to track the original input's dc branches
 -- since Unknown resolution is not needed (Unknown is returned as-is in unary operations).
-data UnaryOperatorContext = UnaryOperatorContext {
+data UnOpContext = UCxt {
   un_nodelookup :: NodeLookup,
   un_cache :: SingleCache,
   un_dc_stack :: [Node],  -- Only dcR (resulting continuous branches), no dcs needed
   un_current_level :: Level'
 }
 
-instance HasNodeLookup UnaryOperatorContext where
+instance HasNodeLookup UnOpContext where
     getLookup = un_nodelookup
     setLookup nl ctx = ctx { un_nodelookup = nl }
 
@@ -77,8 +77,8 @@ instance HasNodeLookup DrawOperatorContext where
 -- ==========================================================================================================
 
 -- | Initialize a fresh binary context with standard operations registered in the cache.
-init_binary_context :: NodeLookup -> BinaryOperatorContext
-init_binary_context nl = BinaryOperatorContext {
+init_binary_context :: NodeLookup -> BiOpContext
+init_binary_context nl = BCxt {
     bin_nodelookup = nl,
     bin_cache = Map.fromList (map (, HashMap.empty)
         ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]),
@@ -87,8 +87,8 @@ init_binary_context nl = BinaryOperatorContext {
 }
 
 -- | Initialize a fresh unary context.
-init_unary_context :: NodeLookup -> UnaryOperatorContext
-init_unary_context nl = UnaryOperatorContext {
+init_unary_context :: NodeLookup -> UnOpContext
+init_unary_context nl = UCxt {
     un_nodelookup = nl,
     un_cache = HashMap.empty,
     un_dc_stack = [((0,0), Unknown)],  -- Only dcR, no dcs needed, -- todo make it into ((1,0), Leaf True)

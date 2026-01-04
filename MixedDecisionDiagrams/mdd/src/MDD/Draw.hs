@@ -236,14 +236,14 @@ show_dd s c (d_id, d) = case d of
 -- * Debugging Logic
 -- ==========================================================================================================
 
-check_length :: BinaryOperatorContext -> Bool
-check_length ctx@BinaryOperatorContext{bin_dc_stack=(dcAs, dcBs, _), bin_current_level=(lvAs, lvBs)}
+check_length :: BiOpContext -> Bool
+check_length ctx@BCxt{bin_dc_stack=(dcAs, dcBs, _), bin_current_level=(lvAs, lvBs)}
     | length dcAs > length lvAs = False
     | length dcBs > length lvBs = False
     | otherwise = True
 
-debug_manipulation :: (BinaryOperatorContext, Node) -> String -> String -> BinaryOperatorContext -> Node -> Node -> (BinaryOperatorContext, Node)
-debug_manipulation result_pair f_key f_name old_c@BinaryOperatorContext{bin_cache = nc, bin_dc_stack=dcs} a@(a_id, a_d) b@(b_id, b_d)
+debug_manipulation :: (BiOpContext, Node) -> String -> String -> BiOpContext -> Node -> Node -> (BiOpContext, Node)
+debug_manipulation result_pair f_key f_name old_c@BCxt{bin_cache = nc, bin_dc_stack=dcs} a@(a_id, a_d) b@(b_id, b_d)
     | getDd old_c a_id == a_d && getDd old_c b_id == b_d = if not $ save_logs settings then
     let
     leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
@@ -308,7 +308,7 @@ debug_manipulation result_pair f_key f_name old_c@BinaryOperatorContext{bin_cach
         else (c{bin_dc_stack=dcs}, r)
     | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a ++ "\n b_id: " ++ show (getDd old_c b_id) ++ " \n b: " ++ show b )
 
-show_dc_stack_str :: BinaryOperatorContext -> String
+show_dc_stack_str :: BiOpContext -> String
 show_dc_stack_str ctx = show (bin_dc_stack ctx)
 
 check_skip_display :: NodeId -> NodeId -> Bool
@@ -327,8 +327,8 @@ check_skip_display_unary a_id =
 
 -- | Debug wrapper for unary operations (similar to debug_manipulation for binary operations).
 -- | Provides debugging output for restrict_node_set and other unary operations.
-debug_manipulation_unary :: (UnaryOperatorContext, Node) -> String -> String -> UnaryOperatorContext -> Node -> [Position] -> Bool -> (UnaryOperatorContext, Node)
-debug_manipulation_unary result_pair f_key f_name old_c@UnaryOperatorContext{un_cache = nc, un_dc_stack=dcs} a@(a_id, a_d) nas b_val
+debug_manipulation_unary :: (UnOpContext, Node) -> String -> String -> UnOpContext -> Node -> [Position] -> Bool -> (UnOpContext, Node)
+debug_manipulation_unary result_pair f_key f_name old_c@UCxt{un_cache = nc, un_dc_stack=dcs} a@(a_id, a_d) nas b_val
     | getDd old_c a_id == a_d = if not $ save_logs settings then
     let
     leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
@@ -389,32 +389,32 @@ debug_manipulation_unary result_pair f_key f_name old_c@UnaryOperatorContext{un_
         else (c{un_dc_stack=dcs}, r)
     | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a)
 
-show_dc_stack_str_unary :: UnaryOperatorContext -> String
+show_dc_stack_str_unary :: UnOpContext -> String
 show_dc_stack_str_unary ctx = show (un_dc_stack ctx)
 
-display_func_stack_unary :: UnaryOperatorContext -> String
-display_func_stack_unary c@UnaryOperatorContext{un_dc_stack = dcs} = let
+display_func_stack_unary :: UnOpContext -> String
+display_func_stack_unary c@UCxt{un_dc_stack = dcs} = let
             dcRs' = intercalate separator1 $ map (show_dd settings c) dcs
             separator1 = " , \n"
         in
             (if display_level settings then colorize "purple" "func level : " ++ show (un_current_level c) else "") ++
             (if display_dcRs settings then colorize "blue" "\n DcR : \n" ++ dcRs' else "") ++ "\n"
 
-debug_func :: String -> (BinaryOperatorContext, Node) -> (BinaryOperatorContext, Node)
+debug_func :: String -> (BiOpContext, Node) -> (BiOpContext, Node)
 debug_func f_name f = if save_logs settings
     then myDebugLog ("{\"" ++ colorize "orange" f_name ++ "\" : [") (myDebugLog ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (fst f) ++ "\"]}\n]},") f)
     else if debug_on settings
         then myTrace ("{\"" ++ colorize "orange" f_name ++ "\" : [") (myTrace ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (fst f) ++ "\"]}\n]},") f)
         else f
 
-debug_dc_traverse :: String -> BinaryOperatorContext -> NodeId -> NodeId -> BinaryOperatorContext -> BinaryOperatorContext
+debug_dc_traverse :: String -> BiOpContext -> NodeId -> NodeId -> BiOpContext -> BiOpContext
 debug_dc_traverse s c a b f = if display_dc_traversal settings && debug_on settings
     then myTrace (colorize "purple" "dc_traverse" ++ ", for arguments: " ++ s ++ " a: " ++ show_dd settings c (getNode c a) ++ "  b: " ++ show_dd settings c (getNode c b))
         (myTrace (display_func_stack' c f ++ "\n\n") f)
     else f
 
-display_func_stack' :: BinaryOperatorContext -> BinaryOperatorContext -> String
-display_func_stack' old_c@BinaryOperatorContext{bin_dc_stack = dcs} new_c@BinaryOperatorContext{bin_dc_stack = new_dcs} = let
+display_func_stack' :: BiOpContext -> BiOpContext -> String
+display_func_stack' old_c@BCxt{bin_dc_stack = dcs} new_c@BCxt{bin_dc_stack = new_dcs} = let
             (dcAs, dcBs, dcRs) = dcs
             (dcAs', dcBs', dcRs') = new_dcs
             old_dcAs = intercalate separator1 $ map (show_dd settings old_c) dcAs
@@ -430,8 +430,8 @@ display_func_stack' old_c@BinaryOperatorContext{bin_dc_stack = dcs} new_c@Binary
             (if display_dcBs settings then colorize "orange" "\n- DcB old : \n  " ++ old_dcBs ++ colorize "green" "\n  DcB new : \n  " ++ new_dcBs else "") ++
             (if display_dcRs settings then colorize "orange" "\n- DcR old : \n  " ++ old_dcRs ++ colorize "green" "\n  DcR new : \n  " ++ new_dcRs else "")
 
-display_func_stack :: BinaryOperatorContext -> String
-display_func_stack c@BinaryOperatorContext{bin_dc_stack = dcs} = let
+display_func_stack :: BiOpContext -> String
+display_func_stack c@BCxt{bin_dc_stack = dcs} = let
             (dcAs, dcBs, dcRs) = dcs
             dcAs' = intercalate separator1 $ map (show_dd settings c) dcAs
             dcBs' = intercalate separator1 $ map (show_dd settings c) dcBs

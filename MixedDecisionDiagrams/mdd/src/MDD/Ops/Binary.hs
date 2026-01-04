@@ -16,8 +16,7 @@ import MDD.Context
 import MDD.Manager
 import MDD.Stack
 import MDD.Traversal
-import MDD.Draw (debug_manipulation, debug_dc_traverse)
-import MDD.Ops.Unary (absorb_unary)
+import MDD.Draw (debug_manipulation)
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Kind (Constraint)
@@ -35,8 +34,8 @@ import Debug.Trace (trace)
 -- |
 -- | The dc_stack is included in the cache key because the same node pair can produce different
 -- | results depending on the hierarchical context (which InfNode layers we're currently in).
-withCache :: BinaryOperatorContext -> (Node, Node, String) -> (BinaryOperatorContext, Node) -> (BinaryOperatorContext, Node)
-withCache c@BinaryOperatorContext{bin_cache = nc, bin_dc_stack = dck} ((keyA, _), (keyB, _), keyFunc) func_with_args =
+withCache :: BiOpContext -> (Node, Node, String) -> (BiOpContext, Node) -> (BiOpContext, Node)
+withCache c@BCxt{bin_cache = nc, bin_dc_stack = dck} ((keyA, _), (keyB, _), keyFunc) func_with_args =
   case Map.lookup keyFunc nc of
     Just nc' -> case HashMap.lookup (keyA, keyB, dck) nc' of
       Just result -> (c, getNode c result) -- Cache hit: return previously computed result
@@ -47,35 +46,7 @@ withCache c@BinaryOperatorContext{bin_cache = nc, bin_dc_stack = dck} ((keyA, _)
         in (updatedContext { bin_cache = updatedCache }, r) -- Cache miss: compute and store result
     Nothing -> error ("function not in map, bad initialisation?: " ++ show keyFunc)
 
--- ==========================================================================================================
--- * Redundancy Elimination (absorb)
--- ==========================================================================================================
 
--- | Main entry point for the absorb function for binary operations.
--- | The absorb function maintains canonical representation by eliminating redundant branches.
-absorb :: (BinaryOperatorContext, Node) -> (BinaryOperatorContext, Node)
-absorb (c, n) =
-    let
-        -- Extract dcR from binary context (third element of bin_dc_stack tuple)
-        (_, _, dcRs) = bin_dc_stack c
-        -- Extract first element from bin_current_level (unary only tracks one level)
-        (lvA, _) = bin_current_level c
-        -- Convert to unary context
-        unaryCtx = UnaryOperatorContext {
-            un_nodelookup = bin_nodelookup c,
-            un_cache = HashMap.empty,  -- Cache not needed for absorb
-            un_dc_stack = dcRs,  -- Use dcR from binary context
-            un_current_level = lvA  -- Use first level from binary context
-        }
-        -- Call unary absorb
-        (unaryCtx', n') = absorb_unary (unaryCtx, n)
-    in
-        (BinaryOperatorContext {
-            bin_nodelookup = un_nodelookup unaryCtx',  -- Updated nodelookup from unary context
-            bin_cache = bin_cache c,  -- Preserve original cache
-            bin_dc_stack = bin_dc_stack c, -- Preserve original stack
-            bin_current_level = bin_current_level c  -- Preserve original current level
-        }, n')
 
 -- ==========================================================================================================
 -- * Binary Operation Typeclass (Dd1)
@@ -87,17 +58,17 @@ absorb (c, n) =
 
 type Dd1 :: Inf -> Constraint
 class Dd1 a where
-    leaf_cases :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
-    dcB_leaf_cases :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
-    dcA_leaf_cases :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
-    apply :: BinaryOperatorContext -> String -> NodeId -> NodeId -> (BinaryOperatorContext, Node)
-    applyDcB :: BinaryOperatorContext -> String -> NodeId -> NodeId -> (BinaryOperatorContext, Node)
-    applyDcA :: BinaryOperatorContext -> String -> NodeId -> NodeId -> (BinaryOperatorContext, Node)
+    leaf_cases :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+    dcB_leaf_cases :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+    dcA_leaf_cases :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+    apply :: BiOpContext -> String -> NodeId -> NodeId -> (BiOpContext, Node)
+    applyDcB :: BiOpContext -> String -> NodeId -> NodeId -> (BiOpContext, Node)
+    applyDcA :: BiOpContext -> String -> NodeId -> NodeId -> (BiOpContext, Node)
 
-    apply' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
-    applyDcB' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
-    applyDcA' :: BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
-    endinf_case :: BinaryOperatorContext -> String -> NodeId -> NodeId -> NodeId -> NodeId -> (BinaryOperatorContext, Node)
+    apply' :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+    applyDcB' :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+    applyDcA' :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+    endinf_case :: BiOpContext -> String -> NodeId -> NodeId -> NodeId -> NodeId -> (BiOpContext, Node)
 
 instance (DdF3 a, Dd1_helper a) => Dd1 a where
     -- | Main entry point: converts NodeIds to Nodes and wraps with debug output
@@ -147,13 +118,13 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
         -- Case 10: positionA < positionB (InfNode's class comes before Node's variable)
         --   -> Need to enter the class hierarchy: applyInfB wraps Node in the class context
         | positionA < positionB = withCache c (a, b, s) $
-                absorb $ applyInfB @a c s a b
+                absorb @a $ applyInfB @a c s a b
     apply' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, InfNodes positionB _ _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
         -- Case 11: positionA > positionB (Node's variable comes after InfNode's class)
         --   -> Need to enter class hierarchy: applyInfA wraps Node in the class context
         | positionA > positionB = withCache c (a, b, s) $
-                absorb $ applyInfA @a c s a b
+                absorb @a $ applyInfA @a c s a b
         -- Case 12: positionA < positionB (Node's variable comes before InfNode's class)
         | positionA < positionB = withCache c (a, b, s) $
                 uncurry (applyElimRule @a) (inferNodeB' @a (apply' @a) c s a b)
@@ -161,19 +132,19 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     -- Cases 13-15: Both arguments are InfNodes (class hierarchy operations)
     apply' c s a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
         -- Case 13: Positions match (same class)
-        | positionA == positionB = withCache c (a, b, s) $ absorb $ applyInf @a c s a b
+        | positionA == positionB = withCache c (a, b, s) $ absorb @a $ applyInf @a c s a b
         -- Case 14: positionA < positionB (A's class comes before B's)
-        | positionA < positionB = withCache c (a, b, s) $ absorb $ applyInfB @a c s a b
+        | positionA < positionB = withCache c (a, b, s) $ absorb @a $ applyInfB @a c s a b
         -- Case 15: positionA > positionB (A's class comes after B's)
-        | positionA > positionB = withCache c (a, b, s) $ absorb $ applyInfA @a c s a b
+        | positionA > positionB = withCache c (a, b, s) $ absorb @a $ applyInfA @a c s a b
 
     -- Cases 16-19: EndInfNode vs Node (hierarchy mismatch)
     --   -> EndInfNode means we're exiting a class, but Node / InfNode means we're still in that class
     --   -> Need to infer what the EndInfNode's argument should be at the Node's position
     apply' c s a@(a_id, EndInfNode _) b@(b_id, Node idx _ _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeA' @a (apply' @a) c s a b)
     apply' c s a@(a_id, Node{}) b@(b_id, EndInfNode _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB' @a (apply' @a) c s a b)
-    apply' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, s) $ absorb $ applyInfA @a c s a b
-    apply' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, s) $ absorb $ applyInfB @a c s a b
+    apply' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, s) $ absorb @a $ applyInfA @a c s a b
+    apply' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, s) $ absorb @a $ applyInfB @a c s a b
 
     -- | Handles all cases where at least one argument is a terminal value (Leaf, Unknown).
     -- | This function dispatches to specialized handlers based on the combination of terminal types.
@@ -207,8 +178,8 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     --   -> Union: True is dominant
     --   -> Intersection: False is dominant
     --   -> absorb ensures result is canonical (may replace with Unknown if redundant)
-    leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b)
-    leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a)
+    leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, a) else absorb @a (c, b)
+    leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, b) else absorb @a (c, a)
 
     -- Fallback: should not happen with proper type handling
     leaf_cases c s a b = error ("leaf case: " ++ s)
@@ -287,8 +258,8 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     dcB_leaf_cases c s a b@(_, Unknown) =  -- B is Unknown, resolve from dcB
         let (c', dcB) = pop_dcB'' c
         in applyDcB' @a c' s a dcB
-    dcB_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b)
-    dcB_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a)
+    dcB_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, a) else absorb @a (c, b)
+    dcB_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, b) else absorb @a (c, a)
 
 -- | ======================== DcA versions (Argument A is DC type) ========================
 -- |
@@ -364,8 +335,8 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
         let (c', dcA) = pop_dcA'' c
         in applyDcA' @a c' s dcA b
     dcA_leaf_cases c s a b@(_, Unknown) = (c, b)  -- B is Unknown, return as-is
-    dcA_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b)
-    dcA_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, b) else absorb (c, a)
+    dcA_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, a) else absorb @a (c, b)
+    dcA_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, b) else absorb @a (c, a)
 
     -- | Handles the case when both arguments are EndInfNodes (both exiting their class hierarchies).
     -- | This function:
@@ -390,7 +361,7 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
             (Dc, Pos) -> applyDcA @Pos c' s ac bc  -- Continuous vs positive literal inference
             r'@(_, _) -> error ("weird combination after pop stack: " ++ show r')
         -- Absorb redundant branches, then apply elimination rule and wrap in EndInfNode
-        in absorb $ applyElimRule @a (reset_stack_bin c'' c) (EndInfNode r)
+        in absorb @a $ applyElimRule @a (reset_stack_bin c'' c) (EndInfNode r)
 
 -- | ======================== InfNode Application Logic ========================
 -- |
@@ -407,7 +378,7 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
 -- |   - For neg/pos branches: Push the computed dcR as the continuous background
 -- |
 -- | Note: The actual exception type (neg1/neg0 or pos1/pos0) depends on what dcR evaluates to.
-applyInf :: forall a. (Dd1 a, DdF3 a, Dd1_helper a) => BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+applyInf :: forall a. (Dd1 a, DdF3 a, Dd1_helper a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
 applyInf c s a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
     | positionA == positionB =
         let
@@ -438,14 +409,14 @@ applyInf c s a@(_, EndInfNode _) b@(_, InfNodes{}) = applyInfA @a c s a b  -- Wr
 applyInf c s a b = error ("apply inf error: " ++ s)
 
 
-applyInfA :: forall a. (DdF3 a) => BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+applyInfA :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
 applyInfA c s (a_id, _) b@(_, InfNodes positionB _ _ _) = let
         (c', r) = insert c (EndInfNode a_id)
         (c'', r') = inferInfNode @a c' positionB r
     in applyInf @a c'' s r' b
 applyInfA _ _ _ _ = error "should not be possible"
 
-applyInfB :: forall a. (DdF3 a) => BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node)
+applyInfB :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
 applyInfB c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
         (c', r) = insert c (EndInfNode b_id)
         (c'', r') = inferInfNode @a c' positionA r
@@ -455,10 +426,10 @@ applyInfB _ _ _ _ = error "should not be possible"
 -- | Helper wrapper for inferred node recursive calls.
 -- | These functions bridge between the Dd1 typeclass (which works with Nodes) and the DdF3
 -- | typeclass (which works with Dd and handles inference rules).
-inferNodeA' :: forall a. DdF3 a => (BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node))
-            -> BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Dd)
+inferNodeA' :: forall a. DdF3 a => (BiOpContext -> String -> Node -> Node -> (BiOpContext, Node))
+            -> BiOpContext -> String -> Node -> Node -> (BiOpContext, Dd)
 inferNodeA' f c s a b = inferNodeA @a f c s a b
 
-inferNodeB' :: forall a. DdF3 a => (BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Node))
-            -> BinaryOperatorContext -> String -> Node -> Node -> (BinaryOperatorContext, Dd)
+inferNodeB' :: forall a. DdF3 a => (BiOpContext -> String -> Node -> Node -> (BiOpContext, Node))
+            -> BiOpContext -> String -> Node -> Node -> (BiOpContext, Dd)
 inferNodeB' f c s a b = inferNodeB @a f c s a b

@@ -81,17 +81,17 @@ insert_static nm d = let (new_id, rnm) = insert_id_static (hash d) d nm in (rnm,
 -- * Static Transformation Logic
 -- ==========================================================================================================
 
-get_static_lv :: UnaryOperatorContext -> [Int]
+get_static_lv :: UnOpContext -> [Int]
 get_static_lv ctx = reverse (map fst (un_current_level ctx))
 
 -- | Plan implementation: becomes Context -> Node -> (StaticNodeLookup, NodeStatic)
--- Using UnaryOperatorContext as the carrier for the current level and transient lookup.
+-- Using UnOpContext as the carrier for the current level and transient lookup.
 -- While manipulation occurs with relative positions to allow for dynamic variable insertion,
 -- a static translation is provided for visualization.
-to_static_form :: UnaryOperatorContext -> Node -> (StaticNodeLookup, NodeStatic)
+to_static_form :: UnOpContext -> Node -> (StaticNodeLookup, NodeStatic)
 to_static_form ctx node = go defaultNodeMapStatic ctx node
   where
-    go :: StaticNodeLookup -> UnaryOperatorContext -> Node -> (StaticNodeLookup, NodeStatic)
+    go :: StaticNodeLookup -> UnOpContext -> Node -> (StaticNodeLookup, NodeStatic)
     go snl c d@(_, Node position pos_child neg_child) =
         let (snl1, (posR, _)) = go snl c (getNode c pos_child)
             (snl2, (negR, _)) = go snl1 c (getNode c neg_child)
@@ -116,7 +116,7 @@ to_static_form ctx node = go defaultNodeMapStatic ctx node
     go snl _ (_, Unknown) = insert_static snl Unknown'
 
 -- | Retrieves all variable paths present in the diagram
-allVars :: UnaryOperatorContext -> Node -> [Position]
+allVars :: UnOpContext -> Node -> [Position]
 allVars ctx d@(_, Node position pos_child neg_child) =
   [get_static_lv ctx ++ [position]] ++
    allVars ctx (getNode ctx pos_child) ++ allVars ctx (getNode ctx neg_child)

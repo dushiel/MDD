@@ -382,7 +382,36 @@ instance Update BelScene Event where
                   p_node .<->. psi_shifted
             ) (M.toList changelaw)
 
-          newLawNode = conSet (law_shifted : law_event : assign_laws)
+          newLawNode' = conSet (law_shifted : law_event : assign_laws)
+          newLawNode = trace ("\n=== STEP 1: Shift Transformer ===" ++
+                     "\nOriginal props: " ++ show props ++
+                     "\nShift relation: " ++ show shiftRel ++
+                     "\nShifted addprops: " ++ show addprops ++
+                     "\nShifted addlaw: " ++ show addlaw ++
+                     "\nChangelaw: " ++ show changelaw ++
+                     "\nEvent facts (original): " ++ show eventFacts ++
+                     "\nEvent facts (shifted): " ++ show eventFactsShifted ++
+                     "\n\n=== STEP 2: Handle Assignments ===" ++
+                     "\nChange props: " ++ show changeprops ++
+                     "\nCopy relation: " ++ show copyRel ++
+                     "\nCopy change props: " ++ show copyChangeProps ++
+                     "\nCopy relabeling (ordinals): " ++ show copyRelOrd ++
+                     "\n\n=== STEP 3a: Shift Old Law ===" ++
+                     "\nOriginal law: " ++ (show_dd settings (fst (unMDD lawmdd)) (snd (unMDD lawmdd))) ++
+                     "\nShifted law: " ++ (show_dd settings (fst (unMDD law_shifted)) (snd (unMDD law_shifted))) ++
+                     "\n\n=== STEP 3b: Event Law ===" ++
+                     "\nTemp vocabulary: " ++ show (props ++ addprops ++ copyChangeProps) ++
+                     "\nEvent law formula: " ++ show addlaw ++
+                     "\nEvent law MDD: " ++ (show_dd settings (fst (unMDD law_event)) (snd (unMDD law_event))) ++
+                     "\n\n=== STEP 3c: Assignment Laws ===" ++
+                     "\nNumber of assignments: " ++ show (length assign_laws) ++
+                     "\nAssignment laws MDDs:\n" ++
+                     intercalate "\n" (map (\(i, al) -> "  Assignment " ++ show i ++ ": " ++
+                       (show_dd settings (fst (unMDD al)) (snd (unMDD al))))
+                       (zip [1..] assign_laws)) ++
+                     "\n\n=== STEP 3: Final New Law ===" ++
+                     "\nNew law node: " ++ (show_dd settings (fst (unMDD newLawNode')) (snd (unMDD newLawNode'))) ++ "\n")
+                     newLawNode'
 
           -- 4. Construct New Relations
           -- Agents distinguish 'addprops' via eventObs.
@@ -405,19 +434,33 @@ instance Update BelScene Event where
               in
                   Tagged (relOldShifted .*. ev)
 
-          newObs = M.mapWithKey newOfor obs
+          newObs' = M.mapWithKey newOfor obs
+          newObs = trace ("\n=== STEP 4: Construct New Relations ===" ++
+                     "\nCopy relabeling MV: " ++ show copyRelMV ++
+                     "\nCopy relabeling CP: " ++ show copyRelCP ++
+                     "\nFull copy relabeling: " ++ show fullCopyRelOrd ++
+                     "\nNew observations:\n" ++
+                     intercalate "\n" (map (\(agent, rel_tagged) ->
+                       "  Agent " ++ show agent ++ ": " ++
+                       (show_dd settings (fst (unMDD (untag rel_tagged))) (snd (unMDD (untag rel_tagged)))))
+                       (M.toList newObs')) ++ "\n")
+                     newObs'
 
           -- 5. Construct New State
           -- s is the old state (MDD).
-          -- quentify out the p_copies (to ensure they are dc literals)
-          -- (a) Relabel s to copies: s(p) -> s(p_copy)
+
+          -- (a )Relabel s to copies: s(p) -> s(p_copy)
+          -- Quantify out the originals (the new state can be either true or neg evaluations in this step)
           r = relabelWith copyRelOrd s
           r' = existSet (map toOrdinal changeprops) r
           s_copy =
-              trace ("\n ==> new state based on old state without the consequences." ++
-            "\n relabeling with: " ++ show copyRelOrd ++
-            "\n before quantification: " ++ (show_dd settings (fst (unMDD r)) (snd (unMDD r))) ++
-            "\n after quantification : " ++ (show_dd settings (fst (unMDD r')) (snd (unMDD r'))) ++ "\n")
+              trace ("\n=== STEP 5: Construct New State ===" ++
+            -- "\nOriginal state s: " ++ (show_dd settings (fst (unMDD s)) (snd (unMDD s))) ++
+            -- "\n\n=== STEP 5a: Relabel State to Copies ===" ++
+            -- "\nRelabeling with: " ++ show copyRelOrd ++
+            -- "\nBefore quantification (r): " ++ (show_dd settings (fst (unMDD r)) (snd (unMDD r))) ++
+            -- "\nQuantifying out: " ++ show (map toOrdinal changeprops) ++
+            "\nAfter quantification (r'): " ++ (show_dd settings (fst (unMDD r')) (snd (unMDD r'))) ++ "\n")
             r'
 
           -- (b) Intersect with assignments and event facts
@@ -425,8 +468,20 @@ instance Update BelScene Event where
           -- and sets addprops based on eventFacts.
           factsNode = mddOf tempBls eventFactsShifted
 
-          newStateNode = trace ( "\nfactsnode: " ++ (show_dd settings (fst (unMDD factsNode)) (snd (unMDD factsNode))) ++ "\n" )
-            conSet [s_copy, factsNode, conSet assign_laws]
+          assign_laws_conj = conSet assign_laws
+
+          newStateNode = trace ("\n=== STEP 5b: Event Facts Node ===" ++
+                     "\nEvent facts formula: " ++ show eventFactsShifted ++
+                     "\nFacts node: " ++ (show_dd settings (fst (unMDD factsNode)) (snd (unMDD factsNode))) ++
+                     "\n\nAssignment laws conjunction: " ++
+                     (show_dd settings (fst (unMDD assign_laws_conj)) (snd (unMDD assign_laws_conj))) ++
+                     "\n\n=== STEP 5: Final New State ===" ++
+                     "\nComponents:\n  s_copy: " ++ (show_dd settings (fst (unMDD s_copy)) (snd (unMDD s_copy))) ++
+                     "\n  factsNode: " ++ (show_dd settings (fst (unMDD factsNode)) (snd (unMDD factsNode))) ++
+                     "\n  assign_laws_conj: " ++ (show_dd settings (fst (unMDD assign_laws_conj)) (snd (unMDD assign_laws_conj))) ++
+                     "\nFinal new state: " ++ (show_dd settings (fst (unMDD (conSet [s_copy, factsNode, assign_laws_conj])))
+                                               (snd (unMDD (conSet [s_copy, factsNode, assign_laws_conj])))) ++ "\n")
+            (conSet [s_copy, factsNode, assign_laws_conj])
           -- a method which more closely follows the true mechanisms:
           -- from the old state: quantify out the variables which could have changed, store their values in another domain, add valuation that event has happened in yet another domain.
           -- take the new law and apply it to the new "state" by conjunction and it should result in all quantified propositions taking on a single valuation, resulting in a sinlge path/state again
@@ -434,7 +489,12 @@ instance Update BelScene Event where
           -- this might actually be less efficient, so its worth it in the future to try the method above.
 
           -- 6. Final Vocabulary
-          newProps = props ++ addprops ++ copyChangeProps
+          newProps = trace ("\n=== STEP 6: Final Vocabulary ===" ++
+                     "\nOriginal props: " ++ show props ++
+                     "\nAdded props: " ++ show addprops ++
+                     "\nCopy change props: " ++ show copyChangeProps ++
+                     "\nFinal new props: " ++ show (props ++ addprops ++ copyChangeProps) ++ "\n")
+                     (props ++ addprops ++ copyChangeProps)
 
       in (BlS newProps newLawNode newObs, newStateNode)
 

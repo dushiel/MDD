@@ -157,25 +157,24 @@ runSallyAnne = do
     -- 0. Init
     let scene0 = sallyInit
     putStrLn "\n[0] Initial: Sally present, No marble."
-    printStatus scene0
+    -- printStatus scene0
 
     -- 1. Sally puts marble
     let scene1 = unsafeUpdate scene0 sallyPutsMarble
     putStrLn "\n[1] Action: Sally puts marble in basket."
-    printStatus scene1
-
-    error "stop"
+    -- printStatus scene1
 
     -- 2. Sally leaves
     let scene2 = unsafeUpdate scene1 sallyLeaves
     putStrLn "\n[2] Action: Sally leaves the room."
     printStatus scene2
-
+    putStrLn "\n===============\n\n\n\n\n\n==================\n\n"
 
     -- 3. Anne moves marble
     let scene3 = unsafeUpdate scene2 anneMovesMarble
     putStrLn "\n[3] Action: Anne moves marble to box (Sally doesn't see)."
     printStatus scene3
+    error "stop"
 
     -- 4. Sally returns
     let scene4 = unsafeUpdate scene3 sallyReturns
@@ -184,28 +183,28 @@ runSallyAnne = do
 
     putStrLn "\n--- Final Belief Check ---"
 
-    -- -- Does Anne know marble is NOT in basket? (True)
-    -- let anneKnowsGone = evalViaMdd scene4 (K "Anne" (Neg (PrpF tt)))
-    -- putStrLn $ "Does Anne know marble is gone? " ++ show anneKnowsGone ++ " (Expected: True)"
+    -- Does Anne know marble is NOT in basket? (True)
+    let anneKnowsGone = evalViaMdd scene4 (K "Anne" (Neg (PrpF tt)))
+    putStrLn $ "Does Anne know marble is gone? " ++ show anneKnowsGone ++ " (Expected: True)"
 
-    -- -- Does Sally know marble is NOT in basket? (False - she thinks it's there)
-    -- let sallyKnowsGone = evalViaMdd scene4 (K "Sally" (Neg (PrpF tt)))
-    -- putStrLn $ "Does Sally know marble is gone? " ++ show sallyKnowsGone ++ " (Expected: False)"
+    -- Does Sally know marble is NOT in basket? (False - she thinks it's there)
+    let sallyKnowsGone = evalViaMdd scene4 (K "Sally" (Neg (PrpF tt)))
+    putStrLn $ "Does Sally know marble is gone? " ++ show sallyKnowsGone ++ " (Expected: False)"
 
-    -- -- Does Sally believe marble IS in basket? (True)
-    -- let sallyBelievesHere = evalViaMdd scene4 (K "Sally" (PrpF tt))
-    -- putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere ++ " (Expected: True)"
+    -- Does Sally believe marble IS in basket? (True)
+    let sallyBelievesHere = evalViaMdd scene4 (K "Sally" (PrpF tt))
+    putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere ++ " (Expected: True)"
 
 printStatus :: BelScene -> IO ()
 printStatus scn = do
     let p = evalViaMdd scn (PrpF pp)
     let t = evalViaMdd scn (PrpF tt)
-    putStrLn $ "    Status: Sally Present=" ++ show p ++ ", Marble in Basket=" ++ show t
+    putStrLn $ "    Status: Sally Present=" ++ show p ++ "\n=====\n, Marble in Basket=" ++ show t ++ "\n====="
     -- Does Anne know marble is NOT in basket?
-    let anneKnowsGone = evalViaMdd scn (K "Anne" (Neg (PrpF tt)))
-    putStrLn $ "Does Anne believe that the marble is not in the basket? " ++ show anneKnowsGone
+    -- let anneKnowsGone = evalViaMdd scn (K "Anne" (Neg (PrpF tt)))
+    -- putStrLn $ "Does Anne believe that the marble is not in the basket? " ++ show anneKnowsGone
 
 
-    -- Does Sally believe marble IS in basket?
-    let sallyBelievesHere = evalViaMdd scn (K "Sally" (PrpF tt))
-    putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere
+    -- -- Does Sally believe marble IS in basket?
+    -- let sallyBelievesHere = evalViaMdd scn (K "Sally" (PrpF tt))
+    -- putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere
