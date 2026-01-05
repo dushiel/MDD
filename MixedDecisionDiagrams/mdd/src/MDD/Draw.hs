@@ -471,3 +471,8 @@ debug f s = trace (colorize "green" (s ++ "\n\n")) f
 
 show_node :: (HasNodeLookup c) => c -> Node -> String
 show_node c n = show_dd settings c n
+
+show_mdd :: MDD -> String
+show_mdd mdd = let
+    (c, n) = unMDD mdd
+    in show_dd settings c n

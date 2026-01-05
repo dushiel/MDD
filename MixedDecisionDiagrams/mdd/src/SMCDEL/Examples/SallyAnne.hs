@@ -157,24 +157,24 @@ runSallyAnne = do
     -- 0. Init
     let scene0 = sallyInit
     putStrLn "\n[0] Initial: Sally present, No marble."
-    -- printStatus scene0
+    printStatus scene0
 
     -- 1. Sally puts marble
     let scene1 = unsafeUpdate scene0 sallyPutsMarble
     putStrLn "\n[1] Action: Sally puts marble in basket."
-    -- printStatus scene1
+    printStatus scene1
 
     -- 2. Sally leaves
     let scene2 = unsafeUpdate scene1 sallyLeaves
     putStrLn "\n[2] Action: Sally leaves the room."
     printStatus scene2
-    putStrLn "\n===============\n\n\n\n\n\n==================\n\n"
+    -- putStrLn "\n===============\n\n\n\n\n\n==================\n\n"
 
     -- 3. Anne moves marble
     let scene3 = unsafeUpdate scene2 anneMovesMarble
     putStrLn "\n[3] Action: Anne moves marble to box (Sally doesn't see)."
     printStatus scene3
-    error "stop"
+
 
     -- 4. Sally returns
     let scene4 = unsafeUpdate scene3 sallyReturns
