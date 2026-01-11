@@ -17,7 +17,7 @@ module MDD.Traversal where
 import MDD.Types
 import MDD.Context
 import MDD.Stack
-import MDD.Draw (debug_dc_traverse, show_node)
+import MDD.Draw (debug_dc_traverse, show_node, display_func_stack)
 import Data.Kind (Constraint)
 import Debug.Trace (trace)
 import qualified Data.HashMap.Strict as HashMap
@@ -31,18 +31,18 @@ move_dc c m node =
         (_, Node position pos_child neg_child) ->
             if m == "pos child" then getNode c pos_child
             else if m == "neg child" then getNode c neg_child
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for Node pattern"
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for Node pattern: " ++ show_node c node
 
         (_, EndInfNode child) ->
             if m == "endinf" then getNode c child
             else (if m `elem` ["pos child", "neg child", "inf pos", "inf neg", "inf dc"] then node
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndInfNode pattern")
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndInfNode pattern: " ++ show_node c node)
 
         (_, InfNodes position dc p n) ->
             if m == "inf pos" then getNode c p
             else if m == "inf neg" then getNode c n
             else if m == "inf dc" then getNode c dc
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for InfNodes pattern"
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for InfNodes pattern: " ++ show_node c node
 
         (_, Leaf _) ->
             node
@@ -286,7 +286,7 @@ instance (DdF3 a) => Dd1_helper a where
     traverse_dc s c a b = debug_dc_traverse s c a b $
         if to_str @a == "Dc" then c  -- Dc: no catchup needed -- todo this is not true! fix this in the future.
         else
-            let (dcAs, dcBs, dcRs) = bin_dc_stack c
+            let (dcAs, dcBs, dcRs) = (bin_dc_stack c)
                 -- Update dcA branches using reference node A
                 new_dcAs = map (traverse_dc_generic @a s c (getNode c a)) dcAs
                 -- Update dcB branches using reference node B

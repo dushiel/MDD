@@ -72,11 +72,11 @@ settings = ShowSetting {
             ,   debug_close = True
             ,   debug_shorten_close = False
 
-            ,   debug_dc_stack = False
+            ,   debug_dc_stack = True
             ,   display_level = False
-            ,   display_dcAs = False
-            ,   display_dcBs = False
-            ,   display_dcRs = False
+            ,   display_dcAs = True
+            ,   display_dcBs = True
+            ,   display_dcRs = True
 }
 
 -- ==========================================================================================================
@@ -297,6 +297,72 @@ debug_manipulation result_pair f_key f_name old_c@BCxt{bin_cache = nc, bin_dc_st
     in
     if check_skip_display a_id b_id
         then myDebugLog ("{\"" ++ colorize "green" f_name ++"\": {" ++ "\"func_stack before\": [\"" ++ show_dc_stack_str old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
+            case Map.lookup f_key nc of
+                Just nc' -> case HashMapStrict.lookup (a_id, b_id, dcs) nc' of
+                    Just rt -> myDebugLog ("],\n\"" ++ colorize "chill blue" "found cached result"++"\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
+                        ++ show_dd settings c (getNode c rt) ++ "\\n\"}},") (old_c, (getNode old_c rt))
+                    Nothing ->
+                        myDebugLog ("],\n\"result\": \"\\n" ++ colorize "green" "  =>   " ++ show_dd settings c r ++ " " ++ col Vivid Blue (show_id' r)
+                        ++ "\\n\"}},") (c{bin_dc_stack=dcs}, r)
+                Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
+        else (c{bin_dc_stack=dcs}, r)
+    | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a ++ "\n b_id: " ++ show (getDd old_c b_id) ++ " \n b: " ++ show b )
+
+debug_manipulation_inf :: (BiOpContext, Node) -> String -> String -> BiOpContext -> Node -> Node -> (BiOpContext, Node)
+debug_manipulation_inf result_pair f_key f_name old_c@BCxt{bin_cache = nc, bin_dc_stack=dcs} a@(a_id, a_d) b@(b_id, b_d)
+    | getDd old_c a_id == a_d && getDd old_c b_id == b_d = if not $ save_logs settings then
+    let
+    leaf_msg = colorize "orange" (">> " ++ f_name ++ " (INF): ") ++
+                    "\n  ->   " ++ show_dd settings old_c a ++
+                    "\n  ->   " ++ show_dd settings old_c b ++ "\n"
+    (c,r) = if debug_on settings && debug_open settings && check_skip_display a_id b_id
+            then if debug_dc_stack settings
+                then myTrace (leaf_msg ++ display_func_stack old_c) result_pair
+                else myTrace leaf_msg result_pair
+            else result_pair
+    in
+    if debug_on settings && debug_close settings && check_skip_display a_id b_id
+        then if a_id `elem` [l_1, l_0] || b_id `elem` [l_1, l_0]
+            then if not $ display_leaf_cases settings
+                then (c{bin_dc_stack=dcs}, r)
+                else myTrace (colorize "green" (f_name ++ " (INF): ") ++
+                    "\n  " ++ show_dd settings c a ++
+                    " : " ++ show_dd settings c b ++
+                    " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+                    "\n") (c, r)
+            else
+            myTrace (
+            case Map.lookup f_key nc of
+                Just nc' -> case HashMapStrict.lookup (a_id, b_id, dcs) nc' of
+                    Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
+                        ++ colorize "green" (f_name ++ " (INF): ") ++
+                        (if not $ debug_shorten_close settings then
+                            "\n  ->   " ++ show_dd settings c a ++
+                            "\n  ->   " ++ show_dd settings c b
+                        else "") ++
+                        "\n  =>   " ++ show_dd settings c r ++
+                        "\n"
+                    Nothing ->
+                        colorize "green" (f_name ++ " (INF): ") ++
+                        (if not $ debug_shorten_close settings then
+                            "\n  ->   " ++ show_dd settings c a ++
+                            "\n  ->   " ++ show_dd settings c b
+                        else "") ++
+                        "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+                        "\n"
+                Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
+            ) (c{bin_dc_stack=dcs}, r)
+        else (c{bin_dc_stack=dcs}, r)
+    else
+    let
+    start_msg = ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c a) ++
+                ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c b ++ "\\n")
+    (c,r) = if check_skip_display a_id b_id
+            then myDebugLog "\"inner\":[" result_pair
+            else result_pair
+    in
+    if check_skip_display a_id b_id
+        then myDebugLog ("{\"" ++ colorize "green" f_name ++" (INF)\": {" ++ "\"func_stack before\": [\"" ++ show_dc_stack_str old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
             case Map.lookup f_key nc of
                 Just nc' -> case HashMapStrict.lookup (a_id, b_id, dcs) nc' of
                     Just rt -> myDebugLog ("],\n\"" ++ colorize "chill blue" "found cached result"++"\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
