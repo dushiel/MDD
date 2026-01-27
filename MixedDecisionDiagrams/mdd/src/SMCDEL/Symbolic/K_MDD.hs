@@ -44,7 +44,25 @@ cpDomain = [(2, Dc1)]
 agentDomain :: [(Int, InfL)]
 agentDomain = [(3, Dc1)]
 
+agentPos :: Int -> Position
+agentPos i = toOrdinal (intToPrp agentDomain i)
 
+agentVar :: Int -> MDD
+agentVar i = var' (Ll agentDomain i)
+
+joinRelations :: [(Agent, Int, RelMDD)] -> (M.Map Agent Int, RelMDD)
+joinRelations rels =
+  let
+    agentMap = M.fromList (map (\(agent, i, _) -> (agent, i)) rels)
+
+    -- Combine relations: (AgentVar_i -> R_i)
+    combine (agent, i, rel) =
+        let aVar = agentVar i
+            r = untag rel
+        in aVar .->. r
+
+    combinedRel = conSet (map combine rels)
+  in (agentMap, Tagged combinedRel)
 
 -- =============================================================================
 -- * Phase 1: Relational Infrastructure
@@ -107,7 +125,7 @@ uncpMdd vocab tagged_node =
 -- Removed explicit Context field. It is now implicit in MDD and RelMDD.
 data BelStruct = BlS [Prp]              -- vocabulary
                      MDD                -- state law (on standard vars)
-                     (M.Map Agent RelMDD) -- observation laws
+                     (M.Map Agent Int, RelMDD) -- observation laws
                      deriving (Show)
 
 type BelScene = (BelStruct, KnState)
@@ -117,7 +135,7 @@ instance HasVocab BelStruct where
   vocabOf (BlS voc _ _) = voc
 
 instance HasAgents BelStruct where
-  agentsOf (BlS _ _ obdds) = M.keys obdds
+  agentsOf (BlS _ _ (obdds, _)) = M.keys obdds
 
 instance Pointed BelStruct KnState
 instance Pointed BelStruct Node
@@ -130,11 +148,11 @@ data Transformer = Trf
   [Prp]                 -- addprops (new event variables)
   Form                  -- event law (precondition on new vars + interaction)
   (M.Map Prp Form)      -- changelaw (assignments: p := psi)
-  (M.Map Agent RelMDD)  -- eventObs (observations of the event)
+  (M.Map Agent Int, RelMDD)  -- eventObs (observations of the event)
   deriving (Show)
 
 instance HasAgents Transformer where
-  agentsOf (Trf _ _ _ obdds) = M.keys obdds
+  agentsOf (Trf _ _ _ (obdds, _)) = M.keys obdds
 
 -- An Event is a Transformer plus a Formula describing which event(s) actually happened.
 type Event = (Transformer, Form)
@@ -165,7 +183,7 @@ mddOf bls (Equi f g)    = mddOf bls f .<->. mddOf bls g
 mddOf bls (Forall ps f) = forallSet (map toOrdinal ps) (mddOf bls f)
 mddOf bls (Exists ps f) = existSet (map toOrdinal ps) (mddOf bls f)
 
-mddOf bls@(BlS allprops lawmdd obdds) (K i form) =
+mddOf bls@(BlS allprops lawmdd (ags, obdds)) (K i form) =
   let
     print_debug = False
     debugTrace msg val = if print_debug then trace msg val else val
@@ -178,7 +196,7 @@ mddOf bls@(BlS allprops lawmdd obdds) (K i form) =
     form_cp = untag $ cpMdd allprops form_node
 
     -- 3. Get Relation
-    omega_i = untag $ obdds ! i
+    omega_i = restrict (agentPos (ags ! i)) True (untag obdds)
 
     -- 5. Implication Chain: Law(t) -> (Rel(s,t) -> Phi(t))
     imp_res = law_cp .->. (omega_i .->. form_cp)
@@ -218,12 +236,12 @@ mddOf bls (Kw i form) =
       k_neg_form = mddOf bls (K i (Neg form))
   in k_form .+. k_neg_form
 
-mddOf bls@(BlS voc lawmdd obdds) (Ck ags form) =
+mddOf bls@(BlS voc lawmdd (ags, obdds)) (Ck target_ags form) =
   let
     initial_guess = top
     ps_target = map toOrdinal (cp voc)
 
-    agent_rels = map (\agent -> untag $ obdds ! agent) ags
+    agent_rels = map (\agent -> restrict (agentPos (ags ! agent)) True (untag obdds)) target_ags
     rels_disj = disSet agent_rels -- Union of relations
 
     lambda z =
@@ -309,7 +327,7 @@ evalViaMdd (bls@(BlS _ lawmdd _), s) f =
     let (nl, node) = unMDD s
         traceMsg = "\n \n   evaluating state s : " ++ show_dd settings nl node ++ "\n   on formula : " ++ show f
     in
-    (let
+    trace traceMsg (let
         f_node = mddOf bls f
         check_node = s .->. f_node
     in
@@ -344,14 +362,14 @@ getLevelL :: Prp -> LevelL
 getLevelL (P l) = l
 
 instance Update BelScene Event where
-  unsafeUpdate (bls@(BlS props lawmdd obs), s) (trf, eventFacts) =
+  unsafeUpdate (bls@(BlS props lawmdd (blsAgs, blsObs)), s) (trf, eventFacts) =
       let
           print_debug = False
           -- Helper function for conditional tracing
           debugTrace msg val = if print_debug then trace msg val else val
 
           -- 1. Extract Transformer components (addprops are in eventFactsDomain (0,1), distinct from state vars (0,0))
-          (Trf addprops addlaw changelaw eventObs) = trf
+          (Trf addprops addlaw changelaw (trfAgs, trfObs)) = trf
 
           -- 2. Handle Assignments (Copying Logic)
           -- Identify which propositions are changing
@@ -382,7 +400,7 @@ instance Update BelScene Event where
           -- (b) Event Law: mddOf the addlaw
           -- Note: mddOf requires a BelStruct. We construct a temporary one
           -- containing all necessary vars to parse the formula.
-          tempBls = BlS (props ++ addprops ++ copyChangeProps) top M.empty
+          tempBls = BlS (props ++ addprops ++ copyChangeProps) top (M.empty, Tagged top)
           law_event = mddOf tempBls addlaw
 
           -- (c) Assignment Laws: p <-> psi(p_copy)
@@ -435,29 +453,29 @@ instance Update BelScene Event where
           copyRelCP = map (\(p,q) -> (toOrdinal (cpP p), toOrdinal (cpP q))) copyRel
           fullCopyRelOrd = copyRelMV ++ copyRelCP
 
-          newOfor i rel_tagged =
+          updateRel agent =
               let
-                  -- Old relation shifted to copies
-                  old = untag rel_tagged
-                  relOldShifted = relabelWith fullCopyRelOrd old
+                  i = blsAgs ! agent
+                  -- Old relation shifted
+                  oldRel = restrict (agentPos i) True (untag blsObs)
+                  relOldShifted = relabelWith fullCopyRelOrd oldRel
 
-                  -- Event relation (addprops are in eventFactsDomain (0,1), distinct from state vars (0,0))
-                  relEvent_tagged = M.findWithDefault (Tagged top) i eventObs
-                  ev = untag relEvent_tagged
-              in
-                  Tagged (relOldShifted .*. ev)
+                  -- Event relation: both use same indices now (provided by caller)
+                  evRel = restrict (agentPos i) True (untag trfObs)
 
-          newObs' = M.mapWithKey newOfor obs
+                  newRel = relOldShifted .*. evRel
+
+                  aVar = agentVar i
+              in aVar .->. newRel
+
+          newRelMDD = conSet (map updateRel (M.keys blsAgs))
           newObs = debugTrace ("\n=== STEP 4: Construct New Relations ===" ++
                      "\nCopy relabeling MV: " ++ show copyRelMV ++
                      "\nCopy relabeling CP: " ++ show copyRelCP ++
                      "\nFull copy relabeling: " ++ show fullCopyRelOrd ++
-                     "\nNew observations:\n" ++
-                     intercalate "\n" (map (\(agent, rel_tagged) ->
-                       "  Agent " ++ show agent ++ ": " ++
-                       (show_mdd $ untag rel_tagged))
-                       (M.toList newObs')) ++ "\n")
-                     newObs'
+                     "\nNew observations (combined): " ++
+                       (show_mdd newRelMDD))
+                     (blsAgs, Tagged newRelMDD)
 
           -- 5. Construct New State
           -- s is the old state (MDD).
@@ -509,7 +527,7 @@ instance Update BelScene Event where
 
 -- Simple announce wrapper
 announce :: BelStruct -> [Agent] -> Form -> BelStruct
-announce bls@(BlS props lawmdd obdds) ags psi =
+announce bls@(BlS props lawmdd (ags, obdds)) target_ags psi =
   let
     domain = case props of
                 (P (Ll d _):_) -> d
@@ -525,12 +543,15 @@ announce bls@(BlS props lawmdd obdds) ags psi =
     mv_k = var' (getLevelL $ mvP p_k)
     cp_k = var' (getLevelL $ cpP p_k)
 
-    newOfor i rel_tagged =
-        let rel = untag rel_tagged
-        in if i `elem` ags
-           then Tagged (rel .*. (mv_k .<->. cp_k))
-           else Tagged (rel .*. ((-.) cp_k))
+    updateRel i =
+        let
+            oldRel = restrict (agentPos (ags ! i)) True (untag obdds)
+            newRel = if i `elem` target_ags
+                     then oldRel .*. (mv_k .<->. cp_k)
+                     else oldRel .*. ((-.) cp_k)
+            aVar = agentVar (ags ! i)
+        in aVar .->. newRel
 
-    newobdds = M.mapWithKey newOfor obdds
+    newRelMdd = conSet (map updateRel (M.keys ags))
 
-  in BlS newprops newlaw newobdds
+  in BlS newprops newlaw (ags, Tagged newRelMdd)
