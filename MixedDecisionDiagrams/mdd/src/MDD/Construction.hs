@@ -42,14 +42,14 @@ levelLtoPath (Ll [] int) = P'' [int]
 
 -- | Top-level function to create a Mixed Decision Diagram node from a LevelL
 makeNode :: NodeLookup -> LevelL -> MDD
-makeNode nl l = path nl (levelLtoPath l)
+makeNode nl l = path_ nl (levelLtoPath l)
 
 -- | Main path construction logic
-path__ :: Path -> MDD
-path__ p = MDD $ path' (-1) (init_lookup, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+path :: Path -> MDD
+path p = MDD $ path' (-1) (init_lookup, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
 
-path :: NodeLookup -> Path -> MDD
-path nl p = MDD $  path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+path_ :: NodeLookup -> Path -> MDD
+path_ nl p = MDD $  path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
 
 add_path :: MDD -> Path -> MDD
 add_path mdd p = let

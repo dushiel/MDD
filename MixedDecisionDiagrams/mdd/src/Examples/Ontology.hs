@@ -2,7 +2,7 @@
 {-# HLINT ignore "Use camelCase" #-}
 {-# LANGUAGE TupleSections #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
-module Examples.Example where
+module Examples.Ontology where
 
 import qualified Data.Map.Strict as Map
 import MDD.Extra.Interface

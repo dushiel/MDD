@@ -162,47 +162,37 @@ sallyReturns =
 -- * Execution
 -- =============================================================================
 
-runSallyAnne :: IO ()
-runSallyAnne = do
-    putStrLn "=== Sally-Anne MDD Simulation ==="
+runSallyAnne :: Bool -> IO ()
+runSallyAnne generateOutput = do
 
-    -- 0. Init
     let scene0 = sallyInit
     putStrLn "\n[0] Initial: Sally present, No marble."
-    -- printStatus "scene0" scene0
+    when generateOutput $ printStatus "scene0" scene0
 
-    -- 1. Sally puts marble
     let scene1 = unsafeUpdate scene0 sallyPutsMarble
     putStrLn "\n[1] Action: Sally puts marble in basket."
-    printStatus "scene1" scene1
+    when generateOutput $ printStatus "scene1" scene1
 
-    -- 2. Sally leaves
     let scene2 = unsafeUpdate scene1 sallyLeaves
     putStrLn "\n[2] Action: Sally leaves the room."
-    printStatus "scene2" scene2
+    when generateOutput $ printStatus "scene2" scene2
 
-    -- 3. Anne moves marble
     let scene3 = unsafeUpdate scene2 anneMovesMarble
     putStrLn "\n[3] Action: Anne moves marble to box (Sally doesn't see)."
-    printStatus "scene3" scene3
+    when generateOutput $ printStatus "scene3" scene3
 
-
-    -- 4. Sally returns
     let scene4 = unsafeUpdate scene3 sallyReturns
     putStrLn "\n[4] Action: Sally returns."
-    printStatus "scene4" scene4
+    when generateOutput $ printStatus "scene4" scene4
 
     putStrLn "\n--- Final Belief Check ---"
 
-    -- Does Anne know marble is NOT in basket? (True)
     let anneKnowsGone = evalViaMdd scene4 (K "Anne" (Neg (PrpF tt)))
     putStrLn $ "Does Anne know marble is gone? " ++ show anneKnowsGone ++ " (Expected: True)"
 
-    -- Does Sally know marble is NOT in basket? (False - she thinks it's there)
     let sallyKnowsGone = evalViaMdd scene4 (K "Sally" (Neg (PrpF tt)))
     putStrLn $ "Does Sally know marble is gone? " ++ show sallyKnowsGone ++ " (Expected: False)"
 
-    -- Does Sally believe marble IS in basket? (True)
     let sallyBelievesHere = evalViaMdd scene4 (K "Sally" (PrpF tt))
     putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere ++ " (Expected: True)"
 
@@ -229,10 +219,11 @@ printStatus folderName scn@(bls@(BlS _ law obs), actual) = do
     let t = evalViaMdd scn (PrpF tt)
     putStrLn $ "    Status: Sally Present=" ++ show p ++ ", Marble in Basket=" ++ show t
 
-    -- Create folder and generate images
+    -- Create output folder and scene folder, then generate images
     originalDir <- getCurrentDirectory
-    createDirectoryIfMissing True folderName
-    setCurrentDirectory folderName
+    createDirectoryIfMissing True "output"
+    createDirectoryIfMissing True ("output" </> folderName)
+    setCurrentDirectory ("output" </> folderName)
 
     -- Generate image for actual state
     (success1, msg1) <- generateGraphImageNamed actual "actual_state"
@@ -252,8 +243,6 @@ printStatus folderName scn@(bls@(BlS _ law obs), actual) = do
 
     (success3, msg3) <- generateGraphImageNamed (untag (snd obs)) "obs_law_total"
     when success3 $ putStrLn $ "    " ++ msg3
-
-    -- todo generate image for
 
     -- Restore original directory
     setCurrentDirectory originalDir

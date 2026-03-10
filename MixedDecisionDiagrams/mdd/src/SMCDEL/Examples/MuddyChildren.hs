@@ -11,7 +11,9 @@ import qualified SMCDEL.Symbolic.K_MDD as K
 import Data.Tagged (Tagged(..), untag)
 import MDD.Types hiding (Neg)
 import MDD.Extra.Interface
-import MDD.Extra.Draw (settings, show_dd, drawTree3, debug)
+-- import MDD.Extra.Draw (settings, show_dd, drawTree3, debug)
+
+-- * made with help of AI
 
 -- | The default domain index for variables in this puzzle.
 vocabAsPropsDomain :: [(Int, InfL)]
@@ -79,7 +81,7 @@ runMuddy n m = do
           loop (round + 1) nextScene
 
 -- =============================================================================
--- * Phase 3: K-Logic Implementation
+-- * K-Logic Implementation
 -- =============================================================================
 
 -- | Helper to create an explicit equivalence relation MDD for K-logic.
@@ -135,8 +137,8 @@ runMuddyK n m = do
   let afterFather@(K.BlS _ statelaw obs_laws, _) = unsafeUpdate startState (father n)
   putStrLn "Round 0: Father announces 'At least one child is muddy'."
 
-  putStrLn "State Law first one:"
-  drawTree3 statelaw
+  -- putStrLn "State Law first one:"
+  -- drawTree3 statelaw
 
 
   -- putStrLn "Observation Laws:"
@@ -144,7 +146,7 @@ runMuddyK n m = do
   --     putStrLn $ "Agent " ++ agent
   --     drawTree3 (untag rel)
   --   ) (M.toList obs_laws)
-  putStrLn "==================================="
+  -- putStrLn "==================================="
 
   -- 3. Loop
   loopK 1 afterFather
@@ -163,8 +165,8 @@ runMuddyK n m = do
                 putStrLn $ "Round " ++ show round ++ ": Nobody knows. Announcing 'Nobody knows'..."
                 let nextScene@(K.BlS _ law obs_laws, _) = unsafeUpdate currentScene (nobodyknows n)
 
-                putStrLn "State Law: ---------------- "
-                drawTree3 law
+                -- putStrLn "State Law: ---------------- "
+                -- drawTree3 law
 
                 -- putStrLn "Observation Laws:"
                 -- mapM_ (\(agent, rel) -> do

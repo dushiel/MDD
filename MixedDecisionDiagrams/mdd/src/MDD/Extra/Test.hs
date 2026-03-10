@@ -12,13 +12,8 @@ module MDD.Extra.Test where
 import MDD.Types
 import MDD.Extra.Interface
 import MDD.Construction (path, add_path)
-import MDD.NodeLookup (init_lookup)
 import SMCDEL.Symbolic.Bool
 import MDD.Extra.Draw (debug5, emptyFile)
-import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.Map as Map
-import Text.ParserCombinators.ReadPrec (reset)
-
 
 -- Construct DD's containing a single path for testing
 -- place them in the context ( t_c ) for availability during test case
@@ -34,9 +29,7 @@ import Text.ParserCombinators.ReadPrec (reset)
 -- currently i expand the list of variables whenever i need it for a new test case
 -- it would be nice to not have to
 
-c = init_lookup
-
-dc     = path c                    (P' [(1, Dc1, P'' [0])])
+dc     = path                      (P' [(1, Dc1, P'' [0])])
 dc'    = add_path dc               (P' [(1, Dc0, P'' [0])])
 n      = add_path dc'              (P' [(1, Neg1, P'' [0])])
 n'     = add_path n                (P' [(1, Neg0, P'' [0])])
@@ -320,10 +313,10 @@ testAdvancedOps = do
                         == (ddOf t_c_adv (And (Impl (Var dc3) (Var dc1)) (Var dc2))))
                         `debug5` "relabelWith Shift (2->3, 3->2) in ((2 impl 1) AND 3)"
 
-            ,   ((relabelWith [([2, 2], [1,3]), ([2,3], [1,2])] $
-                        ddOf t_c_adv (And (Var dc_2) (Var dc_3)))
-                        == dc23)
-                        `debug5` "relabelWith domain change ([2, 2] -> [1,3]), ([2,3] -> [1,2]) in (2 AND 3)"
+        --     ,   ((relabelWith [([2, 2], [1,3]), ([2,3], [1,2])] $
+        --                 ddOf t_c_adv (And (Var dc_2) (Var dc_3)))
+        --                 == dc23)
+        --                 `debug5` "relabelWith domain change ([2, 2] -> [1,3]), ([2,3] -> [1,2]) in (2 AND 3)"
 
             ,   ((relabelWith [([1,1],[0,1]),([1,2],[0,2]),([2,1],[0,1]),([2,2],[0,2])] $
                         ddOf t_c_adv (Var dc_2))

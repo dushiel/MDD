@@ -25,14 +25,13 @@ library
       MDD.Types
       MDD.NodeLookup
       MDD.Traversal.Context
-
       MDD.Traversal.Stack
       MDD.Traversal.Support
       MDD.Traversal.Unary
       MDD.Traversal.Binary
 
-      MDD.Extra.Static
       MDD.Construction
+      MDD.Extra.Static
       MDD.Extra.Draw
       MDD.Extra.Interface
 
@@ -40,25 +39,18 @@ library
       MDD.Extra.Test
       MDD.Extra.Dot
 
-      Examples.Example
-      -- DrawMDD
-      -- MDD
-      -- MDDi
-      -- SODDmanipulation
-      -- SupportMDD
-      -- DotDD
-      -- Example
-      -- TestMDD
+      Examples.Ontology
+
       SMCDEL.Internal.Help
       SMCDEL.Internal.TexDisplay
       SMCDEL.Internal.Language
-      -- Bool_MDD
+
       SMCDEL.Symbolic.S5_MDD
       SMCDEL.Symbolic.K_MDD
       SMCDEL.Examples.MuddyChildren
       SMCDEL.Examples.SallyAnne
   other-modules:
-  -- Correctly indented section
+
   hs-source-dirs:
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints

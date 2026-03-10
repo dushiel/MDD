@@ -28,7 +28,7 @@ bot = MDD (init_lookup, bot_n)
 unk = MDD (init_lookup, unk_n)
 
 var :: Path -> MDD
-var p = path init_lookup p
+var p = path p
 
 var' :: LevelL -> MDD
 var' l = makeNode init_lookup l

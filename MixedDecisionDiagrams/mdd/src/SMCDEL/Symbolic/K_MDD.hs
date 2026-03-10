@@ -327,7 +327,7 @@ validViaMdd bls@(BlS _ lawmdd _) f =
 evalViaMdd :: BelScene -> Form -> Bool
 evalViaMdd (bls@(BlS _ lawmdd _), s) f =
     let (nl, node) = unMDD s
-        traceMsg = "\n \n   evaluating state s : " ++ show_dd settings nl node ++ "\n   on formula : " ++ show f
+        traceMsg = "" -- "\n \n   evaluating state s : " ++ show_dd settings nl node ++ "\n   on formula : " ++ show f
     in
     trace traceMsg (let
         f_node = mddOf bls f
