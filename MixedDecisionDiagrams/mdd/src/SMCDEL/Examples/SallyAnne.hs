@@ -67,16 +67,21 @@ cpRelMdd f =
 -- * Initial State
 -- =============================================================================
 
+eventFactsDomain2 :: [(Int, InfL)]
+eventFactsDomain2 = [(0, Dc1), (0, Neg1)]
+
 sallyInit :: BelScene
 sallyInit = (BlS vocab law obs, actual)
   where
     vocab  = [pp, tt]
-    -- Law: It is publicly known that Sally is present (pp) and Marble NOT in basket (She hasn't put it in yet).
-    law    = boolMddOf (Conj [PrpF pp, Neg (PrpF tt)])
-    -- Agent indices: "Anne" -> 0, "Sally" -> 1
-    obs    = joinRelations [ ("Anne", 0, totalRelMdd), ("Sally", 1, totalRelMdd) ]
+    -- Law: It is publicly known that Sally is present (pp) and Marble NOT in basket (She hasn't put it in yet) and that no special events have taken place.
+    law    = boolMddOf (Conj [PrpF pp, Neg (PrpF tt)
+        , PrpF $ intToPrp eventFactsDomain2 0
+        ])
+    -- Agent indices: "Anne" -> 2, "Sally" -> 1
+    obs    = joinRelations [ ("Anne", 2, totalRelMdd), ("Sally", 1, totalRelMdd) ]
     -- Actual: pp, not tt (inferred in neg1, domain [0,0]), not any event (neg1 context in domain [0,1])
-    actual = var (P' [(0, Neg1, P' [(0, Neg1, P'' [1]), (1, Neg1, P'' [0])])])
+    actual = var (P' [(0, Neg1, P' [(1, Neg1, P'' [1]), (0, Neg1, P'' [0])])])
 
 -- =============================================================================
 -- * Actions
@@ -91,10 +96,10 @@ sallyPutsMarble =
                 [] -- No new event vars needed (public assignment)
                 Top -- Law
                 (fromList [(tt, Top)]) -- Assignment: tt becomes True
-                (joinRelations [("Anne", 0, totalRelMdd), ("Sally", 1, totalRelMdd)]) -- Everyone sees everything (Identity on event)
+                (joinRelations [("Anne", 2, totalRelMdd), ("Sally", 1, totalRelMdd)]) -- Everyone sees everything (Identity on event)
                 -- Note: totalRelMdd is just Top.
                 -- Since there are no addprops, relations over empty set are just Top.
-                -- Agent indices must match sallyInit: "Anne" -> 0, "Sally" -> 1
+                -- Agent indices must match sallyInit: "Anne" -> 2, "Sally" -> 1
     in (trf, Top)
 
 -- 2. Sally leaves
@@ -106,8 +111,8 @@ sallyLeaves =
                 []
                 Top
                 (fromList [(pp, Bot)]) -- Assignment: pp becomes False
-                (joinRelations [("Anne", 0, totalRelMdd), ("Sally", 1, totalRelMdd)])
-                -- Agent indices must match sallyInit: "Anne" -> 0, "Sally" -> 1
+                (joinRelations [("Anne", 2, totalRelMdd), ("Sally", 1, totalRelMdd)])
+                -- Agent indices must match sallyInit: "Anne" -> 2, "Sally" -> 1
     in (trf, Top)
 
 -- 3. Anne puts marble in box (Moves it)
@@ -130,10 +135,10 @@ anneMovesMarble =
                 Top  -- Law
                 (M.fromList [(tt, assignTT)])
                 (joinRelations [
-                    ("Anne", 0, allsameMdd [qq]), -- Anne distinguishes q (sees if it moved)
+                    ("Anne", 2, allsameMdd [qq]), -- Anne distinguishes q (sees if it moved)
                     ("Sally", 1, cpRelMdd (Neg (PrpF qq))) -- Sally only considers worlds where q is False (didn't move)
                 ])
-                -- Agent indices must match sallyInit: "Anne" -> 0, "Sally" -> 1
+                -- Agent indices must match sallyInit: "Anne" -> 2, "Sally" -> 1
 
         -- The actual event that happens is q (marble moved)
         facts = PrpF qq
@@ -148,8 +153,8 @@ sallyReturns =
                 []
                 Top
                 (fromList [(pp, Top)])
-                (joinRelations [("Anne", 0, totalRelMdd), ("Sally", 1, totalRelMdd)])
-                -- Agent indices must match sallyInit: "Anne" -> 0, "Sally" -> 1
+                (joinRelations [("Anne", 2, totalRelMdd), ("Sally", 1, totalRelMdd)])
+                -- Agent indices must match sallyInit: "Anne" -> 2, "Sally" -> 1
     in (trf, Top)
 
 
@@ -169,19 +174,19 @@ runSallyAnne = do
     -- 1. Sally puts marble
     let scene1 = unsafeUpdate scene0 sallyPutsMarble
     putStrLn "\n[1] Action: Sally puts marble in basket."
-    -- printStatus "scene1" scene1
+    printStatus "scene1" scene1
 
     -- 2. Sally leaves
     let scene2 = unsafeUpdate scene1 sallyLeaves
     putStrLn "\n[2] Action: Sally leaves the room."
-    -- printStatus "scene2" scene2
+    printStatus "scene2" scene2
 
     -- 3. Anne moves marble
     let scene3 = unsafeUpdate scene2 anneMovesMarble
     putStrLn "\n[3] Action: Anne moves marble to box (Sally doesn't see)."
     printStatus "scene3" scene3
 
-    -- error "stop"
+
     -- 4. Sally returns
     let scene4 = unsafeUpdate scene3 sallyReturns
     putStrLn "\n[4] Action: Sally returns."
@@ -244,6 +249,11 @@ printStatus folderName scn@(bls@(BlS _ law obs), actual) = do
         (success, msg) <- generateGraphImageNamed relMdd filename
         when success $ putStrLn $ "    " ++ msg
         ) (M.toList (fst obs))
+
+    (success3, msg3) <- generateGraphImageNamed (untag (snd obs)) "obs_law_total"
+    when success3 $ putStrLn $ "    " ++ msg3
+
+    -- todo generate image for
 
     -- Restore original directory
     setCurrentDirectory originalDir

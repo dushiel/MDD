@@ -31,8 +31,11 @@ import qualified Data.Set as Set
 import Data.Graph hiding (Node)
 import Data.Maybe
 
+
+-- Refactored with help of AI
+
 -- ==========================================================================================================
--- * Drawing Configuration
+-- * Debugging and Drawing Configuration
 -- ==========================================================================================================
 
 data Show_setting = ShowSetting {
@@ -59,9 +62,9 @@ settings :: Show_setting
 settings = ShowSetting {
                 color = True -- colorize
             ,   draw_tree = False
-            ,   display_node_id's = False -- show node_id's
+            ,   display_node_id's = False
             ,   display_context = False
-            ,   display_leaf_cases = False
+            ,   display_leaf_cases = True
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
@@ -72,16 +75,13 @@ settings = ShowSetting {
             ,   debug_close = True
             ,   debug_shorten_close = False
 
-            ,   debug_dc_stack = True
+            ,   debug_dc_stack = False
             ,   display_level = False
             ,   display_dcAs = True
             ,   display_dcBs = True
             ,   display_dcRs = True
 }
 
--- ==========================================================================================================
--- * ANSI Formatting Helpers
--- ==========================================================================================================
 
 col :: ColorIntensity -> Color -> String -> String
 col i c s = setSGRCode [SetColor Foreground i c] ++ s ++ setSGRCode [Reset]
@@ -214,9 +214,9 @@ show_context c = show (getLookup c)
 show_dd :: (HasNodeLookup c) => Show_setting -> c -> Node -> String
 show_dd s@ShowSetting{display_context=True} c d = show_context c ++ show_dd s{display_context=False} c d
 show_dd ShowSetting{draw_tree=True} _ _ = "Tree drawing requested but logic not linked here."
-show_dd s _ (_, Unknown)
-  | color s = "[" ++ colorize "purple" "." ++ "]"
-  | otherwise = "[.]"
+show_dd s _ (_, Unknown) = ""
+--   | color s = "[" ++ colorize "purple" "." ++ "]"
+--   | otherwise = "[.]"
 show_dd s _ (_, Leaf False)
   | color s = "[" ++ colorize "soft red" "0" ++ "]"
   | otherwise = "[0]"
@@ -391,8 +391,7 @@ check_skip_display_unary a_id =
     not (a_id == l_u) &&
     not (a_id `elem` [l_1, l_0] && not (display_leaf_cases settings))
 
--- | Debug wrapper for unary operations (similar to debug_manipulation for binary operations).
--- | Provides debugging output for restrict_node_set and other unary operations.
+
 debug_manipulation_unary :: (UnOpContext, Node) -> String -> String -> UnOpContext -> Node -> [Position] -> Bool -> (UnOpContext, Node)
 debug_manipulation_unary result_pair f_key f_name old_c@UCxt{un_cache = nc, un_dc_stack=dcs} a@(a_id, a_d) nas b_val
     | getDd old_c a_id == a_d = if not $ save_logs settings then

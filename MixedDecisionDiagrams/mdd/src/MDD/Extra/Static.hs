@@ -12,9 +12,8 @@ import qualified Data.Map as Map
 import Data.Hashable
 import GHC.Generics (Generic)
 
--- ==========================================================================================================
--- * Static Node Definitions
--- ==========================================================================================================
+
+-- | AI generated code
 
 -- | Static translation is provided for visualization.
 -- This assigns a fixed global order to all declared variables for consistent Graphviz rendering.
@@ -35,9 +34,6 @@ data TableEntryStatic = Entry' {
 
 type NodeStatic = (NodeId, DdStatic)
 
--- ==========================================================================================================
--- * Hashing and Manager for Static Nodes
--- ==========================================================================================================
 
 instance Hashable DdStatic where
   hash Unknown' = (0::Int)
@@ -77,17 +73,10 @@ match_alternative_static targetDD = Map.foldrWithKey' check Nothing
 insert_static :: StaticNodeLookup -> DdStatic -> (StaticNodeLookup, NodeStatic)
 insert_static nm d = let (new_id, rnm) = insert_id_static (hash d) d nm in (rnm, (new_id, d))
 
--- ==========================================================================================================
--- * Static Transformation Logic
--- ==========================================================================================================
-
 get_static_lv :: UnOpContext -> [Int]
 get_static_lv ctx = reverse (map fst (un_current_level ctx))
 
--- | Plan implementation: becomes Context -> Node -> (StaticNodeLookup, NodeStatic)
--- Using UnOpContext as the carrier for the current level and transient lookup.
--- While manipulation occurs with relative positions to allow for dynamic variable insertion,
--- a static translation is provided for visualization.
+
 to_static_form :: UnOpContext -> Node -> (StaticNodeLookup, NodeStatic)
 to_static_form ctx node = go defaultNodeMapStatic ctx node
   where

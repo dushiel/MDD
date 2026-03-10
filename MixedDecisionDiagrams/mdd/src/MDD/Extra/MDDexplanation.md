@@ -1,41 +1,103 @@
 Mixed Decision Diagrams (MDD) Project Documentation
 
-This document describes the design and implementation of a Mixed Decision Diagram (MDD) project. The core innovation of this project is the unification of continuous and discrete set modeling within a single, canonical graph structure.
+The project provide a MDD library, which is set up to represent logic statements and thereby be able to model all kinds of systems that can be described with at least first order logic.
+The core extensions of this project over a classic BDD library is:
+- functionality for modelling variable domains / classes has been added.
+- the mixing of elimination rules with paths representing areas in continuous domains (with DC inference) and discrete domains (with Pos or Neg inference) within a single, canonical graph structure.
+These features allows for modelling second-order-logic-like statements.
 
 
-1. Executive Summary & Theoretical Relation
+# Executive Summary & Theoretical Relation
 
-The MDD Concept
+## The MDD Concept
 
-A Mixed Decision Diagram (MDD) is an extension of traditional Binary Decision Diagrams (BDDs) designed to model complex domains where continuous regions and discrete exceptions coexist. Unlike standard BDDs that strictly branch on boolean variables, MDDs use a sophisticated hierarchy of Infnodes and Branch Types to represent different inference and elimination rules.
+A Mixed Decision Diagram (MDD) is an extension of traditional Binary Decision Diagrams (BDDs) designed to model complex domains where continuous regions and discrete exceptions coexist. Unlike standard BDDs that strictly branch on a finite number of boolean variables, MDDs uses Infnodes and EndInfnodes to represent the opening and closing of a class domain in the current path - and Branch Types to represent different inference and elimination rules.
 
-Inference & Elimination Rules
+## Hierarchical Variable Classes
 
-The MDD structure utilizes three primary types of branches, grouped by five  semantic roles:
+Variable classes in MDDs are managed through **Infnodes**, which create hierarchical domains that can be nested to arbitrary depth. Each Infnode acts as a prefix that establishes a class context, and variables within that context are scoped to that class. This hierarchical structure enables the representation of complex multi-layered variable dependencies where "normal" nodes (standard BDD-style branching nodes) reside within specific class-indexed environments.
+
+### Understanding the Hierarchy
+
+An **Infnode** is a special node type that opens a class domain.
+
+When you traverse through an Infnode, you enter a new class context. Variables encountered after entering this context belong to that class. If you encounter another Infnode while already in a class, you enter a nested sub-class, creating a hierarchy.
+
+### Path Representation
+
+The hierarchy is represented using the `Path` data structure during construction:
+
+```haskell
+data Path = P'' [Int]                    -- Terminal: variable positions
+          | P' [(Int, InfL, Path)]       -- Class prefix: (class_id, inference_type, nested_path)
+```
+
+- `P'' [Int]` represents a terminal path with variable positions
+- `P' [(Int, InfL, Path)]` represents a class prefix, where each element is `(class_id, inference_type, nested_path)`
+
+The nested `Path` inside `P'` allows for arbitrary nesting depth.
+
+### Class Prefixes and Variable Identity
+
+The key insight is that **the full path through the class hierarchy determines variable identity**. Two variables with the same local position but different class prefixes are completely different variables:
+
+- `[Infnode 1, Infnode 3, variable 5]` represents a different variable than
+- `[Infnode 2, Infnode 3, variable 5]`
+
+Even though both end with "variable 5" and both pass through "Infnode 3", the different outer class (1 vs 2) makes them distinct.
+
+### EndInfNode: Closing a Class
+
+When traversing through the hierarchy, an **EndInfNode** marks the end of the current class context and returns to the parent class. For example:
+
+- Current position: `[Dc 1, Neg 3, Neg 4]` (in class 1, sub-class 3, variable 4)
+- Encounter EndInfNode
+- New position: `[Dc 1, Neg 4]` (back in class 1, now at variable 4)
+
+This allows the MDD to efficiently represent cases where a sub-class is "closed" and we return to the parent class context.
+
+### Practical Benefits
+
+The hierarchical class system enables:
+
+1. **Namespace Separation**: Different semantic domains (words, shapes, feelings) can use the same local variable indices without conflict
+2. **Scalable Modeling**: New classes can be added without affecting existing variable indices
+3. **Efficient Representation**: Related variables can share class contexts, reducing redundancy
+4. **Complex Domain Modeling**: Supports second-order-logic-like statements where variables range over different domains
+
+### Construction Process
+
+When constructing an MDD from a `Path`, the `path'` function in `Construction.hs` recursively processes the hierarchy:
+
+1. For each `(class_id, inference_type, nested_path)` in `P'`:
+   - Create an `InfNodes` node with the appropriate inference type
+   - Recursively process the nested path to create the child structure
+   - The nested path may itself contain more `P'` structures, creating deeper nesting
+
+2. For terminal `P'' [Int]`:
+   - Create standard `Node` structures for each variable position
+   - These nodes are scoped to the current class context established by the Infnodes above them
+
+This recursive construction naturally builds the hierarchical structure, with each level of nesting corresponding to a deeper class level in the MDD graph.
+
+## Inference & Elimination Rules
+
+A Infnode has three types of outgoign edges, one branche for each inference / elimination rule that applies for traversal during that (sub)class:
 
 DC (Don't Care / Continuous): Used in a branch representing a continuous area. This serves as the "default"  evaluation for a specific variable class, as dont-care inference is usually assumed in logic (if there is no information about a varrible, its variable evaluation has no influence on any path evaluation in the diagram).
-
- (neg1, pos1): These branches represent a finite set of exceptions to an area that would otherwise evaluate to $0$ (False).
-
-(neg0, pos0): These branches represent a finite set of exceptions to an area that would otherwise evaluate to $1$ (True).
-
-neg1 and neg0 branches can represented in a single branch (type).
-pos1 and pos0 can represented in a single branch (type). 
-
 The dc stands for dont-care literal inference/elimination rule, which means that on that branch the nodes from which the positive evaluation and negative evaluation lead to the same child node / subgraph, are eliminated and inferred during traversal / interpretation.
+
+Dc inference is often used as default when taking variables to be acting as properties / atribute-labels (of a state or object). e.g. colors, is-it-raining, is-sally-present
+
 The pos stands for the positive literal inference/elimination rule, which means that on that branch the nodes which only have their positive evaluation as a valid path (i.e. their negative evaluation leads to Uknown) are eliminated and inferred during traversal / interpretation.
 The neg stands for the negative literal inference/elimination rule, which means that on that branch the nodes which only have their positive evaluation as a valid path (i.e. their positive evaluation leads to Uknown) are eliminated and inferred during traversal / interpretation.
 
-Hierarchical Variable Classes
-
-Variable classes are managed through Infnodes. Each Infnode acts as a prefix, allowing for complex combinations:
-
-An Infnode prefix of [Infnode 1, Infnode 3] followed by variable nodes represents a different class than [Infnode 2, Infnode 3].
-
-This structure enables the representation of multi-layered variable dependencies where "normal" nodes reside within specific class-indexed environments.
+Pos and Neg inference are usually the default when describing item sets / objects. The class variable then represents all posible items and the positive evaluations are the items that are present. e.g. from all agents, take Alice and Bob (Neg inference for all other agents). Or take all agents except for Carrol (Pos inference for all agents except Carrol).
 
 
-2. Architectural Design
+
+
+# Architectural Design
 
 The Context Manager
 
@@ -64,7 +126,7 @@ InfNodes Int NodeId NodeId NodeId: A class-defining node containing branches for
 EndInfNode NodeId: A marker that signals the end of the current class context and moves the path resolution one layer up the hierarchy.
 
 
-3. Core Algorithms
+# Core Algorithms
 
 The dc_stack and Unknown Resolution
 
@@ -85,16 +147,16 @@ To maintain a canonical and minimal graph, the absorb function checks, given a n
 
 Pathing and Static Translation
 
-- Parsing: During parsing a variable is identified by its 5 semantic roles, thus the input to a construct a node is a path like [1 Neg1, 2 Pos0, 5], this indicates whether the “background” dc (the continuous area in which the path represents an exception) at that level should be True/1 (for neg0, pos0) or False/0 (for neg1, pos1). 
+- Construction: In a logic statement (Form) a variable is identified by its 5 semantic roles. Here it is 5 roles as Pos and Neg are separated in Pos0, Pos1, Neg0 and Neg1. Thus the input to a construct a node is a path like [2 Neg1, 5 Pos0, Dc1 1, 2]. The nodes are eliminated when a specific edge leads to Unknown. The 1 or 0 postfix indicates whether the Unknown would resolve to True/1 (for neg0, pos0) or False/0 (for neg1, pos1). This is represented in the MDD by setting the “background” dc (the continuous area in which the path represents an exception) for that (sub)domain to the corresponding 1 or 0 evaluation.
 
-- Paths: Node addresses/ids are relative to the path taken from the root node through the class/infnodes (and which branch types were taken), e.g., [Dc 1, Neg 2, Pos 5]. The top level of a valid MDD is always in Dc context, thus currently the paths are represented in the style of[1 Neg, 2 Pos, 5].
+- Paths: Node addresses/ids are relative to the path taken from the root node through the class/infnodes (and which branch types were taken), e.g., [Dc 1, Neg 2, Pos 5]. The top level of a valid MDD is always in Dc context, thus currently the paths are represented in the style of [1 Neg, 2 Pos] 5 .
 
-- Levels: The (vertical) level is derived by stripping the class information: [1, 2, 1, 5].
+- current level: The (vertical) level is derived by stripping the class information: [2, 5, 1, 2].
 
 - Static Mapping: While manipulation occurs with relative positions to allow for dynamic variable insertion, a static translation is provided for visualization. This assigns a fixed global order to all declared variables for consistent Graphviz rendering.
 
 
-4. Codebase Mapping (After Refactor)
+1. Codebase Mapping (After Refactor)
 
 The refactored codebase is organized into focused modules with clear responsibilities:
 
@@ -162,7 +224,7 @@ The refactored codebase is organized into focused modules with clear responsibil
 
 
 
-1. Questions and answers:
+# Questions and answers:
 
 
 1. The dc_stack structure: In MDD.hs, dc_stack is defined as ([Node], [Node], [Node]). Is it used to track the hierarchy of Infnodes as you descend into sub-classes?
@@ -185,18 +247,12 @@ An example will make this clearer:
 current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next node is a 5 then the next position would be [dc 1, neg 3, neg 5]. If first a endinfnode is encountered and then a node with position 5 then the position would be [dc 1, neg 5].
 
 
-2. parsing paths to nodes in MDD.hs use weird int comparison tricks?
+1. how does parsing paths to nodes in MDD.hs use ints to determine what kind of literal / evaluation the node represents?
 2. 0 in parsing paths for node initialization is taken as trick to represent Top (in Dc1) or Bot (in Dc0). a negative number in parsing paths for node initialization is taken to be a negative evaluation of the variable (should the pos / neg not already be able to indicate this? maybe we can fix this later).
 
 
 
-
-
-to build the project use "cabal build" in the project home folder.
-
-
-
-future addons:
+# future addons:
 
 - add colorized drawtree setting
 - add better equality check for eq instance of MDD
@@ -209,6 +265,7 @@ future addons:
 - dc catchup?
 - tests for returning to ZDD inference, catchup in
 - more efficient pop stack
+- naive relabel (just change the numbers, do have to reindex in hashmap after traversal)
 
 - more complete test suit
 - fuller example

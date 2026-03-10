@@ -9,15 +9,11 @@ import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 
--- ==========================================================================================================
--- * Core MDD Types
--- ==========================================================================================================
 
 -- | MDDs are represented by (NodeLookup, Node) as a self-contained unit.
--- The Eq instance compares the NodeId of the root node, assuming a canonical representation
--- within the manager context.
+-- The Eq instance compares the NodeId (hashcode + collision id) of the root node
+-- todo perform a proper merge of NodeLookups before Eq check
 newtype MDD = MDD { unMDD :: (NodeLookup, Node) }
-
 instance Eq MDD where
   (MDD (_, (id1, _))) == (MDD (_, (id2, _))) = id1 == id2
 
@@ -28,10 +24,9 @@ instance Show MDD where
 data Inf = Dc | Neg | Pos
     deriving (Eq, Show, Generic, Hashable)
 
--- | The core Decision Diagram data structure.
--- Node: standard BDD-style node with an index and two children (Positive, Negative).
--- InfNodes: MDD-style node with an index and three children (Continuous/Dc, Negative, Positive).
--- EndInfNode: A terminal marker for entering/exiting an infinity domain.
+-- Node: Node with a context dependent index and two children (Positive, Negative).
+-- InfNodes: Node with a context dependent index and three children (Continuous/Dc, Negative, Positive).
+-- EndInfNode: A terminal marker for entering/exiting a variable class / domain.
 data Dd =  Node Int NodeId NodeId               -- left = pos (solid line in graph), right = neg (dotted line in graph)
                 | InfNodes Int NodeId NodeId NodeId -- in order of types Dc, Neg, Pos
                 | EndInfNode NodeId
@@ -43,10 +38,8 @@ data Dd =  Node Int NodeId NodeId               -- left = pos (solid line in gra
 type NodeId = (HashedId, Int)
 type HashedId = Int
 
--- | Represents a full node (its ID and its data)
 type Node = (NodeId, Dd)
 
--- | node lookup table
 type NodeLookup = HashMap.HashMap HashedId LookupEntry
 type LookupEntry = Map.Map Int TableEntry
 
@@ -55,42 +48,26 @@ data TableEntry = Entry {
   reference_count :: Int
 } deriving (Show, Generic)
 
--- ==========================================================================================================
--- * Level and Position Types
--- ==========================================================================================================
 
--- | The level a given node resides on, tracking the path of inference types.
 type Level' = [(Int, Inf)]
 
--- | Structured level representation for hashing and ordering.
 data Level = L [(Int, Inf)] Int
     deriving (Eq, Show, Generic, Hashable)
 
--- | A position in the variable ordering.
 type Position = [Int]
 
--- ==========================================================================================================
--- * Construction Helper Types
--- ==========================================================================================================
 
--- | Specific inference types used during construction to specify terminal values.
 data InfL = Dc1 | Dc0 | Neg1 | Pos1 | Neg0 | Pos0
     deriving (Eq, Show, Ord, Generic, Hashable)
 
--- | A construction-time level used to define paths into the MDD.
 data LevelL = Ll [(Int, InfL)] Int
     deriving (Eq, Ord, Show, Generic, Hashable)
 
--- | Path representation for creating MDDs from high-level descriptions.
 data Path = P'' [Int]
           | P' [(Int, InfL, Path)]
     deriving (Show, Generic)
 
--- ==========================================================================================================
--- * Constants
--- ==========================================================================================================
-
--- Standard Node IDs for terminal leaves
+-- Standard Node IDs as shortcuts for terminal leaves
 l_1, l_0, l_u :: NodeId
 l_1 = (1, 0) -- Leaf True
 l_0 = (2, 0) -- Leaf False

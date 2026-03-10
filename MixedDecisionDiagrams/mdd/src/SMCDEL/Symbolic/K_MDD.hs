@@ -24,25 +24,27 @@ import MDD.Draw (settings, show_dd, show_node, show_mdd)
 
 -- | Standard domain (0, 0) for state law propositions
 standardDomain :: [(Int, InfL)]
-standardDomain = [(0, Dc1), (0, Dc1)]
+standardDomain = [(0, Dc1), (1, Dc1)]
 
 -- | Standard domain (0, 1) for event variables in transformers
 eventFactsDomain :: [(Int, InfL)]
-eventFactsDomain = [(0, Dc1), (1, Dc1)]
-
--- | Model/Source domain (1, .. ) for observables (mv relations)
--- (1, 0) for mv standard props, (1, 1) for mv eventfacts / variables
-mvDomain :: [(Int, InfL)]
-mvDomain = [(1, Dc1)]
-
--- | Copy/Target domain (2, .. ) for observables (cp relations)
--- (2, 0) for cp standard props, (2, 1) for cp eventfacts / variables
-cpDomain :: [(Int, InfL)]
-cpDomain = [(2, Dc1)]
+eventFactsDomain = [(0, Dc1), (0, Dc1)]
 
 -- | Index agent domain for observables
 agentDomain :: [(Int, InfL)]
-agentDomain = [(3, Dc1)]
+agentDomain = [(1, Dc1)]
+
+-- | Model/Source domain (2, .. ) for observables (mv relations)
+-- (2, 0) for mv standard props, (2, 1) for mv eventfacts / variables
+mvDomain :: [(Int, InfL)]
+mvDomain = [(2, Dc1)]
+
+-- | Copy/Target domain (3, .. ) for observables (cp relations)
+-- (3, 0) for cp standard props, (3, 1) for cp eventfacts / variables
+cpDomain :: [(Int, InfL)]
+cpDomain = [(3, Dc1)]
+
+
 
 agentPos :: Int -> Position
 agentPos i = toOrdinal (intToPrp agentDomain i)
@@ -368,7 +370,7 @@ instance Update BelScene Event where
           -- Helper function for conditional tracing
           debugTrace msg val = if print_debug then trace msg val else val
 
-          -- 1. Extract Transformer components (addprops are in eventFactsDomain (0,1), distinct from state vars (0,0))
+          -- 1. Extract Transformer components (addprops are in eventFactsDomain (0,0), distinct from state vars (0,1))
           (Trf addprops addlaw changelaw (trfAgs, trfObs)) = trf
 
           -- 2. Handle Assignments (Copying Logic)
@@ -380,13 +382,13 @@ instance Update BelScene Event where
             (P (Ll d _):_) -> d
             [] -> standardDomain
 
-          -- We need fresh props that are NOT in props AND NOT in addprops
+          -- We need fresh props that are NOT in props
           genCopies [] _ acc = acc
           genCopies (p:ps) used acc =
                let newP = freshp used domain
                in genCopies ps (newP:used) ((p,newP):acc)
 
-          copyRel = reverse $ genCopies changeprops (props ++ addprops) []
+          copyRel = reverse $ genCopies changeprops props []
           copyChangeProps = map snd copyRel
 
           -- Mapping for MDD Relabeling (p -> p_copy)
@@ -395,13 +397,15 @@ instance Update BelScene Event where
           -- 3. Construct New Law
           -- (a) Shift Old Law: Relabel occurrences of changeprops to their copies
           -- So law(p) becomes law(p_copy).
-          law_shifted = relabelWith copyRelOrd lawmdd
+          law_shifted =
+            existSet (map toOrdinal eventFactsProps)
+            (relabelWith copyRelOrd lawmdd)
 
           -- (b) Event Law: mddOf the addlaw
           -- Note: mddOf requires a BelStruct. We construct a temporary one
           -- containing all necessary vars to parse the formula.
           tempBls = BlS (props ++ addprops ++ copyChangeProps) top (M.empty, Tagged top)
-          law_event = mddOf tempBls addlaw
+          law_event = mddOf tempBls addlaw -- todo use boolmddof to avoid tempbls
 
           -- (c) Assignment Laws: p <-> psi(p_copy)
           -- For each p in changelaw, p takes the value of psi.
@@ -416,32 +420,33 @@ instance Update BelScene Event where
             ) (M.toList changelaw)
 
           newLawNode' = conSet (law_shifted : law_event : assign_laws)
-          newLawNode = debugTrace ("\n=== STEP 1: Prepare Transformer ===" ++
-                     "\nOriginal props: " ++ show props ++
-                     "\nAddprops: " ++ show addprops ++
-                     "\nAddlaw: " ++ show addlaw ++
-                     "\nChangelaw: " ++ show changelaw ++
-                     "\nEvent facts: " ++ show eventFacts ++
-                     "\n\n=== STEP 2: Handle Assignments ===" ++
-                     "\nChange props: " ++ show changeprops ++
-                     "\nCopy relation: " ++ show copyRel ++
-                     "\nCopy change props: " ++ show copyChangeProps ++
-                     "\nCopy relabeling (ordinals): " ++ show copyRelOrd ++
-                     "\n\n=== STEP 3a: Shift Old Law ===" ++
-                     "\nOriginal law: " ++ show_mdd  lawmdd ++
-                     "\nShifted law: " ++ show_mdd  law_shifted ++
-                     "\n\n=== STEP 3b: Event Law ===" ++
-                     "\nTemp vocabulary: " ++ show (props ++ addprops ++ copyChangeProps) ++
-                     "\nEvent law formula: " ++ show addlaw ++
-                     "\nEvent law MDD: " ++ show_mdd law_event ++
-                     "\n\n=== STEP 3c: Assignment Laws ===" ++
-                     "\nNumber of assignments: " ++ show (length assign_laws) ++
-                     "\nAssignment laws MDDs:\n" ++
-                     intercalate "\n" (map (\(i, al) -> "  Assignment " ++ show i ++ ": " ++
-                       (show_mdd al))
-                       (zip [1..] assign_laws)) ++
-                     "\n\n=== STEP 3: Final New Law ===" ++
-                     "\nNew law node: " ++ show_mdd newLawNode' ++ "\n")
+          newLawNode =
+              -- debugTrace ("\n=== STEP 1: Prepare Transformer ===" ++
+                    --  "\nOriginal props: " ++ show props ++
+                    --  "\nAddprops: " ++ show addprops ++
+                    --  "\nAddlaw: " ++ show addlaw ++
+                    --  "\nChangelaw: " ++ show changelaw ++
+                    --  "\nEvent facts: " ++ show eventFacts ++
+                    --  "\n\n=== STEP 2: Handle Assignments ===" ++
+                    --  "\nChange props: " ++ show changeprops ++
+                    --  "\nCopy relation: " ++ show copyRel ++
+                    --  "\nCopy change props: " ++ show copyChangeProps ++
+                    --  "\nCopy relabeling (ordinals): " ++ show copyRelOrd ++
+                    --  "\n\n=== STEP 3a: Shift Old Law ===" ++
+                    --  "\nOriginal law: " ++ show_mdd  lawmdd ++
+                    --  "\nShifted law: " ++ show_mdd  law_shifted ++
+                    --  "\n\n=== STEP 3b: Event Law ===" ++
+                    --  "\nTemp vocabulary: " ++ show (props ++ addprops ++ copyChangeProps) ++
+                    --  "\nEvent law formula: " ++ show addlaw ++
+                    --  "\nEvent law MDD: " ++ show_mdd law_event ++
+                    --  "\n\n=== STEP 3c: Assignment Laws ===" ++
+                    --  "\nNumber of assignments: " ++ show (length assign_laws) ++
+                    --  "\nAssignment laws MDDs:\n" ++
+                    --  intercalate "\n" (map (\(i, al) -> "  Assignment " ++ show i ++ ": " ++
+                    --    (show_mdd al))
+                    --    (zip [1..] assign_laws)) ++
+                    --  "\n\n=== STEP 3: Final New Law ===" ++
+                    --  "\nNew law node: " ++ show_mdd newLawNode' ++ "\n")
                      newLawNode'
 
           -- 4. Construct New Relations
@@ -456,25 +461,37 @@ instance Update BelScene Event where
           updateRel agent =
               let
                   i = blsAgs ! agent
+
                   -- Old relation shifted
                   oldRel = restrict (agentPos i) True (untag blsObs)
                   relOldShifted = relabelWith fullCopyRelOrd oldRel
-
-                  -- Event relation: both use same indices now (provided by caller)
                   evRel = restrict (agentPos i) True (untag trfObs)
 
                   newRel = relOldShifted .*. evRel
 
                   aVar = agentVar i
-              in aVar .->. newRel
+
+              in
+                -- debugTrace ("\n--- updateRel for Agent: " ++ show agent ++
+                --                  " (index: " ++ show i ++ ") ---" ++
+                --                  "\nAgent position: " ++ show (agentPos i) ++
+                --                  "\n\nOld relation (before shifting): " ++ show_mdd oldRel ++
+                --                  "\nFull copy relabeling: " ++ show fullCopyRelOrd ++
+                --                  "\nOld relation (after shifting): " ++ show_mdd relOldShifted ++
+                --                  "\n\nEvent relation: " ++ show_mdd evRel ++
+                --                  "\n\nCombined new relation (old .*. event): " ++ show_mdd newRel ++
+                --                  "\nAgent variable: " ++ show_mdd aVar ++
+                --                  "\nFinal result (aVar .->. newRel): " ++ show_mdd (aVar .->. newRel) ++ "\n")
+                                 aVar .->. newRel
 
           newRelMDD = conSet (map updateRel (M.keys blsAgs))
-          newObs = debugTrace ("\n=== STEP 4: Construct New Relations ===" ++
-                     "\nCopy relabeling MV: " ++ show copyRelMV ++
-                     "\nCopy relabeling CP: " ++ show copyRelCP ++
-                     "\nFull copy relabeling: " ++ show fullCopyRelOrd ++
-                     "\nNew observations (combined): " ++
-                       (show_mdd newRelMDD))
+          newObs =
+            -- debugTrace ("\n=== STEP 4: Construct New Relations ===" ++
+            --          "\nCopy relabeling MV: " ++ show copyRelMV ++
+            --          "\nCopy relabeling CP: " ++ show copyRelCP ++
+            --          "\nFull copy relabeling: " ++ show fullCopyRelOrd ++
+            --          "\nNew observations (combined): " ++
+            --            (show_mdd newRelMDD))
                      (blsAgs, Tagged newRelMDD)
 
           -- 5. Construct New State
@@ -486,7 +503,8 @@ instance Update BelScene Event where
           eventFactsProps = propsInForm eventFacts
           propsToQuantify = changeprops ++ eventFactsProps
           r' = existSet (map toOrdinal propsToQuantify) r
-          s_copy = debugTrace ("\n=== STEP 5: Construct New State ===" ++
+          s_copy =
+            debugTrace ("\n=== STEP 5: Construct New State ===" ++
             "\nOriginal state s: " ++ show_mdd s ++
             "\n\n=== STEP 5a: Relabel State to Copies ===" ++
             "\nRelabeling with: " ++ show copyRelOrd ++
@@ -502,24 +520,26 @@ instance Update BelScene Event where
 
           assign_laws_conj = conSet assign_laws
 
-          newStateNode = debugTrace ("\n=== STEP 5b: Event Facts Node ===" ++
-                     "\nEvent facts formula: " ++ show eventFacts ++
-                     "\nFacts node: " ++ show_mdd factsNode ++
-                     "\n\nAssignment laws conjunction: " ++
-                     show_mdd assign_laws_conj ++
-                     "\n\n=== STEP 5: Final New State ===" ++
-                     "\nComponents:\n  s_copy: " ++ show_mdd s_copy ++
-                     "\n  factsNode: " ++ show_mdd factsNode ++
-                     "\n  assign_laws_conj: " ++ show_mdd assign_laws_conj ++
-                     "\nFinal new state: " ++ show_mdd (conSet [s_copy, factsNode, assign_laws_conj]) ++ "\n")
+          newStateNode =
+            -- debugTrace ("\n=== STEP 5b: Event Facts Node ===" ++
+            --          "\nEvent facts formula: " ++ show eventFacts ++
+            --          "\nFacts node: " ++ show_mdd factsNode ++
+            --          "\n\nAssignment laws conjunction: " ++
+            --          show_mdd assign_laws_conj ++
+            --          "\n\n=== STEP 5: Final New State ===" ++
+            --          "\nComponents:\n  s_copy: " ++ show_mdd s_copy ++
+            --          "\n  factsNode: " ++ show_mdd factsNode ++
+            --          "\n  assign_laws_conj: " ++ show_mdd assign_laws_conj ++
+            --          "\nFinal new state: " ++ show_mdd (conSet [s_copy, factsNode, assign_laws_conj]) ++ "\n")
             (conSet [s_copy, factsNode, assign_laws_conj])
 
           -- 6. Final Vocabulary
-          newProps = debugTrace ("\n=== STEP 6: Final Vocabulary ===" ++
-                     "\nOriginal props: " ++ show props ++
-                     "\nAdded props: " ++ show addprops ++
-                     "\nCopy change props: " ++ show copyChangeProps ++
-                     "\nFinal new props: " ++ show (props ++ addprops ++ copyChangeProps) ++ "\n")
+          newProps =
+            -- debugTrace ("\n=== STEP 6: Final Vocabulary ===" ++
+            --          "\nOriginal props: " ++ show props ++
+            --          "\nAdded props: " ++ show addprops ++
+            --          "\nCopy change props: " ++ show copyChangeProps ++
+            --          "\nFinal new props: " ++ show (props ++ addprops ++ copyChangeProps) ++ "\n")
                      (props ++ addprops ++ copyChangeProps)
 
       in (BlS newProps newLawNode newObs, newStateNode)

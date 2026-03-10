@@ -3,9 +3,7 @@ module MDD.Stack where
 import MDD.Types
 import MDD.Context
 
--- ==========================================================================================================
--- * Stack Manipulation for BiOpContext
--- ==========================================================================================================
+-- *| Helper functions for managing the dc stack and tracking the hierachical (variable class related) position of the context of the traversal function
 
 pop_dcA' :: BiOpContext -> (BiOpContext, Node)
 pop_dcA' ctx@BCxt{bin_dc_stack = (dcA : fs, dcB, dcR), bin_current_level = ((i, _) : lvsA, lvB : lvsB)} =
@@ -47,9 +45,7 @@ pop_stack' ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs), bin_current_level = (lAs,
 reset_stack_bin :: BiOpContext -> BiOpContext -> BiOpContext
 reset_stack_bin new old = new { bin_dc_stack = bin_dc_stack old, bin_current_level = bin_current_level old }
 
--- ==========================================================================================================
--- * Stack Manipulation for UnOpContext
--- ==========================================================================================================
+
 
 add_to_stack_ :: (Int, Inf) -> (Node, Node) -> UnOpContext -> UnOpContext
 add_to_stack_ inf (dc, dcR) ctx@UCxt{un_dc_stack = dcRs} =

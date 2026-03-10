@@ -26,7 +26,7 @@ data Form
     | ImplR Form Form
     -- | F Form
 
--- | Updated ddOf to work with the new (NodeLookup, Node) structure
+-- | ddOf for (NodeLookup, Node) chaining
 ddOf :: NodeLookup -> Form -> MDD
 ddOf nl Top = MDD (nl, top_n)
 ddOf nl Bot = MDD (nl, bot_n)
@@ -39,7 +39,7 @@ ddOf nl (ImplR a b) = ddOf nl $ Or a (Negate b)
 ddOf nl (PrpF l) = makeNode nl l
 ddOf nl (Var (MDD (nl_v, d_v))) = MDD (unionNodeLookup nl nl_v, d_v)
 
--- | Updated ddOf' for self-contained form conversion
+-- | ddOf where a nodelookup still needs to be initialised
 ddOf' :: Form -> MDD
 ddOf' Top = top
 ddOf' Bot = bot

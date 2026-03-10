@@ -13,19 +13,20 @@ import Data.Hashable
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as Map
 
+-- | Refactored with help of AI
+
 -- ==========================================================================================================
 -- * Basic construction of nodes and paths
 -- ==========================================================================================================
 
--- | Helper to create a leaf node
+-- short helper functions:
+
 leaf :: Bool -> Node
 leaf b = ((hash $ Leaf b, 0), Leaf b)
 
--- | Helper to get the ID of a leaf
 leafid :: Bool -> NodeId
 leafid b = (hash $ Leaf b, 0)
 
--- | Internal helper to resolve terminal mapping during construction
 l0' :: Int -> NodeId
 l0' b | b == 0 = l_u
       | otherwise = l_0
@@ -90,7 +91,7 @@ path' b (c, n) (P' ((i, inf, pc) : pl))
 path' b (c, n) (P' []) = (c, n)
 
 
--- | Builds a localized path within a specific infinity domain
+-- | Builds a localized path within a specific variable class domain
 localpath' :: (NodeLookup, Node) -> InfL -> [Int] -> (NodeLookup, Node)
 localpath' (c, n) inf nodeList
     | inf == Dc1 = loopDc c True nodeList n

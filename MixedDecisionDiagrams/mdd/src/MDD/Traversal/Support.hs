@@ -22,6 +22,10 @@ import Data.Kind (Constraint)
 import Debug.Trace (trace)
 import qualified Data.HashMap.Strict as HashMap
 
+-- | Refactored with use of AI
+-- *| Shared code for traversal functions (from Unary and Binary).
+-- todo: refactor and organize further
+
 
 -- | Shared helper function to move down the tree based on semantic role.
 -- Used to step into sub-branches during recursive traversal.
@@ -61,7 +65,6 @@ move_dc c m node =
 -- |   - infer(Inf)NodeA/infer(Inf)NodeB: Create inferred nodes when one argument is missing a variable at the lowest position of the two
 -- |   - applyElimRule: Apply the elimination rule to remove redundant nodes
 -- |   - catchup: Synchronize dc_stack traversal when main traversal skips variables
--- |   - to_str: String representation for debugging
 class DdF3 (a :: Inf) where
     -- | Infers a node for Argument A when Argument B is at a lower position.
     inferNodeA :: (BiOpContext -> String -> Node -> Node -> (BiOpContext, Node))

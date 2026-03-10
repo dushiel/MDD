@@ -19,13 +19,9 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as Map
 import Text.ParserCombinators.ReadPrec (reset)
 
--- |======================================== Constructing base test DD's ==============================================
 
 -- Construct DD's containing a single path for testing
--- place them in the context ( t_c ) for availability during test cases
--- well-defined w.r.t. to logic statements
-
--- the reason why i do this here and not during the test cases is baisically as a refactor:
+-- place them in the context ( t_c ) for availability during test case
 -- the variables themselves are shorter than writing out the entire expression and thus are easier to read
 
 -- the numbers are for the node positions
@@ -135,10 +131,8 @@ p'p'12 = add_path pp'1             (P' [(1, Pos1, P' [(1, Pos0, P'' [-1, -2])])]
 ndc    = add_path p'p'12           (P' [(1, Neg1, P' [(1, Dc1, P'' [0])])])
 n'dc'  = add_path ndc              (P' [(1, Neg0, P' [(1, Dc0, P'' [0])])])
 
--- the actual test context, containing all the DD's of the above declarations
 (t_c, _) = unMDD n'dc'
 
--- |======================================== Actual test cases ==============================================
 
 
 test :: IO ()
@@ -297,9 +291,8 @@ test = do
             , ((ddOf t_c $ Or (And (Var dc2) (Var n'2)) (Var dc2)) == (ddOf t_c $ Var dc2))  `debug5` "######## test nr 18 nested"
             ]
 
--- |======================================== Advanced operations tests ==============================================
 
--- Compound MDDs for testing
+
 (t_c_adv, node_and_34) = let
     m1 = dc3
     m2 = add_path m1 (P' [(1, Dc1, P'' [4])])
@@ -348,7 +341,6 @@ testAdvancedOps = do
         then putStrLn "All advanced operations tests passed!"
         else putStrLn $ "Failures at indices: " ++ unwords failures
 
--- | Test forall and exists quantifiers
 testForallExists :: IO ()
 testForallExists = do
     putStrLn "Running Forall and Exists Tests..."
@@ -358,47 +350,28 @@ testForallExists = do
             -- restrict [1,3] False n2 == ddOf' $ Or (Var n23) (Var n2)
             -- restrict [1,2] False n3 == ddOf' $ Or (Var n23) (Var n3)
 
-            -- Level 1: Basic Identities & XOR
-            -- 1. Identity: Forall 1, (1 or 2) is true only if 2 is true.
             (forall [1, 1] (ddOf t_c $ Or (Var dc1) (Var dc2)) == (ddOf t_c $ Var dc2))
                 `debug5` "test_01: forall[1] ( 1 OR 2 ) == 2"
 
-            -- 2. Implication: Exists 1 such that (1 implies 2) is always true (since if 1 is false, it's true).
             , (exist [1, 1] (ddOf t_c $ Impl (Var dc1) (Var dc2)) == (ddOf t_c Top))
                 `debug5` "test_02: exists[1] ( 1 -> 2 ) == Top"
 
-            -- 3. XOR: Forall 1, (1 XOR 2) is never a tautology because it depends on 1's state.
             , (forall [1, 1] (xor (ddOf t_c $ Var dc1) (ddOf t_c $ Var dc2)) == (ddOf t_c Bot))
                 `debug5` "test_03: forall[1] ( 1 XOR 2 ) == Bot"
 
-            -- Level 2: Distribution and Case Logic
-            -- 4. Bi-conditional: There exists a value for 1 that matches 2.
             , (exist [1, 1] ((ddOf t_c $ Var dc1) .<->. (ddOf t_c $ Var dc2)) == (ddOf t_c Top))
                 `debug5` "test_04: exists[1] ( 1 <-> 2 ) == Top"
-
-            -- 5. Distribution: Forall 1, (1 AND 2) OR (1 AND 3) is always false (when 1 is false).
             , (forall [1, 1] (ddOf t_c $ Or (And (Var dc1) (Var dc2)) (And (Var dc1) (Var dc3))) == (ddOf t_c Bot))
                 `debug5` "test_05: forall[1] ( (1 AND 2) OR (1 AND 3) ) == Bot"
-
-            -- 6. If-Then-Else: The classic "selection" logic you started with.
             , (exist [1, 1] (ddOf t_c $ And (Impl (Var dc1) (Var dc2)) (Impl (Negate $ Var dc1) (Var dc3))) == (ddOf t_c $ Or (Var dc2) (Var dc3)))
                 `debug5` "test_06: exists[1] ( (1 -> 2) AND (neg 1 -> 3) ) == 2 OR 3"
 
-            -- Level 3: Nested Quantifiers (Variable Elimination)
-            -- 7. Universal Overlap: For (1 OR 2) to be true for all 1 and all 2, it is impossible.
             , (forallSet [[1, 1], [1, 2]] (ddOf t_c $ Or (Var dc1) (Var dc2)) == (ddOf t_c Bot))
                 `debug5` "test_07: forall[1] forall[2] ( 1 OR 2 ) == Bot"
-
-            -- 8. Existential Overlap: Can we find a 1 and 2 such that both are true? Yes.
             , (existSet [[1, 1], [1, 2]] (ddOf t_c $ And (Var dc1) (Var dc2)) == (ddOf t_c Top))
                 `debug5` "test_08: exists[1] exists[2] ( 1 AND 2 ) == Top"
-
-            -- 9. Alternating Quantifiers: For every 1, does there exist a 2 that makes them equal? Yes (2 = 1).
             , (forall [1, 1] (exist [1, 2] ((ddOf t_c $ Var dc1) .<->. (ddOf t_c $ Var dc2))) == (ddOf t_c Top))
                 `debug5` "test_09: forall[1] exists[2] ( 1 <-> 2 ) == Top"
-
-            -- Level 4: The Challenge (Consensus Theorem)
-            -- 10. Forall 1, the consensus of (1,2) and (neg 1, 3) is just (2 and 3).
             , (forall [1, 1] (ddOf t_c $ Or (Or (And (Var dc1) (Var dc2)) (And (Negate $ Var dc1) (Var dc3))) (And (Var dc2) (Var dc3))) == (ddOf t_c $ And (Var dc2) (Var dc3)))
                 `debug5` "test_10: forall[1] ( (1 AND 2) OR (neg 1 AND 3) OR (2 AND 3) ) == 2 AND 3"
             ]

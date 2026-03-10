@@ -10,11 +10,8 @@ import qualified Data.Map as Map
 import GHC.Generics (Generic)
 import Data.List (sortBy)
 
--- ==========================================================================================================
--- * definitions and hashmap methods for nodes
--- ==========================================================================================================
+-- | refactored with help of AI
 
--- | Standard hash implementation for Dd to ensure canonical representation
 instance Hashable Dd where
   hash Unknown = 0
   hash (Leaf b) = if b then 1 else 2
