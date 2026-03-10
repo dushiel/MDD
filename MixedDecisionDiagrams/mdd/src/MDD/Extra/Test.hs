@@ -7,14 +7,14 @@
 {-# HLINT ignore "Use camelCase" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
 {-# HLINT ignore "Eta reduce" #-}
-module MDD.Test where
+module MDD.Extra.Test where
 
 import MDD.Types
-import MDD.Interface
+import MDD.Extra.Interface
 import MDD.Construction (path, add_path)
-import MDD.Manager (init_lookup)
-import MDD.Bool
-import MDD.Draw (debug5, emptyFile)
+import MDD.NodeLookup (init_lookup)
+import SMCDEL.Symbolic.Bool
+import MDD.Extra.Draw (debug5, emptyFile)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as Map
 import Text.ParserCombinators.ReadPrec (reset)

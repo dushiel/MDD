@@ -2,13 +2,13 @@
 {-# HLINT ignore "Use camelCase" #-}
 {-# LANGUAGE TupleSections #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
-module MDD.Example where
+module Examples.Example where
 
 import qualified Data.Map.Strict as Map
-import MDD.Interface
+import MDD.Extra.Interface
 import MDD.Types
-import MDD.Bool
-import MDD.Draw (debug5)
+import SMCDEL.Symbolic.Bool
+import MDD.Extra.Draw (debug5)
 
 
 -- signature = map from strings to MDD Positions / ordinals indicating the variable class
@@ -21,6 +21,9 @@ import MDD.Draw (debug5)
 -- signature :: Map.Map Position String
 -- signature = Map.fromList assocs
 
+
+-- blob of experience
+--
 
 -- Implicit ordinals, responsibility of the use for correct formatting
 symbols :: Map.Map Char Int

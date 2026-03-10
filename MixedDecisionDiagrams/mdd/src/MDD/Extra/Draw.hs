@@ -2,11 +2,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 
-module MDD.Draw where
+module MDD.Extra.Draw where
 
 import MDD.Types
-import MDD.Context
-import MDD.Manager
+import MDD.Traversal.Context
+import MDD.NodeLookup
 import MDD.Construction
 import qualified Data.HashMap.Strict as HashMapStrict
 

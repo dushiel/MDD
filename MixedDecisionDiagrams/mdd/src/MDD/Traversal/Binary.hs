@@ -9,14 +9,14 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 
-module MDD.Ops.Binary where
+module MDD.Traversal.Binary where
 
 import MDD.Types
-import MDD.Context
-import MDD.Manager
-import MDD.Stack
-import MDD.Traversal
-import MDD.Draw (debug_manipulation, debug_manipulation_inf)
+import MDD.Traversal.Context
+import MDD.NodeLookup
+import MDD.Traversal.Stack
+import MDD.Traversal.Support
+import MDD.Extra.Draw (debug_manipulation, debug_manipulation_inf)
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Kind (Constraint)

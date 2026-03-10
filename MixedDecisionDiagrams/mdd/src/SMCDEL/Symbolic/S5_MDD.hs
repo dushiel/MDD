@@ -6,13 +6,12 @@ import Data.List ((\\), intercalate, nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+import SMCDEL.Internal.Language hiding (ite)
 import SMCDEL.Internal.Help (apply, powerset)
-import Internal.Language hiding (ite)
 import SMCDEL.Internal.TexDisplay
-
 import MDD.Types hiding (Neg)
-import MDD.Interface
-import MDD.Draw (settings, show_dd)
+import MDD.Extra.Interface
+import MDD.Extra.Draw (settings, show_dd)
 import Debug.Trace (trace, traceShow)
 
 -- | Knowledge structures using a Mixed Decision Diagram.

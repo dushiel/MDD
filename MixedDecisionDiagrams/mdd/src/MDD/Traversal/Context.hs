@@ -3,20 +3,19 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use camelCase" #-}
 
-module MDD.Context where
+module MDD.Traversal.Context where
 
 import MDD.Types
-import MDD.Manager
+import MDD.NodeLookup
 import Data.Hashable -- Added to bring the 'hash' function into scope
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 
 -- | The distinct types of Contexts for different operations.
--- The Context is the central state manager for all MDD operations.
+-- The Context is the central state manager for all MDD operations, usually existing only during a operator / traversal function call.
 -- It tracks the global NodeLookup (nodelookup), operation caches,
--- and the semantic stacks (dc_stack) needed to resolve continuous logic.
+-- and the class variable / background evaluation stacks (dc_stack) needed to resolve unknowns and absorb calls.
 
--- | Common interface for accessing and updating the NodeLookup within any Context.
 class HasNodeLookup a where
     getLookup :: a -> NodeLookup
     setLookup :: NodeLookup -> a -> a
@@ -27,6 +26,7 @@ instance HasNodeLookup NodeLookup where
 
 -- | Caching types for memoization of recursive results.
 -- For Binary operations, the cache key includes both NodeIds and the current dc_stack state.
+-- todo: should this also be the case for unary operations?
 type Cache = Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId)
 type SingleCache = HashMap.HashMap NodeId NodeId
 type ShowCache = HashMap.HashMap NodeId [String]
@@ -47,7 +47,7 @@ instance HasNodeLookup BiOpContext where
     getLookup = bin_nodelookup
     setLookup nl ctx = ctx { bin_nodelookup = nl }
 
--- | Context for Unary Operations (e.g., negation).
+-- | Context for Unary Operations (e.g., negation, draw, to_static).
 -- un_dc_stack tracks dcR (resulting continuous branches) for absorption/elimination checks.
 -- Unlike binary operations, unary operations don't need to track the original input's dc branches
 -- since Unknown resolution is not needed (Unknown is returned as-is in unary operations).
@@ -72,11 +72,9 @@ instance HasNodeLookup DrawOperatorContext where
     getLookup = draw_nodelookup
     setLookup nl ctx = ctx { draw_nodelookup = nl }
 
--- ==========================================================================================================
--- * Initialization helpers
--- ==========================================================================================================
 
--- | Initialize a fresh binary context with standard operations registered in the cache.
+-- *| Initialization helpers
+
 init_binary_context :: NodeLookup -> BiOpContext
 init_binary_context nl = BCxt {
     bin_nodelookup = nl,
@@ -86,7 +84,6 @@ init_binary_context nl = BCxt {
     bin_current_level = ([(0, Dc)], [(0, Dc)])
 }
 
--- | Initialize a fresh unary context.
 init_unary_context :: NodeLookup -> UnOpContext
 init_unary_context nl = UCxt {
     un_nodelookup = nl,
@@ -95,16 +92,15 @@ init_unary_context nl = UCxt {
     un_current_level = [(0, Dc)]
 }
 
--- | Initialize a context for visualization.
 init_draw_context :: NodeLookup -> DrawOperatorContext
 init_draw_context nl = DrawOperatorContext {
     draw_nodelookup = nl,
     draw_cache = HashMap.empty
 }
 
--- ==========================================================================================================
--- * Node Retrieval and Persistence
--- ==========================================================================================================
+
+-- *| Node Retrieval and Persistence
+
 
 -- | Basic node retrieval from context using the global lookup table.
 getDd :: (HasNodeLookup c) => c -> NodeId -> Dd

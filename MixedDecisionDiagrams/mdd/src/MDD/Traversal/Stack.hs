@@ -1,7 +1,7 @@
-module MDD.Stack where
+module MDD.Traversal.Stack where
 
 import MDD.Types
-import MDD.Context
+import MDD.Traversal.Context
 
 -- *| Helper functions for managing the dc stack and tracking the hierachical (variable class related) position of the context of the traversal function
 

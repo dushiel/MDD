@@ -5,13 +5,13 @@ import Data.Map.Strict (fromList)
 import qualified Data.Map.Strict as M
 
 import SMCDEL.Internal.Help (seteq)
-import Internal.Language
+import SMCDEL.Internal.Language
 import SMCDEL.Symbolic.S5_MDD
 import qualified SMCDEL.Symbolic.K_MDD as K
 import Data.Tagged (Tagged(..), untag)
 import MDD.Types hiding (Neg)
-import MDD.Interface
-import MDD.Draw (settings, show_dd, drawTree3, debug)
+import MDD.Extra.Interface
+import MDD.Extra.Draw (settings, show_dd, drawTree3, debug)
 
 -- | The default domain index for variables in this puzzle.
 vocabAsPropsDomain :: [(Int, InfL)]

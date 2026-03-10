@@ -1,12 +1,12 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TupleSections #-}
 
-module MDD.Static where
+module MDD.Extra.Static where
 
 import MDD.Types
-import MDD.Context
-import MDD.Manager
-import MDD.Stack
+import MDD.Traversal.Context
+import MDD.NodeLookup
+import MDD.Traversal.Stack
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Hashable

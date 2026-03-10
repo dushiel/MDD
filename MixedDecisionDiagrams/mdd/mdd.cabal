@@ -23,24 +23,24 @@ source-repository head
 library
   exposed-modules:
       MDD.Types
-      MDD.Manager
-      MDD.Context
+      MDD.NodeLookup
+      MDD.Traversal.Context
 
-      MDD.Stack
-      MDD.Traversal
-      MDD.Ops.Unary
-      MDD.Ops.Binary
+      MDD.Traversal.Stack
+      MDD.Traversal.Support
+      MDD.Traversal.Unary
+      MDD.Traversal.Binary
 
-      MDD.Static
+      MDD.Extra.Static
       MDD.Construction
-      MDD.Draw
-      MDD.Interface
+      MDD.Extra.Draw
+      MDD.Extra.Interface
 
-      MDD.Bool
-      MDD.Test
-      MDD.Dot
+      SMCDEL.Symbolic.Bool
+      MDD.Extra.Test
+      MDD.Extra.Dot
 
-      MDD.Example
+      Examples.Example
       -- DrawMDD
       -- MDD
       -- MDDi
@@ -49,9 +49,9 @@ library
       -- DotDD
       -- Example
       -- TestMDD
-      -- SMCDEL.Internal.Help
-      -- SMCDEL.Internal.TexDisplay
-      Internal.Language
+      SMCDEL.Internal.Help
+      SMCDEL.Internal.TexDisplay
+      SMCDEL.Internal.Language
       -- Bool_MDD
       SMCDEL.Symbolic.S5_MDD
       SMCDEL.Symbolic.K_MDD

@@ -13,19 +13,21 @@
 {-# HLINT ignore "Use second" #-}
 {-# HLINT ignore "Use camelCase" #-}
 
-module MDD.Ops.Unary where
+module MDD.Traversal.Unary where
 
 import MDD.Types
-import MDD.Context
-import MDD.Manager
-import MDD.Stack
-import MDD.Traversal
-import MDD.Draw (debug_manipulation_unary, show_node)
+import MDD.Traversal.Context
+import MDD.NodeLookup
+import MDD.Traversal.Stack
+import MDD.Traversal.Support
+import MDD.Extra.Draw (debug_manipulation_unary, show_node)
 
 import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
 import Data.Kind (Constraint)
 import Debug.Trace (trace)
+
+-- | refactored with use of AI
 
 -- ==========================================================================================================
 -- * Unary Caching Helper

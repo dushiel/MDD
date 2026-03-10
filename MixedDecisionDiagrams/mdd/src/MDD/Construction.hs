@@ -5,8 +5,8 @@
 module MDD.Construction where
 
 import MDD.Types
-import MDD.Manager
-import MDD.Context
+import MDD.NodeLookup
+import MDD.Traversal.Context
 import Data.List (sortBy)
 import Data.Ord (Down(..))
 import Data.Hashable

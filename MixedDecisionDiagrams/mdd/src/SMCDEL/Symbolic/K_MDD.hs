@@ -11,12 +11,12 @@ import Debug.Trace (trace)
 
 import SMCDEL.Internal.Help (apply, lfp, powerset)
 import SMCDEL.Internal.TexDisplay
-import Internal.Language hiding (ite)
+import SMCDEL.Internal.Language hiding (ite)
 import SMCDEL.Symbolic.S5_MDD (KnState, boolMddOf)
 
 import MDD.Types hiding (Neg)
-import MDD.Interface
-import MDD.Draw (settings, show_dd, show_node, show_mdd)
+import MDD.Extra.Interface
+import MDD.Extra.Draw (settings, show_dd, show_node, show_mdd)
 
 -- =============================================================================
 -- * Domain Definitions

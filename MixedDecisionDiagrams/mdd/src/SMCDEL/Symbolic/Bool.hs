@@ -7,11 +7,11 @@
 {-# HLINT ignore "Use camelCase" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
 {-# HLINT ignore "Eta reduce" #-}
-module MDD.Bool where
+module SMCDEL.Symbolic.Bool where
 
-import MDD.Interface ( top, bot, (-.), (.*.), (.+.), var, var', top_n, bot_n, unk_n )
+import MDD.Extra.Interface ( top, bot, (-.), (.*.), (.+.), var, var', top_n, bot_n, unk_n )
 import MDD.Types ( NodeLookup, LevelL, Node, MDD(..) )
-import MDD.Manager ( unionNodeLookup )
+import MDD.NodeLookup ( unionNodeLookup )
 import MDD.Construction ( makeNode )
 
 data Form

@@ -1,15 +1,15 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 
-module MDD.Interface where
+module MDD.Extra.Interface where
 
 import MDD.Types
-import MDD.Context
-import MDD.Manager
+import MDD.Traversal.Context
+import MDD.NodeLookup
 import MDD.Construction
-import MDD.Ops.Binary
-import MDD.Ops.Unary
-import MDD.Draw (settings, show_dd, debug)
+import MDD.Traversal.Binary
+import MDD.Traversal.Unary
+import MDD.Extra.Draw (settings, show_dd, debug)
 import Data.List
 import Data.Maybe (fromJust)
 import Data.List (foldl')

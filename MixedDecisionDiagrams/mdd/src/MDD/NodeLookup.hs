@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TupleSections #-}
 
-module MDD.Manager where
+module MDD.NodeLookup where
 
 import MDD.Types
 import Data.Hashable

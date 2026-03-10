@@ -4,13 +4,13 @@ import Data.Map.Strict (fromList)
 import qualified Data.Map.Strict as M
 import Data.Tagged (Tagged(..), untag)
 
-import Internal.Language
+import SMCDEL.Internal.Language
 import SMCDEL.Symbolic.K_MDD
 import SMCDEL.Symbolic.S5_MDD (boolMddOf)
 import MDD.Types (InfL(..), Path(..), MDD)
-import MDD.Interface
-import MDD.Draw (settings, show_dd)
-import MDD.Dot (generateGraphImage)
+import MDD.Extra.Interface
+import MDD.Extra.Draw (settings, show_dd)
+import MDD.Extra.Dot (generateGraphImage)
 import System.Directory (createDirectoryIfMissing, setCurrentDirectory, getCurrentDirectory, renameFile)
 import System.FilePath ((</>))
 import Control.Monad (when)

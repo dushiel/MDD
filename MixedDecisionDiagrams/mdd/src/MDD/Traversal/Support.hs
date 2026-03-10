@@ -12,12 +12,12 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use camelCase" #-}
 
-module MDD.Traversal where
+module MDD.Traversal.Support where
 
 import MDD.Types
-import MDD.Context
-import MDD.Stack
-import MDD.Draw (debug_dc_traverse, show_node, display_func_stack)
+import MDD.Traversal.Context
+import MDD.Traversal.Stack
+import MDD.Extra.Draw (debug_dc_traverse, show_node, display_func_stack)
 import Data.Kind (Constraint)
 import Debug.Trace (trace)
 import qualified Data.HashMap.Strict as HashMap

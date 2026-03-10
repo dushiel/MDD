@@ -6,6 +6,7 @@ The core extensions of this project over a classic BDD library is:
 - the mixing of elimination rules with paths representing areas in continuous domains (with DC inference) and discrete domains (with Pos or Neg inference) within a single, canonical graph structure.
 These features allows for modelling second-order-logic-like statements.
 
+This file is made with help of AI.
 
 # Executive Summary & Theoretical Relation
 
@@ -101,7 +102,7 @@ Pos and Neg inference are usually the default when describing item sets / object
 
 The Context Manager
 
-The Context (defined in MDD.hs) is the central state manager for all MDD operations. It contains:
+The Context (defined in `MDD.Traversal.Context`) is the central state manager for all MDD operations. It contains:
 
 NodeLookup: A HashMap (NodeId to entries) storing all unique nodes.
 
@@ -138,7 +139,7 @@ dcA & dcB: When an Unknown leaf is encountered during a binary operation, the al
 
 Traversal and "Catch-up"
 
-In SODDmanipulation.hs, the traverse_dc function synchronizes the traversal of the main MDD with the continuous branches in the dc_stack.
+In `MDD.Traversal.Support`, the `traverse_dc` function synchronizes the traversal of the main MDD with the continuous (background) branches in the dc_stack.
 If a branch in the main MDD skips a variable (due to an elimination rule), the catchup logic ensures the dc components do not "lag behind." It uses the specific inference rule of the current type (e.g., Dc, Pos, or Neg) to infer the missing nodes dynamically.
 
 Redundancy Elimination (absorb)
@@ -168,7 +169,7 @@ The refactored codebase is organized into focused modules with clear responsibil
 - `Level`, `Level'`, `Position`: Path and level representations
 - `Path`, `LevelL`, `InfL`: Construction-time path representations
 
-**Context Management** (`MDD.Context`)
+**Context Management** (`MDD.Traversal.Context`)
 - `BiOpContext`: Context for binary operations (union, intersection)
   - Contains: `bin_nodelookup`, `bin_cache`, `bin_dc_stack`, `bin_current_level`
 - `UnOpContext`: Context for unary operations (negation)
@@ -178,23 +179,25 @@ The refactored codebase is organized into focused modules with clear responsibil
 - `HasNodeLookup`: Typeclass for unified access to NodeLookup across context types
 - Initialization functions: `init_binary_context`, `init_unary_context`, `init_draw_context`
 
-**Node Management** (`MDD.Manager`)
+**Node Management** (`MDD.NodeLookup`)
 - `init_lookup`: Initial NodeLookup with standard leaf nodes
 - `insert_id`: Core insertion logic into NodeLookup
 - `unionNodeLookup`: Merges two NodeLookups, summing reference counts
 - `Hashable` instance for `Dd` for canonical representation
 
-**Operations** (`MDD.Ops.Binary`, `MDD.Ops.Unary`)
-- Binary operations: `apply` (union, intersection, etc.)
-- Unary operations: `negation`, `restrict_node_set`
-- Both modules use operation-specific contexts and caching
+**Traversal Operations** (`MDD.Traversal.Binary`, `MDD.Traversal.Unary`, `MDD.Traversal.Support`)
+- Binary operations: `apply` (union, intersection, etc.) in `MDD.Traversal.Binary`
+- Unary operations: `negation`, `restrict_node_set` in `MDD.Traversal.Unary`
+- Support functions: Inference rules, elimination rules, and traversal helpers in `MDD.Traversal.Support`
+- Stack management: `MDD.Traversal.Stack` provides dc_stack manipulation functions
+- Both operation modules use operation-specific contexts and caching
 
 **Construction** (`MDD.Construction`)
 - `path`: Creates MDD from Path description
 - `makeNode`: Creates MDD from LevelL
 - `add_path`: Adds a path to existing MDD
 
-**Public Interface** (`MDD.Interface`)
+**Public Interface** (`MDD.Extra.Interface`)
 - Constants: `top`, `bot`, `unk`
 - Operators: `(-.)`, `(.*.)`, `(.+.)`, `(.->.)`, `(.<->.)`
 - Helpers: `var`, `var'`, `ite`, `xor`, `restrict`
@@ -202,13 +205,14 @@ The refactored codebase is organized into focused modules with clear responsibil
 - Quantification: `forall`, `exist`, `forallSet`, `existSet`
 - Utilities: `relabelWith`, `substitSimul`
 
-**Visualization** (`MDD.Draw` , `MDD.Dot`)
+**Visualization** (`MDD.Extra.Draw`, `MDD.Extra.Dot`)
 - `settings`: Configuration for debugging display
-- `show_dd` , `show_node` , `show_mdd`: String representation of MDD nodes
-- `drawTree3` Graph generation and rendering utilities in terminal
-- .. dot functions here??
+- `show_dd`, `show_node`, `show_mdd`: String representation of MDD nodes
+- `drawTree3`: Graph generation and rendering utilities in terminal
+- `generateGraphImage`: Generate Graphviz dot and SVG files from MDD
+- `generateAndShow`, `generateAndShow_c`, `generateAndShow_h`, `generateAndShow_ch`, `generateAndShow_cn`: Convenience functions for visualization
 
-**Static Translation** (`MDD.Static`)
+**Static Translation** (`MDD.Extra.Static`)
 - `to_static_form`: Converts MDD to static form for visualization
 - `StaticNodeLookup`, `NodeStatic`: Static representation types
 
@@ -227,7 +231,7 @@ The refactored codebase is organized into focused modules with clear responsibil
 # Questions and answers:
 
 
-1. The dc_stack structure: In MDD.hs, dc_stack is defined as ([Node], [Node], [Node]). Is it used to track the hierarchy of Infnodes as you descend into sub-classes?
+1. The dc_stack structure: In `MDD.Traversal.Context`, dc_stack is defined as ([Node], [Node], [Node]). Is it used to track the hierarchy of Infnodes as you descend into sub-classes?
 1. the dc_stack structure is used to track the hierarchy of Infnodes as you descend into sub-classes. It represents dcA, dcB and dcR respectively. dcR is the resulting continuous dc branch of the current infnode context / subgraph. See in calculating the of the current InfNode, in applyinf, that first the dcR is calculated, then the neg and pos components.
 
 
