@@ -8,35 +8,20 @@ import MDD.Types
 import MDD.Traversal.Context
 import MDD.NodeLookup
 import MDD.Construction
-import qualified Data.HashMap.Strict as HashMapStrict
-
-import System.IO
-import System.Console.ANSI
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashMap.Strict as HashMapStrict
 import qualified Data.Map as Map
-import Data.List (intercalate, sortBy, groupBy, foldl')
-import Data.Function (on)
-import Data.Ord (comparing)
+import Data.List (intercalate)
+import System.Console.ANSI
 import Debug.Trace (trace)
 import GHC.IO (unsafePerformIO)
 import Control.DeepSeq (deepseq)
-import System.Process (readProcessWithExitCode)
-import System.Exit (ExitCode(..))
-import System.FilePath ((</>))
-import System.Directory (getCurrentDirectory)
-import Control.Monad (when)
-import Control.Monad.Cont (Cont)
-import qualified Data.Set as Set
-import Data.Graph hiding (Node)
-import Data.Maybe
 
 
--- Refactored with help of AI
+-- | Module for drawing and debugging Mixed Decision Diagrams (MDDs).
+-- Provides tree visualization, string representation, and debug output utilities.
 
--- ==========================================================================================================
 -- * Debugging and Drawing Configuration
--- ==========================================================================================================
 
 data Show_setting = ShowSetting {
   color :: Bool,
@@ -47,7 +32,6 @@ data Show_setting = ShowSetting {
   display_end_infs :: Bool,
   display_dc_traversal :: Bool,
   debug_on :: Bool,
-  save_logs :: Bool,
   debug_open :: Bool,
   debug_close :: Bool,
   debug_shorten_close :: Bool,
@@ -58,6 +42,8 @@ data Show_setting = ShowSetting {
   display_dcRs :: Bool
 }
 
+
+-- | Global settings for display and debugging behavior
 settings :: Show_setting
 settings = ShowSetting {
                 color = True -- colorize
@@ -69,7 +55,6 @@ settings = ShowSetting {
             ,   display_dc_traversal = False
 
             ,   debug_on = False
-            ,   save_logs = False
 
             ,   debug_open = True
             ,   debug_close = True
@@ -82,10 +67,13 @@ settings = ShowSetting {
             ,   display_dcRs = True
 }
 
+-- * Color Utilities
 
+-- | Apply ANSI color with specified intensity to a string
 col :: ColorIntensity -> Color -> String -> String
 col i c s = setSGRCode [SetColor Foreground i c] ++ s ++ setSGRCode [Reset]
 
+-- | Apply a named color to a string using 24-bit color codes
 colorize :: String -> String -> String
 colorize c s
     | c == "red" = setColor24bit 255 100 100  ++ s ++ resetColor
@@ -99,15 +87,15 @@ colorize c s
     | c == "dark" = setSGRCode [SetColor Foreground Dull White] ++ s ++ setSGRCode [Reset]
     | otherwise = setSGRCode [SetColor Foreground Vivid Blue] ++ s ++ setSGRCode [Reset]
 
+-- | Generate 24-bit ANSI color escape sequence
 setColor24bit :: Int -> Int -> Int -> String
 setColor24bit r g b = "\ESC[38;2;" ++ show r ++ ";" ++ show g ++ ";" ++ show b ++ "m"
 
+-- | ANSI reset color escape sequence
 resetColor :: String
 resetColor = "\ESC[0m"
 
--- ==========================================================================================================
--- * Tree Visualization Logic
--- ==========================================================================================================
+-- * Tree Visualization
 
 indentInit :: [String] -> [String]
 indentInit [] = []
@@ -132,9 +120,6 @@ indentChildren ns = map indentInit (init ns) ++ [indentLast (last ns)]
 indentInfChildren :: [[String]] -> [[String]]
 indentInfChildren [] = []
 indentInfChildren ns = map indentInfInit (init ns) ++ [indentInfLast (last ns)]
-
-appLast :: [String] -> String -> [String]
-appLast ss s = init ss ++ [last ss ++ s]
 
 -- | Internal helper to handle the draw cache during tree traversal
 withCache' :: DrawOperatorContext -> Node -> [String] -> (DrawOperatorContext, [String])
@@ -186,21 +171,11 @@ showTree' c f d@(nid, EndInfNode cons) =
 showTree :: MDD -> String
 showTree (MDD (nl, node)) = "\n" ++ unlines (showTree'' (init_draw_context nl) show node)
 
-showTree2 :: MDD -> String
-showTree2 (MDD (nl, node)) = unlines (showTree'' (init_draw_context nl) show node)
-
-showTree3 :: MDD -> String
-showTree3 (MDD (nl, node)) = unlines (showTree'' (init_draw_context nl) show node)
-
-drawTree2 :: MDD -> IO ()
-drawTree2 mdd = putStrLn (showTree2 mdd)
-
+-- | Print an MDD tree structure to stdout
 drawTree3 :: MDD -> IO ()
 drawTree3 mdd = putStrLn (showTree mdd)
 
--- ==========================================================================================================
 -- * String Representation
--- ==========================================================================================================
 
 show_id :: NodeId -> String
 show_id (k, alt) = "#" ++ show k ++ ":" ++ show alt
@@ -232,150 +207,130 @@ show_dd s c (d_id, d) = case d of
     show_i i clr = (if display_node_id's s then (if color s then colorize "blue" ("#" ++ show d_id) else ("#" ++ show d_id)) ++ " " else "")
       ++ (if color s then colorize clr (show i) else show i)
 
--- ==========================================================================================================
--- * Debugging Logic
--- ==========================================================================================================
+-- * Debugging
 
-check_length :: BiOpContext -> Bool
-check_length ctx@BCxt{bin_dc_stack=(dcAs, dcBs, _), bin_current_level=(lvAs, lvBs)}
-    | length dcAs > length lvAs = False
-    | length dcBs > length lvBs = False
-    | otherwise = True
+-- ** Debug Message Formatting Helpers
 
+-- | Helper to format opening debug message for binary operations
+format_debug_open_binary :: String -> String -> BiOpContext -> Node -> Node -> String
+format_debug_open_binary f_name suffix old_c a b =
+    colorize "orange" (">> " ++ f_name ++ suffix ++ " : ") ++
+    "\n  ->   " ++ show_dd settings old_c a ++
+    "\n  ->   " ++ show_dd settings old_c b ++ "\n"
+
+-- | Helper to format opening debug message for unary operations
+format_debug_open_unary :: String -> UnOpContext -> Node -> [Position] -> Bool -> String
+format_debug_open_unary f_name old_c a nas b_val =
+    colorize "orange" (">> " ++ f_name ++ " : ") ++
+    "\n  ->   " ++ show_dd settings old_c a ++
+    "\n  ->   restrict: " ++ show nas ++ " to " ++ show b_val ++ "\n"
+
+-- | Helper to format closing debug message for binary operations
+format_debug_close_binary :: String -> String -> BiOpContext -> Node -> Node -> Node -> String
+format_debug_close_binary f_name suffix c a b r =
+    colorize "green" (f_name ++ suffix ++ " : ") ++
+    "\n  " ++ show_dd settings c a ++
+    " : " ++ show_dd settings c b ++
+    " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+    "\n"
+
+-- | Helper to format closing debug message for unary operations
+format_debug_close_unary :: String -> UnOpContext -> Node -> [Position] -> Bool -> Node -> String
+format_debug_close_unary f_name c a nas b_val r =
+    colorize "green" (f_name ++ " : ") ++
+    "\n  " ++ show_dd settings c a ++
+    " (restrict: " ++ show nas ++ " to " ++ show b_val ++ ")" ++
+    " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+    "\n"
+
+-- | Helper to format cache lookup result message for binary operations
+format_cache_result_binary :: String -> String -> BiOpContext -> Node -> Node -> Node -> Maybe NodeId -> String
+format_cache_result_binary f_name suffix c a b r mCached =
+    case mCached of
+        Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
+            ++ colorize "green" (f_name ++ suffix ++ " : ") ++
+            (if not $ debug_shorten_close settings then
+                "\n  ->   " ++ show_dd settings c a ++
+                "\n  ->   " ++ show_dd settings c b
+            else "") ++
+            "\n  =>   " ++ show_dd settings c r ++
+            "\n"
+        Nothing -> colorize "green" (f_name ++ suffix ++ " : ") ++
+            (if not $ debug_shorten_close settings then
+                "\n  ->   " ++ show_dd settings c a ++
+                "\n  ->   " ++ show_dd settings c b
+            else "") ++
+            "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+            "\n"
+
+-- | Helper to format cache lookup result message for unary operations
+format_cache_result_unary :: String -> UnOpContext -> Node -> [Position] -> Bool -> Node -> Maybe NodeId -> String
+format_cache_result_unary f_name c a nas b_val r mCached =
+    case mCached of
+        Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
+            ++ colorize "green" (f_name ++ " : ") ++
+            (if not $ debug_shorten_close settings then
+                "\n  ->   " ++ show_dd settings c a ++
+                "\n  ->   restrict: " ++ show nas ++ " to " ++ show b_val
+            else "") ++
+            "\n  =>   " ++ show_dd settings c r ++
+            "\n"
+        Nothing -> colorize "green" (f_name ++ " : ") ++
+            (if not $ debug_shorten_close settings then
+                "\n  ->   " ++ show_dd settings c a ++
+                "\n  ->   restrict: " ++ show nas ++ " to " ++ show b_val
+            else "") ++
+            "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
+            "\n"
+
+-- ** Debug Manipulation Functions
+
+-- | Debug wrapper for binary operations on decision diagrams
 debug_manipulation :: (BiOpContext, Node) -> String -> String -> BiOpContext -> Node -> Node -> (BiOpContext, Node)
 debug_manipulation result_pair f_key f_name old_c@BCxt{bin_cache = nc, bin_dc_stack=dcs} a@(a_id, a_d) b@(b_id, b_d)
-    | getDd old_c a_id == a_d && getDd old_c b_id == b_d = if not $ save_logs settings then
+    | getDd old_c a_id == a_d && getDd old_c b_id == b_d =
     let
-    leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
-                    "\n  ->   " ++ show_dd settings old_c a ++
-                    "\n  ->   " ++ show_dd settings old_c b ++ "\n"
-    (c,r) = if debug_on settings && debug_open settings && check_skip_display a_id b_id
-            then if debug_dc_stack settings
-                then myTrace (leaf_msg ++ display_func_stack old_c) result_pair
-                else myTrace leaf_msg result_pair
-            else result_pair
+        leaf_msg = format_debug_open_binary f_name "" old_c a b
+        (c,r) = if debug_on settings && debug_open settings && check_skip_display a_id b_id
+                then if debug_dc_stack settings
+                    then myTrace (leaf_msg ++ display_func_stack old_c) result_pair
+                    else myTrace leaf_msg result_pair
+                else result_pair
+        should_skip = a_id `elem` [l_1, l_0] || b_id `elem` [l_1, l_0]
+        mCached = Map.lookup f_key nc >>= \nc' -> HashMapStrict.lookup (a_id, b_id, dcs) nc'
     in
     if debug_on settings && debug_close settings && check_skip_display a_id b_id
-        then if a_id `elem` [l_1, l_0] || b_id `elem` [l_1, l_0]
+        then if should_skip
             then if not $ display_leaf_cases settings
                 then (c{bin_dc_stack=dcs}, r)
-                else myTrace (colorize "green" (f_name ++ " : ") ++
-                    "\n  " ++ show_dd settings c a ++
-                    " : " ++ show_dd settings c b ++
-                    " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
-                    "\n") (c, r)
-            else
-            myTrace (
-            case Map.lookup f_key nc of
-                Just nc' -> case HashMapStrict.lookup (a_id, b_id, dcs) nc' of
-                    Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
-                        ++ colorize "green" (f_name ++ " : ") ++
-                        (if not $ debug_shorten_close settings then
-                            "\n  ->   " ++ show_dd settings c a ++
-                            "\n  ->   " ++ show_dd settings c b
-                        else "") ++
-                        "\n  =>   " ++ show_dd settings c r ++
-                        "\n"
-                    Nothing ->
-                        colorize "green" (f_name ++ " : ") ++
-                        (if not $ debug_shorten_close settings then
-                            "\n  ->   " ++ show_dd settings c a ++
-                            "\n  ->   " ++ show_dd settings c b
-                        else "") ++
-                        "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
-                        "\n"
-                Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
-            ) (c{bin_dc_stack=dcs}, r)
-        else (c{bin_dc_stack=dcs}, r)
-    else
-    let
-    start_msg = ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c a) ++
-                ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c b ++ "\\n")
-    (c,r) = if check_skip_display a_id b_id
-            then myDebugLog "\"inner\":[" result_pair
-            else result_pair
-    in
-    if check_skip_display a_id b_id
-        then myDebugLog ("{\"" ++ colorize "green" f_name ++"\": {" ++ "\"func_stack before\": [\"" ++ show_dc_stack_str old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
-            case Map.lookup f_key nc of
-                Just nc' -> case HashMapStrict.lookup (a_id, b_id, dcs) nc' of
-                    Just rt -> myDebugLog ("],\n\"" ++ colorize "chill blue" "found cached result"++"\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
-                        ++ show_dd settings c (getNode c rt) ++ "\\n\"}},") (old_c, (getNode old_c rt))
-                    Nothing ->
-                        myDebugLog ("],\n\"result\": \"\\n" ++ colorize "green" "  =>   " ++ show_dd settings c r ++ " " ++ col Vivid Blue (show_id' r)
-                        ++ "\\n\"}},") (c{bin_dc_stack=dcs}, r)
-                Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
+                else myTrace (format_debug_close_binary f_name "" c a b r) (c, r)
+            else myTrace (format_cache_result_binary f_name "" c a b r mCached) (c{bin_dc_stack=dcs}, r)
         else (c{bin_dc_stack=dcs}, r)
     | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a ++ "\n b_id: " ++ show (getDd old_c b_id) ++ " \n b: " ++ show b )
 
 debug_manipulation_inf :: (BiOpContext, Node) -> String -> String -> BiOpContext -> Node -> Node -> (BiOpContext, Node)
 debug_manipulation_inf result_pair f_key f_name old_c@BCxt{bin_cache = nc, bin_dc_stack=dcs} a@(a_id, a_d) b@(b_id, b_d)
-    | getDd old_c a_id == a_d && getDd old_c b_id == b_d = if not $ save_logs settings then
+    | getDd old_c a_id == a_d && getDd old_c b_id == b_d =
     let
-    leaf_msg = colorize "orange" (">> " ++ f_name ++ " (INF): ") ++
-                    "\n  ->   " ++ show_dd settings old_c a ++
-                    "\n  ->   " ++ show_dd settings old_c b ++ "\n"
-    (c,r) = if debug_on settings && debug_open settings && check_skip_display a_id b_id
-            then if debug_dc_stack settings
-                then myTrace (leaf_msg ++ display_func_stack old_c) result_pair
-                else myTrace leaf_msg result_pair
-            else result_pair
+        leaf_msg = format_debug_open_binary f_name " (INF)" old_c a b
+        (c,r) = if debug_on settings && debug_open settings && check_skip_display a_id b_id
+                then if debug_dc_stack settings
+                    then myTrace (leaf_msg ++ display_func_stack old_c) result_pair
+                    else myTrace leaf_msg result_pair
+                else result_pair
+        should_skip = a_id `elem` [l_1, l_0] || b_id `elem` [l_1, l_0]
+        mCached = Map.lookup f_key nc >>= \nc' -> HashMapStrict.lookup (a_id, b_id, dcs) nc'
     in
     if debug_on settings && debug_close settings && check_skip_display a_id b_id
-        then if a_id `elem` [l_1, l_0] || b_id `elem` [l_1, l_0]
+        then if should_skip
             then if not $ display_leaf_cases settings
                 then (c{bin_dc_stack=dcs}, r)
-                else myTrace (colorize "green" (f_name ++ " (INF): ") ++
-                    "\n  " ++ show_dd settings c a ++
-                    " : " ++ show_dd settings c b ++
-                    " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
-                    "\n") (c, r)
-            else
-            myTrace (
-            case Map.lookup f_key nc of
-                Just nc' -> case HashMapStrict.lookup (a_id, b_id, dcs) nc' of
-                    Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
-                        ++ colorize "green" (f_name ++ " (INF): ") ++
-                        (if not $ debug_shorten_close settings then
-                            "\n  ->   " ++ show_dd settings c a ++
-                            "\n  ->   " ++ show_dd settings c b
-                        else "") ++
-                        "\n  =>   " ++ show_dd settings c r ++
-                        "\n"
-                    Nothing ->
-                        colorize "green" (f_name ++ " (INF): ") ++
-                        (if not $ debug_shorten_close settings then
-                            "\n  ->   " ++ show_dd settings c a ++
-                            "\n  ->   " ++ show_dd settings c b
-                        else "") ++
-                        "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
-                        "\n"
-                Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
-            ) (c{bin_dc_stack=dcs}, r)
-        else (c{bin_dc_stack=dcs}, r)
-    else
-    let
-    start_msg = ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c a) ++
-                ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c b ++ "\\n")
-    (c,r) = if check_skip_display a_id b_id
-            then myDebugLog "\"inner\":[" result_pair
-            else result_pair
-    in
-    if check_skip_display a_id b_id
-        then myDebugLog ("{\"" ++ colorize "green" f_name ++" (INF)\": {" ++ "\"func_stack before\": [\"" ++ show_dc_stack_str old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
-            case Map.lookup f_key nc of
-                Just nc' -> case HashMapStrict.lookup (a_id, b_id, dcs) nc' of
-                    Just rt -> myDebugLog ("],\n\"" ++ colorize "chill blue" "found cached result"++"\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
-                        ++ show_dd settings c (getNode c rt) ++ "\\n\"}},") (old_c, (getNode old_c rt))
-                    Nothing ->
-                        myDebugLog ("],\n\"result\": \"\\n" ++ colorize "green" "  =>   " ++ show_dd settings c r ++ " " ++ col Vivid Blue (show_id' r)
-                        ++ "\\n\"}},") (c{bin_dc_stack=dcs}, r)
-                Nothing -> error ("wrong function name in cache lookup: " ++ show f_key)
+                else myTrace (format_debug_close_binary f_name " (INF)" c a b r) (c, r)
+            else myTrace (format_cache_result_binary f_name " (INF)" c a b r mCached) (c{bin_dc_stack=dcs}, r)
         else (c{bin_dc_stack=dcs}, r)
     | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a ++ "\n b_id: " ++ show (getDd old_c b_id) ++ " \n b: " ++ show b )
 
-show_dc_stack_str :: BiOpContext -> String
-show_dc_stack_str ctx = show (bin_dc_stack ctx)
+-- ** Debug Display Control
 
 check_skip_display :: NodeId -> NodeId -> Bool
 check_skip_display a_id b_id =
@@ -394,68 +349,27 @@ check_skip_display_unary a_id =
 
 debug_manipulation_unary :: (UnOpContext, Node) -> String -> String -> UnOpContext -> Node -> [Position] -> Bool -> (UnOpContext, Node)
 debug_manipulation_unary result_pair f_key f_name old_c@UCxt{un_cache = nc, un_dc_stack=dcs} a@(a_id, a_d) nas b_val
-    | getDd old_c a_id == a_d = if not $ save_logs settings then
+    | getDd old_c a_id == a_d =
     let
-    leaf_msg = colorize "orange" (">> " ++ f_name ++ " : ") ++
-                    "\n  ->   " ++ show_dd settings old_c a ++
-                    "\n  ->   restrict: " ++ show nas ++ " to " ++ show b_val ++ "\n"
-    (c,r) = if debug_on settings && debug_open settings && check_skip_display_unary a_id
-            then if debug_dc_stack settings
-                then myTrace (leaf_msg ++ display_func_stack_unary old_c) result_pair
-                else myTrace leaf_msg result_pair
-            else result_pair
+        leaf_msg = format_debug_open_unary f_name old_c a nas b_val
+        (c,r) = if debug_on settings && debug_open settings && check_skip_display_unary a_id
+                then if debug_dc_stack settings
+                    then myTrace (leaf_msg ++ display_func_stack_unary old_c) result_pair
+                    else myTrace leaf_msg result_pair
+                else result_pair
+        should_skip = a_id `elem` [l_1, l_0]
+        mCached = HashMap.lookup a_id nc
     in
     if debug_on settings && debug_close settings && check_skip_display_unary a_id
-        then if a_id `elem` [l_1, l_0]
+        then if should_skip
             then if not $ display_leaf_cases settings
                 then (c{un_dc_stack=dcs}, r)
-                else myTrace (colorize "green" (f_name ++ " : ") ++
-                    "\n  " ++ show_dd settings c a ++
-                    " (restrict: " ++ show nas ++ " to " ++ show b_val ++ ")" ++
-                    " = " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
-                    "\n") (c, r)
-            else
-            myTrace (
-            case HashMap.lookup a_id nc of
-                Just rt -> colorize "chill blue" "found cached result : " ++ col Dull Blue (show_id rt) ++ " for "
-                    ++ colorize "green" (f_name ++ " : ") ++
-                    (if not $ debug_shorten_close settings then
-                        "\n  ->   " ++ show_dd settings c a ++
-                        "\n  ->   restrict: " ++ show nas ++ " to " ++ show b_val
-                    else "") ++
-                    "\n  =>   " ++ show_dd settings c r ++
-                    "\n"
-                Nothing ->
-                    colorize "green" (f_name ++ " : ") ++
-                    (if not $ debug_shorten_close settings then
-                        "\n  ->   " ++ show_dd settings c a ++
-                        "\n  ->   restrict: " ++ show nas ++ " to " ++ show b_val
-                    else "") ++
-                    "\n  =>   " ++ show_dd settings c r ++ " " ++ col Dull Blue (show_id' r) ++
-                    "\n"
-            ) (c{un_dc_stack=dcs}, r)
-        else (c{un_dc_stack=dcs}, r)
-    else
-    let
-    start_msg = ("\\n" ++ colorize "orange" "  ->   " ++ show_dd settings old_c a) ++
-                ("\\n" ++ colorize "orange" "  ->   restrict: " ++ show nas ++ " to " ++ show b_val ++ "\\n")
-    (c,r) = if check_skip_display_unary a_id
-            then myDebugLog "\"inner\":[" result_pair
-            else result_pair
-    in
-    if check_skip_display_unary a_id
-        then myDebugLog ("{\"" ++ colorize "green" f_name ++"\": {" ++ "\"func_stack before\": [\"" ++ show_dc_stack_str_unary old_c ++ "\"],\n\"input\": \"" ++ start_msg ++ "\",\n") $
-            case HashMap.lookup a_id nc of
-                Just rt -> myDebugLog ("],\n\"" ++ colorize "chill blue" "found cached result"++"\":\"" ++ col Vivid Blue (show_id rt) ++ " for " ++ "\\n" ++ colorize "green" "  =>   "
-                    ++ show_dd settings c (getNode c rt) ++ "\\n\"}},") (old_c, (getNode old_c rt))
-                Nothing ->
-                    myDebugLog ("],\n\"result\": \"\\n" ++ colorize "green" "  =>   " ++ show_dd settings c r ++ " " ++ col Vivid Blue (show_id' r)
-                    ++ "\\n\"}},") (c{un_dc_stack=dcs}, r)
+                else myTrace (format_debug_close_unary f_name c a nas b_val r) (c, r)
+            else myTrace (format_cache_result_unary f_name c a nas b_val r mCached) (c{un_dc_stack=dcs}, r)
         else (c{un_dc_stack=dcs}, r)
     | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a)
 
-show_dc_stack_str_unary :: UnOpContext -> String
-show_dc_stack_str_unary ctx = show (un_dc_stack ctx)
+-- ** Function Stack Display
 
 display_func_stack_unary :: UnOpContext -> String
 display_func_stack_unary c@UCxt{un_dc_stack = dcs} = let
@@ -465,12 +379,11 @@ display_func_stack_unary c@UCxt{un_dc_stack = dcs} = let
             (if display_level settings then colorize "purple" "func level : " ++ show (un_current_level c) else "") ++
             (if display_dcRs settings then colorize "blue" "\n DcR : \n" ++ dcRs' else "") ++ "\n"
 
+-- | Debug wrapper for function entry/exit
 debug_func :: String -> (BiOpContext, Node) -> (BiOpContext, Node)
-debug_func f_name f = if save_logs settings
-    then myDebugLog ("{\"" ++ colorize "orange" f_name ++ "\" : [") (myDebugLog ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (fst f) ++ "\"]}\n]},") f)
-    else if debug_on settings
-        then myTrace ("{\"" ++ colorize "orange" f_name ++ "\" : [") (myTrace ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (fst f) ++ "\"]}\n]},") f)
-        else f
+debug_func f_name f = if debug_on settings
+    then myTrace ("{\"" ++ colorize "orange" f_name ++ "\" : [") (myTrace ("\n{\""++ "context" ++ "\" : [\"" ++ show_context (fst f) ++ "\"]}\n]},") f)
+    else f
 
 debug_dc_traverse :: String -> BiOpContext -> NodeId -> NodeId -> BiOpContext -> BiOpContext
 debug_dc_traverse s c a b f = if display_dc_traversal settings && debug_on settings
@@ -508,25 +421,12 @@ display_func_stack c@BCxt{bin_dc_stack = dcs} = let
             (if display_dcBs settings then colorize "blue" "\n DcB : \n" ++ dcBs' else "") ++
             (if display_dcRs settings then colorize "blue" "\n DcR : \n" ++ dcRs' else "") ++ "\n"
 
-jsonwrap :: String -> String -> String
-jsonwrap k v = "{ \""++ k ++    "\": \"" ++ v ++ "\" }"
+-- * Utility Functions
 
-show_a_b :: (HasNodeLookup c) => c -> Node -> Node -> String
-show_a_b c a b = "\\n  ->   " ++ show_dd settings c a ++ "\\n  ->   " ++ show_dd settings c b
-
-
+-- | Trace function that ensures message is evaluated
 myTrace :: String -> a -> a
 myTrace msg x = unsafePerformIO $ do
     msg `deepseq` return (trace msg x)
-
-myDebugLog :: String -> a -> a
-myDebugLog msg x = unsafePerformIO $ do
-    msg `deepseq` withFile "debug.log" AppendMode $ \h -> do
-        hPutStrLn h msg
-    return x
-
-emptyFile :: IO ()
-emptyFile = writeFile "debug.log" "["
 
 debug5 :: Bool -> String -> Bool
 debug5 b s = trace (colorize "red" (s ++ "\n\n")) b

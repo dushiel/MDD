@@ -85,9 +85,15 @@ path' b (c, n) (P' ((i, inf, pc) : pl))
     | inf == Pos0 = path' b (insert c0 (InfNodes i (l1' b) rid0 l_u)) (P' pl)
     | inf == Neg0 = path' b (insert c0 (InfNodes i (l1' b) l_u rid0)) (P' pl)
       where
-        (c0, (rid0, _)) = path' 1 (c, n) pc
-        (c1, (rid1, _)) = path' 0 (c, n) pc
-        (cDc, (ridDc, _)) = path' b (c, n) pc
+        initNode = (l_u, Node (-5) l_u l_u)
+        -- Wrap consequence in EndInfNode before passing to inner domain
+        -- This ensures each nested domain level gets its own EndInfNode
+        (cW, nW) = if n == initNode then (c, n)
+                   else insert c $ EndInfNode $ fst n
+        (c0, (rid0, _)) = path' 1 (cW, nW) pc
+        (c1, (rid1, _)) = path' 0 (cW, nW) pc
+        (cDc, (ridDc, _)) = path' b (cW, nW) pc
+path' b (c, n) (P'' ints) = localpath' (c, n) Dc1 ints
 path' b (c, n) (P' []) = (c, n)
 
 

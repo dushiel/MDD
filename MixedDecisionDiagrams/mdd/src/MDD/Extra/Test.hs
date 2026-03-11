@@ -132,6 +132,8 @@ test :: IO ()
 test = do
     emptyFile
     mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
+    testAdvancedOps
+    testForallExists
     where
         results = [
 -- combining simple boolean DD's
