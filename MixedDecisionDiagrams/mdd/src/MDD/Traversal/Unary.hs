@@ -20,7 +20,7 @@ import MDD.Traversal.Context
 import MDD.NodeLookup
 import MDD.Traversal.Stack
 import MDD.Traversal.Support
-import MDD.Extra.Draw (debug_manipulation_unary, show_node)
+import MDD.Extra.Draw (debug_manipulation_unary)
 
 import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
@@ -29,15 +29,12 @@ import Debug.Trace (trace)
 
 -- | refactored with use of AI
 
--- ==========================================================================================================
+
 -- * Unary Caching Helper
--- ==========================================================================================================
+
 
 -- | A higher-order function for handling cache lookup and update for unary operations.
--- |
 -- | The cache prevents redundant computations during unary operations (negation, restriction, etc.).
--- | Unlike binary operations which cache (NodeId A, NodeId B, dc_stack), unary operations only
--- | cache by NodeId since there's only one argument.
 withCache_ :: UnOpContext -> Node -> (UnOpContext, Node) -> (UnOpContext, Node)
 withCache_ c@UCxt { un_cache = nc } (key, _) func_with_args =
   case HashMap.lookup key nc of
@@ -47,8 +44,7 @@ withCache_ c@UCxt { un_cache = nc } (key, _) func_with_args =
       updatedCache = HashMap.insert key nodeid nc
       in (updatedContext { un_cache = updatedCache }, result)  -- Cache miss: compute and store result
 
--- | Debug wrapper for restrict_node_set operations.
--- | Similar to debug_manipulation for binary operations, but adapted for unary operations.
+
 withDebug_restrict :: forall a. (DdF3 a) =>
     UnOpContext -> [Position] -> Bool -> Node ->
     (UnOpContext -> [Position] -> Bool -> Node -> (UnOpContext, Node)) ->
@@ -59,33 +55,9 @@ withDebug_restrict c nas b d restrict_func =
         result = restrict_func c nas b d
     in debug_manipulation_unary result func_key func_name c d nas b
 
--- ==========================================================================================================
--- * Unary DC Traversal Helper
--- ==========================================================================================================
 
--- | Synchronizes a single dc branch node with a reference node for unary operations.
-traverse_dc_generic_unary :: forall a. (DdF3 a) => String -> UnOpContext -> Node -> Node -> Node
-traverse_dc_generic_unary s c refNode dcNode =
-    case (dcNode, refNode) of
-        ( tNode@(_, Node position _ _), rNode@(_, Node idx _ _) ) ->
-            if | position > idx -> dcNode  -- dcNode ahead: no catchup needed
-                | position == idx -> move_dc c s dcNode  -- Positions match: move down
-                | position < idx -> move_dc c s (catchup @a s c dcNode idx)  -- dcNode behind: catch up
-        ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchup @a s c dcNode (-1))  -- Catch up to terminal
-        ( (_, Node{}), (_, EndInfNode{}) ) -> move_dc c s (catchup @a s c dcNode (-1))  -- Catch up to terminal
-        ( (_, EndInfNode{}), (_, EndInfNode{}) ) -> move_dc c s dcNode  -- Both EndInfNodes: move down
-        ( _, (_, Unknown) ) -> move_dc c s dcNode  -- refNode Unknown: move down dcNode
-        ( (_, Unknown), _ ) -> dcNode  -- dcNode Unknown: return as-is (resolves from stack)
-        ( (_, InfNodes position _ _ _), (_, InfNodes idx _ _ _) ) ->
-            if | position > idx -> dcNode  -- dcNode ahead: no catchup
-                | position == idx -> move_dc c s dcNode  -- Positions match: move down
-                | position < idx -> dcNode  -- dcNode behind: no catchup (InfNodes handled separately)
-        _ -> dcNode  -- Default: return as-is
-
-
--- ==========================================================================================================
 -- * Negation Logic
--- ==========================================================================================================
+
 
 negation :: UnOpContext -> Node -> (UnOpContext, Node)
 negation = negation'
@@ -106,17 +78,8 @@ negation' c d@(node_id, EndInfNode a) = withCache_ c  d $ let
 negation' c (_, Leaf b) = (c, ((hash $ Leaf (not b), 0), Leaf (not b)))
 negation' c u@(_, Unknown) = (c, u)
 
--- ==========================================================================================================
--- * Unary Operation Typeclass and Instances
--- ==========================================================================================================
 
--- | The DdUnary typeclass defines unary operations (restriction, quantification) parameterized by
--- | the inference type @a@ (Dc, Neg, or Pos). The inference type determines which elimination
--- | rules are applied during traversal (see DdF3 in MDD.Traversal).
--- |
--- | Key methods:
--- |   - restrict_node_set: Restricts/quantifies variables in an MDD (universal/existential quantification)
--- |   - traverse_dc_unary: Synchronizes dc_stack traversal with main traversal (similar to binary's traverse_dc)
+
 type DdUnary :: Inf -> Constraint
 class DdUnary a where
     restrict_node_set :: UnOpContext -> [Position] -> Bool -> Node -> (UnOpContext, Node)
@@ -127,24 +90,10 @@ instance (DdF3 a) => DdUnary a where
     traverse_dc_unary s c@UCxt{un_dc_stack = dcRs, un_current_level = lv} d =
         if to_str @a == "Dc" then c
             else let
-                new_dcRs = map (traverse_dc_generic_unary @a s c (getNode c d)) dcRs
+                new_dcRs = map (traverse_dc_generic (catchup @a) s c (getNode c d)) dcRs
             in c{un_dc_stack = new_dcRs, un_current_level=lv}
 
-    -- | Restricts/quantifies variables in a Node (variable node).
-    -- |
-    -- | The position matching logic `(reverse $ map fst $ un_current_level c) ++ [position] == na`  compares the current path with the target position. This is by design.
-    -- |
-    -- | Algorithm:
-    -- |   1. Check if we need to infer nodes (current path is less than target position)
-    -- |   2. If inference needed: infer nodes until we reach the target position
-    -- |   3. Check if current position matches the first restriction target (`na`)
-    -- |   4. If match: set `b' = True` and remove `na` from remaining restrictions
-    -- |   5. If no match: set `b' = False` and keep `na` in remaining restrictions
-    -- |   6. Recursively restrict pos and neg children
-    -- |   7. If position matched (`b' = True`):
-    -- |      - If `b = True`: take pos branch (both pos and neg point to posR)
-    -- |      - If `b = False`: take neg branch (both pos and neg point to negR)
-    -- |   8. If position didn't match: keep both branches (posR and negR)
+
     restrict_node_set c (na : nas) b d@(node_id, Node position pos_child neg_child)  =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
       where
@@ -194,24 +143,7 @@ instance (DdF3 a) => DdUnary a where
                     in restrict_node_set @a c2 (na : nas) b d2
                 _ -> error ("compare_current_target_positions returned unexpected case: " ++ show case_code)
 
-    -- | Restricts/quantifies variables in an InfNodes (class-defining node).
-    -- |
-    -- | This function handles restriction when entering a class hierarchy. Similar to binary's
-    -- | `applyInf`, it processes all three branches (dc, pos, neg) separately.
-    -- |
-    -- | Algorithm:
-    -- |   1. Check if we need to infer InfNodes to reach the target position
-    -- |   2. If inference needed: infer InfNodes until we reach the target position
-    -- |   3. First compute dcR (the resulting continuous branch) using @Dc@ inference rule
-    -- |   4. Then compute nR (branch using negative literal inference rule) using dcR as background
-    -- |   5. Then compute pR (branch using positive literal inference rule) using dcR as background
-    -- |   6. Combine results into a new InfNodes with the three computed branches
-    -- |
-    -- | The dc_stack is updated at each step:
-    -- |   - For dc branch: Push Unknown placeholders (dcR not yet computed)
-    -- |   - For neg/pos branches: Push the computed dcR as the continuous background
-    -- |
-    -- | **Note**: This follows the same pattern as binary's `applyInf`, which is good for consistency.
+
     restrict_node_set c (na : nas) b d@(node_id, InfNodes position dc p n) =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
       where
@@ -240,16 +172,7 @@ instance (DdF3 a) => DdUnary a where
     -- |
     -- | This function handles restriction when exiting a class hierarchy. Similar to binary's
     -- | `endinf_case`, it pops the inference type stack to determine which inference context
-    -- | (Dc/Neg/Pos) was used, then applies the appropriate restriction operation.
-    -- |
-    -- | Algorithm:
-    -- |   1. Pop the inference type stack to get the inference context for the current class
-    -- |   2. Synchronize dc_stack traversal for the EndInfNode case
-    -- |   3. Check if we need to continue traversal (if there are remaining restrictions)
-    -- |   4. If restrictions remain: continue with child node (may need inference)
-    -- |   5. Apply restriction based on the inference type (Dc, Neg, or Pos)
-    -- |   6. Wrap result in EndInfNode to maintain class hierarchy structure
-    -- |   7. Absorb redundant branches
+    -- | (Dc/Neg/Pos) was used in the previous class, then applies the appropriate restriction operation.
     restrict_node_set c (na : nas) b d@(node_id, EndInfNode child) =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
       where
@@ -282,11 +205,6 @@ instance (DdF3 a) => DdUnary a where
                     in restrict_node_set @a c2 (na : nas) b d2
                 _ -> error ("determine_inference_type returned unexpected case: " ++ show case_code)
 
-    -- | Restricts/quantifies variables when encountering a Leaf (terminal value).
-    -- |
-    -- | When we encounter a Leaf but there are still restrictions to apply, we need to
-    -- | infer nodes to continue traversal until we reach the target position.
-    -- | Once all restrictions are applied, we return the Leaf as-is.
     restrict_node_set c (na : nas) b d@(_, Leaf _) =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
       where
@@ -310,12 +228,6 @@ instance (DdF3 a) => DdUnary a where
                         (c2, d2) = inferInfNode @a c1 infnode_position d1
                     in (restrict_node_set @a c2 (na : nas) b d2)
                 _ -> error ("compare_current_target_positions returned unexpected case: " ++ show case_code)
-
-    -- | Restricts/quantifies variables when encountering Unknown.
-    -- |
-    -- | When we encounter Unknown but there are still restrictions to apply, we need to
-    -- | infer nodes to continue traversal until we reach the target position.
-    -- | Unknown is returned as-is when there are no restrictions remaining.
     restrict_node_set c (na : nas) b d@(_, Unknown) =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
       where
@@ -348,9 +260,9 @@ instance (DdF3 a) => DdUnary a where
 
 
 
--- ==========================================================================================================
+
 -- * Position Comparison and Inference Type Determination
--- ==========================================================================================================
+
 
 -- | Compares the current path with the target position and returns a case code (1-5).
 -- |

@@ -18,6 +18,18 @@ import System.FilePath ((</>))
 import System.Directory (getCurrentDirectory)
 import Control.Monad (when, guard)
 
+-- | Build namingMap entries for a domain at a given position prefix.
+--   e.g. domainNaming [3,1,2] colors  =>  [([3,1,2,1], "red"), ([3,1,2,7], "brown"), ...]
+domainNaming :: [Int] -> Map.Map String Int -> Map.Map [Int] String
+domainNaming prefix domain =
+  Map.fromList [ (prefix ++ [v], k) | (k, v) <- Map.toList domain ]
+
+-- | Variant of domainNaming for Char-keyed domains (e.g. symbols).
+--   e.g. domainNamingC [2,1,1] symbols  =>  [([2,1,1,2], "a"), ([2,1,1,3], "b"), ...]
+domainNamingC :: [Int] -> Map.Map Char Int -> Map.Map [Int] String
+domainNamingC prefix domain =
+  Map.fromList [ (prefix ++ [v], [k]) | (k, v) <- Map.toList domain ]
+
 -- | Helper function to get a NodeStatic from StaticNodeLookup
 getNodeStatic :: StaticNodeLookup -> NodeId -> NodeStatic
 getNodeStatic nm node_id =

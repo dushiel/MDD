@@ -24,9 +24,9 @@ import Debug.Trace (trace)
 
 -- | refactored with use of AI
 
--- ==========================================================================================================
+
 -- * Binary Caching Helper
--- ==========================================================================================================
+
 
 -- | A higher-order function for handling cache lookup and update.
 -- |
@@ -51,9 +51,9 @@ withCache c@BCxt{bin_cache = nc, bin_dc_stack = dck} ((keyA, _), (keyB, _), keyF
 
 
 
--- ==========================================================================================================
+
 -- * Binary Operation Typeclass (Dd1)
--- ==========================================================================================================
+
 
 -- | The Dd1 typeclass defines binary operations (union, intersection) parameterized by
 -- | the inference type @a@ (Dc, Neg, or Pos). The inference type determines which elimination

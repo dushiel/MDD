@@ -315,15 +315,15 @@ testAdvancedOps = do
                         == (ddOf t_c_adv (And (Impl (Var dc3) (Var dc1)) (Var dc2))))
                         `debug5` "relabelWith Shift (2->3, 3->2) in ((2 impl 1) AND 3)"
 
-        --     ,   ((relabelWith [([2, 2], [1,3]), ([2,3], [1,2])] $
-        --                 ddOf t_c_adv (And (Var dc_2) (Var dc_3)))
-        --                 == dc23)
-        --                 `debug5` "relabelWith domain change ([2, 2] -> [1,3]), ([2,3] -> [1,2]) in (2 AND 3)"
+            ,   ((relabelWith [([2, 2], [1,3]), ([2,3], [1,2])] $
+                        ddOf t_c_adv (And (Var dc_2) (Var dc_3)))
+                        == dc23)
+                        `debug5` "relabelWith domain change ([2, 2] -> [1,3]), ([2,3] -> [1,2]) in (2 AND 3)"
 
-            ,   ((relabelWith [([1,1],[0,1]),([1,2],[0,2]),([2,1],[0,1]),([2,2],[0,2])] $
-                        ddOf t_c_adv (Var dc_2))
-                        == dc2)
-                        `debug5` "relabel with large list between domains, testing unmvd for beliefstructures"
+        --     ,   ((relabelWith [([1,1],[0,1]),([1,2],[0,2]),([2,1],[0,1]),([2,2],[0,2])] $
+        --                 ddOf t_c_adv (Var dc_2))
+        --                 == dc2)
+        --                 `debug5` "relabel with large list between domains, testing unmvd for beliefstructures"
 
             -- Substitutions
         --     ,   (substitSimul [([1, 2], snd $ unMDD dc3)] dc2 == dc3) `debug5` "substitSimul 2->3"

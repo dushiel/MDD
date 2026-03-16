@@ -71,3 +71,8 @@ unionNodeLookup nl1 nl2 = HashMap.foldlWithKey' mergeHashed nl1 nl2
             Nothing -> let k' = getFreeKey existing
                        in HashMap.insert hId (Map.insert k' (Entry d rc) existing) acc
         Nothing -> HashMap.insert hId (Map.singleton 0 (Entry d rc)) acc
+
+
+-- todo: add referencing and dereferencing / keep count of "alive" nodes
+-- todo: hash nodes based on level
+-- todo: improve union / merge of nodelookups (espc conflic handling / for e calls between mdds)

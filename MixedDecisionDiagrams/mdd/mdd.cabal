@@ -39,7 +39,7 @@ library
       MDD.Extra.Test
       MDD.Extra.Dot
 
-      Examples.Ontology
+      Examples.Bears
 
       SMCDEL.Internal.Help
       SMCDEL.Internal.TexDisplay

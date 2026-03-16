@@ -110,7 +110,7 @@ Cache: A memoization table for binary operations (like union or intersection) to
 
 dc_stack: A specialized structure ([Node], [Node], [Node]) representing dcA, dcB, and dcR. This tracks the hierarchy of continuous branches as the algorithm descends into sub-classes.
 
-Usually MDDs are represented by a tuple of a root NodeId and a Context manager object containing the nodelookup. For combining 2 MDD’s with a binary operator, first the Contexts are combined (by merging the nodelookups of the Contexts, and reinitializing the cache and dc_stack) before running the traversal function which computes the resulting MDD. There are also versions of the cache and dc_stack for unary functions. 
+Usually MDDs are represented by a tuple of a root NodeId and a Context manager object containing the nodelookup. For combining 2 MDD's with a binary operator, first the Contexts are combined (by merging the nodelookups of the Contexts, and reinitializing the cache and dc_stack) before running the traversal function which computes the resulting MDD. There are also versions of the cache and dc_stack for unary functions. Context conversion helpers (`binaryToUnaryContext` and `unaryToBinaryContext`) allow switching between binary and unary contexts, used by the `absorb` function which runs as a unary operation within a binary traversal.
 
 Node Representation (Dd Data Type)
 
@@ -140,7 +140,7 @@ dcA & dcB: When an Unknown leaf is encountered during a binary operation, the al
 Traversal and "Catch-up"
 
 In `MDD.Traversal.Support`, the `traverse_dc` function synchronizes the traversal of the main MDD with the continuous (background) branches in the dc_stack.
-If a branch in the main MDD skips a variable (due to an elimination rule), the catchup logic ensures the dc components do not "lag behind." It uses the specific inference rule of the current type (e.g., Dc, Pos, or Neg) to infer the missing nodes dynamically.
+If a branch in the main MDD skips a variable (due to an elimination rule), the catchup logic ensures the dc components do not "lag behind." It uses the specific inference rule of the current type (e.g., Dc, Pos, or Neg) to infer the missing nodes dynamically. The shared `traverse_dc_generic` and `move_dc` functions (in `MDD.Traversal.Stack`) are used by both binary and unary traversal modules.
 
 Redundancy Elimination (absorb)
 
@@ -178,6 +178,7 @@ The refactored codebase is organized into focused modules with clear responsibil
   - Contains: `draw_nodelookup`, `draw_cache`
 - `HasNodeLookup`: Typeclass for unified access to NodeLookup across context types
 - Initialization functions: `init_binary_context`, `init_unary_context`, `init_draw_context`
+- Context conversion: `binaryToUnaryContext` and `unaryToBinaryContext` for switching between binary and unary contexts (used by `absorb`)
 
 **Node Management** (`MDD.NodeLookup`)
 - `init_lookup`: Initial NodeLookup with standard leaf nodes
@@ -185,11 +186,11 @@ The refactored codebase is organized into focused modules with clear responsibil
 - `unionNodeLookup`: Merges two NodeLookups, summing reference counts
 - `Hashable` instance for `Dd` for canonical representation
 
-**Traversal Operations** (`MDD.Traversal.Binary`, `MDD.Traversal.Unary`, `MDD.Traversal.Support`)
+**Traversal Operations** (`MDD.Traversal.Binary`, `MDD.Traversal.Unary`, `MDD.Traversal.Support`, `MDD.Traversal.Stack`)
 - Binary operations: `apply` (union, intersection, etc.) in `MDD.Traversal.Binary`
 - Unary operations: `negation`, `restrict_node_set` in `MDD.Traversal.Unary`
-- Support functions: Inference rules, elimination rules, and traversal helpers in `MDD.Traversal.Support`
-- Stack management: `MDD.Traversal.Stack` provides dc_stack manipulation functions
+- Support functions: Inference rules (`DdF3` typeclass), elimination rules, and `absorb` in `MDD.Traversal.Support`
+- Stack management: `MDD.Traversal.Stack` provides dc_stack manipulation functions, `move_dc` (shared helper to step into sub-branches), and `traverse_dc_generic` (shared dc traversal synchronization, used by both binary and unary modules)
 - Both operation modules use operation-specific contexts and caching
 
 **Construction** (`MDD.Construction`)
@@ -211,7 +212,6 @@ The refactored codebase is organized into focused modules with clear responsibil
 - `drawTree3`: Graph generation and rendering utilities in terminal
 - `generateGraphImage`: Generate Graphviz dot and SVG files from MDD
 - `generateAndShow`, `generateAndShow_c`, `generateAndShow_h`, `generateAndShow_ch`, `generateAndShow_cn`: Convenience functions for visualization
-
 **Static Translation** (`MDD.Extra.Static`)
 - `to_static_form`: Converts MDD to static form for visualization
 - `StaticNodeLookup`, `NodeStatic`: Static representation types
