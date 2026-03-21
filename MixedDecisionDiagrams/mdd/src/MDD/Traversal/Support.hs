@@ -98,7 +98,11 @@ absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, Node int p n))  =
 
 absorb' (c@UCxt{un_dc_stack = dc@(_, EndClassNode dc') : fs }, a@(_, EndClassNode a'))
     | a == dc = (c, ((0,0), Unknown))
-    | otherwise = absorb' @a (c{un_dc_stack = getNode c dc' : fs}, getNode c a')
+    | otherwise =
+        let (c', r) = absorb' @a (c{un_dc_stack = getNode c dc' : fs}, getNode c a')
+        in case snd r of
+            Unknown -> (c', r)
+            _       -> insert c' (EndClassNode (fst r))
 -- todo: need to add many traversal cases still (?), where inference happens.
 absorb' (c@UCxt{un_dc_stack = dc : fs }, a)
     | a == dc = (c, ((0,0), Unknown))
