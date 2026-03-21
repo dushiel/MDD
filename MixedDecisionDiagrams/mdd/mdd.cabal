@@ -40,8 +40,6 @@ library
       MDD.Extra.Dot
 
       Examples.Bears
-      Examples.BugRepro
-      Examples.PathConstructionDemo
 
       SMCDEL.Internal.Help
       SMCDEL.Internal.TexDisplay

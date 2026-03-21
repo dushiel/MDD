@@ -62,13 +62,13 @@ shapes :: Map.Map String Int
 shapes = Map.fromList $ zip ["rectangular", "round", "line", "face-like", "bear-like", "big", "small"] [1..]
 
 shape :: Int -> [String] -> MDD
-shape i sl = var $ shape_of i $ P'' [shapes !!! "shapes" $ s | s <- sl]
+shape i sl = var $ shape_of i $ P'' [shapes Map.! s | s <- sl]
 
 colors :: Map.Map String Int
 colors = Map.fromList $ zip ["red", "orange", "yellow", "green", "blue", "purple", "brown", "white", "grey", "black"] [1..]
 
 color :: Int -> [String] -> MDD
-color i sl = var $ color_of i $ P'' [colors !!! "colors" $ s | s <- sl]
+color i sl = var $ color_of i $ P'' [colors Map.! s | s <- sl]
 
 
 -- ============================================================================
@@ -89,7 +89,7 @@ wordPath :: String -> Path
 wordPath w = P' [ symbolEntry j c | (j, c) <- zip [1..] w ]
   where
     symbolEntry j '*' = (j, Dc1, P'' [0])   -- wildcard: any symbol at this position (don't-care)
-    symbolEntry j c   = (j, Neg1, P'' [symbols !!! ("symbols for word '" ++ w ++ "'") $ c])
+    symbolEntry j c   = (j, Neg1, P'' [symbols Map.! c])
 
 -- | End-of-sentence: after n words, remaining word positions are inferred to be Neg empty (to make it a single specified sentence).
 -- Marks that no more words follow after position n (in Neg1 context).
@@ -124,33 +124,23 @@ action_label :: Path -> Path
 action_label c = P' [(3, Neg1, c)]
 
 action :: String -> MDD
-action a = var $ action_label $ P'' [actions !!! "actions" $ a]
+action a = var $ action_label $ P'' [actions Map.! a]
 
 
 -- ============================================================================
 -- Bear rhyme: 3 rule-sentences
 -- ============================================================================
 
--- Rule-sentence structure (4 word positions + end-of-sentence):
---   Position 1: Shape word   ("bear")
---   Position 2: Color word   ("brown" / "black" / "white")
---   Position 3: Connector    ("then")
---   Position 4: Action word  ("lay-down" / "fight" / "pray")
---   Position 5+: End-of-sentence (Neg1 empty)
 
--- "bear brown then lay-down"
 rule1 :: MDD
 rule1 = sentence ["bear", "brown", "then", "lay-down"]
 
--- "bear black then fight"
 rule2 :: MDD
 rule2 = sentence ["bear", "black", "then", "fight"]
 
--- "bear white then pray"
 rule3 :: MDD
 rule3 = sentence ["bear", "white", "then", "pray"]
 
--- All rules combined (disjunction: any of the 3 rules can be active)
 rules :: MDD
 rules = disSet [rule1, rule2, rule3]
 
@@ -158,9 +148,6 @@ rules = disSet [rule1, rule2, rule3]
 -- ============================================================================
 -- Scenes: visual input triggers rule -> action activation
 -- ============================================================================
-
--- The shape+color at visual object position 1 maps to word positions 1+2
--- of the rule-sentence. Word position 4 then activates the corresponding action.
 
 -- "seeing bear-like + brown" implies input words "bear" "brown"
 scene_brown_bear :: MDD
@@ -174,17 +161,13 @@ scene_black_bear = (shape 1 ["bear-like"] .*. color 1 ["black"]) .->. sentence [
 scene_white_bear :: MDD
 scene_white_bear = (shape 1 ["bear-like"] .*. color 1 ["white"]) .->. sentence ["bear", "white", "*", "*"]
 
--- Bridge rule: the 4th word of a sentence maps to the corresponding action.
--- For each known action word x: if word4 == x then action x is activated.
--- The action class uses Neg1 context, so if no single action word is determined,
--- the action set is empty (Neg1 [0]).
+-- The 4th word of a sentence maps to the corresponding action.
 word4_to_action :: MDD
 word4_to_action = conSet
   [ sentence ["*", "*", "*", x] .->. action x
   | x <- Map.keys actions
   ]
 
--- All scene implications combined (including the word-to-action bridge)
 agent_specifics :: MDD
 agent_specifics = conSet [scene_brown_bear, scene_black_bear, scene_white_bear, word4_to_action]
 
@@ -194,15 +177,11 @@ scene0 = agent_specifics .*. rules
 
 -- Scene 1: Alice sees a black bear
 scene1 :: MDD
-scene1 = conSet [shape 1 ["bear-like"], color 1 ["black"]]
-
--- The full scenario: agent knowledge combined with visual input
-scene1_full :: MDD
-scene1_full = scene0 .*. scene1
+scene1 = conSet [scene0, shape 1 ["bear-like"], color 1 ["black"]]
 
 -- Check: given the agent's knowledge and seeing a black bear, fight is the only valid action
 check :: Bool
-check = top == (scene1_full .->. action "fight")
+check = top == (scene1 .->. action "fight")
 
 
 -- ============================================================================
@@ -272,14 +251,13 @@ generateNamed filename mdd = do
 
 run :: IO ()
 run = do
-  originalDir <- getCurrentDirectory
   createDirectoryIfMissing True ("output" </> "bears")
   setCurrentDirectory ("output" </> "bears")
 
   putStrLn "\n=== Rules ==="
   generateNamed "rules_all" rules
 
-  putStrLn "\n=== Agent specifics (scene implications + word-to-action bridge) ==="
+  putStrLn "\n=== Agent specifics (visuals-to-words + 4th-word-to-action) ==="
   generateNamed "agent_specifics" agent_specifics
 
   putStrLn "\n=== Scene 0: Alice knows the saying ==="
@@ -288,19 +266,6 @@ run = do
   putStrLn "\n=== Scene 1: Alice sees a black bear ==="
   generateNamed "scene1_black_bear" scene1
 
-  putStrLn "\n=== Scene 1 (full): knowledge + visual input ==="
-  generateNamed "scene1_full" scene1_full
-
   putStrLn $ "\nCheck (seeing black bear -> fight == Top): " ++ show check
-
-  setCurrentDirectory originalDir
   putStrLn "Done. Output in output/bears/"
 
-
-
--- | Safe map lookup with descriptive error
-(!!!) :: (Ord k, Show k) => Map.Map k v -> String -> k -> v
-(!!!) m name k = case Map.lookup k m of
-  Just v  -> v
-  Nothing -> error $ "Bears.hs: key " ++ show k ++ " not found in '" ++ name
-                  ++ "'. Valid keys: " ++ show (Map.keys m)
