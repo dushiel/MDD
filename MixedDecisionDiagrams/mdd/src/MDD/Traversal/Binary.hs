@@ -234,10 +234,10 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
                 uncurry (applyElimRule @a) (inferNodeB' @Dc (applyDcB' @a) c s a b)  -- B is Dc
     applyDcB' c s a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
         | positionA == positionB = applyInf @a c s a b
-        | positionA < positionB = applyInfB @Dc c s a b  -- B is Dc, use @Dc@ when wrapping
+        | positionA < positionB = applyInfBAs @Dc @a c s a b  -- wrap B as Dc, process with outer context @a
         | positionA > positionB = applyInfA @a c s a b
     applyDcB' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, (s ++ "Dc")) $ applyInfA @a c s a b
-    applyDcB' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfB @Dc c s a b  -- B is Dc
+    applyDcB' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfBAs @Dc @a c s a b  -- wrap B as Dc, process with outer context @a
 
 
     dcB_leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s ++ "Dc") $ uncurry (applyElimRule @a) (inferNodeA' @a (applyDcB' @a) c s a b )
@@ -253,7 +253,7 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     dcB_leaf_cases c s a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, s ++ "Dc") $
         applyInfA @a c s a b
     dcB_leaf_cases c s a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, s ++ "Dc") $
-        applyInfB @Dc c s a b  -- B is Dc
+        applyInfBAs @Dc @a c s a b  -- wrap B as Dc, process with outer context @a
 
     -- Unknown resolution: if A is Unknown, return it (it will resolve to dcA elsewhere)
     -- If B is Unknown, resolve it by popping dcB from stack
@@ -313,8 +313,8 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     applyDcA' c s a@(a_id, InfNodes positionA _ _ _)  b@(b_id, InfNodes positionB _ _ _)
         | positionA == positionB = applyInf @a c s a b
         | positionA < positionB = applyInfB @a c s a b
-        | positionA > positionB = applyInfA @Dc c s a b  -- A is Dc, use @Dc@ when wrapping
-    applyDcA' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, (s ++ "Dc")) $ applyInfA @Dc c s a b  -- A is Dc
+        | positionA > positionB = applyInfAAs @Dc @a c s a b  -- wrap A as Dc, process with outer context @a
+    applyDcA' c s a@(a_id, EndInfNode _) b@(b_id, InfNodes{}) = withCache c (a, b, (s ++ "Dc")) $ applyInfAAs @Dc @a c s a b  -- wrap A as Dc, process with outer context @a
     applyDcA' c s a@(a_id, InfNodes{}) b@(b_id, EndInfNode _) = withCache c (a, b, (s ++ "Dc")) $ applyInfB @a c s a b
 
     dcA_leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s ++ "Dc") $ uncurry (applyElimRule @a) (inferNodeA' @Dc (applyDcA' @a) c s a b )  -- A is Dc
@@ -328,7 +328,7 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     dcA_leaf_cases c s a@(a_id, EndInfNode ac) b@(b_id, Leaf False) = withCache c (a, b, s ++ "Dc") $
         endinf_case @a c s a_id b_id ac (2,0)
     dcA_leaf_cases c s a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, s ++ "Dc") $
-        applyInfA @Dc c s a b  -- A is Dc
+        applyInfAAs @Dc @a c s a b  -- wrap A as Dc, process with outer context @a
     dcA_leaf_cases c s a@(a_id, InfNodes {}) b@(b_id, Leaf _) = withCache c (a, b, s ++ "Dc") $
         applyInfB @a c s a b
 
@@ -422,12 +422,29 @@ applyInfA c s (a_id, _) b@(_, InfNodes positionB _ _ _) = let
     in applyInf @a c'' s r' b
 applyInfA _ _ _ _ = error "should not be possible"
 
+-- | Like applyInfA, but wraps A using inference type @w@ while processing with inference type @a@.
+applyInfAAs :: forall w a. (DdF3 w, DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+applyInfAAs c s (a_id, _) b@(_, InfNodes positionB _ _ _) = let
+        (c', r) = insert c (EndInfNode a_id)
+        (c'', r') = inferInfNode @w c' positionB r
+    in applyInf @a c'' s r' b
+applyInfAAs _ _ _ _ = error "should not be possible"
+
 applyInfB :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
 applyInfB c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
         (c', r) = insert c (EndInfNode b_id)
         (c'', r') = inferInfNode @a c' positionA r
     in applyInf @a c'' s a r'
 applyInfB _ _ _ _ = error "should not be possible"
+
+-- | Like applyInfB, but wraps B using inference type @w@ while processing with inference type @a@.
+-- Used when B comes from a Dc branch (wrap as Dc) but the result lives in a different context.
+applyInfBAs :: forall w a. (DdF3 w, DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+applyInfBAs c s a@(_, InfNodes positionA _ _ _) b@(b_id, _) = let
+        (c', r) = insert c (EndInfNode b_id)
+        (c'', r') = inferInfNode @w c' positionA r
+    in applyInf @a c'' s a r'
+applyInfBAs _ _ _ _ = error "should not be possible"
 
 -- | Helper wrapper for inferred node recursive calls.
 -- | These functions bridge between the Dd1 typeclass (which works with Nodes) and the DdF3

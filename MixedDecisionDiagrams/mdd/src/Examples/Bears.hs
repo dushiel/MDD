@@ -82,11 +82,14 @@ sentence_label c = P' [(2, Dc1, c)]
 -- The non-specified words are inferred to be dc (to be able to combine them with other word_at , as long as those are at different positions),
 -- and non-specified symbol position within the word are inferred to be Neg (single determined choice).
 word_at :: Int -> String -> MDD
-word_at pos w = var $ sentence_label $ P' [(pos, Dc1, wordPath w)]
+word_at pos "*" = var $ sentence_label $ P' [(pos, Dc1, P'' [0])]  -- wildcard: any word at this position (don't-care)
+word_at pos w   = var $ sentence_label $ P' [(pos, Dc1, wordPath w)]
 
 wordPath :: String -> Path
-wordPath w = P' [ (j, Neg1, P'' [symbols !!! ("symbols for word '" ++ w ++ "'") $ c])
-                 | (j, c) <- zip [1..] w ]
+wordPath w = P' [ symbolEntry j c | (j, c) <- zip [1..] w ]
+  where
+    symbolEntry j '*' = (j, Dc1, P'' [0])   -- wildcard: any symbol at this position (don't-care)
+    symbolEntry j c   = (j, Neg1, P'' [symbols !!! ("symbols for word '" ++ w ++ "'") $ c])
 
 -- | End-of-sentence: after n words, remaining word positions are inferred to be Neg empty (to make it a single specified sentence).
 -- Marks that no more words follow after position n (in Neg1 context).
@@ -106,8 +109,8 @@ sentence ws = conSet (wordMDDs ++ [endMarker])
 symbols :: Map.Map Char Int
 symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" [1..]
 
--- todo add wild card character/symbol "*"
--- todo add wild card word "*"
+-- Wildcard support: "*" as a word in word_at means "any word" (Dc1 Top).
+-- '*' as a character in wordPath means "any symbol at that position" (Dc1 Top).
 
 -- ============================================================================
 -- Class [3]: Actions, selected to be executed when only one is valid
@@ -171,21 +174,27 @@ scene_black_bear = (shape 1 ["bear-like"] .*. color 1 ["black"]) .->. sentence [
 scene_white_bear :: MDD
 scene_white_bear = (shape 1 ["bear-like"] .*. color 1 ["white"]) .->. sentence ["bear", "white", "*", "*"]
 
--- todo add rule for 4th word, which says that action is an emtpy set (Neg1 [0] ) unless there is a single word in the 4th position of the rules
--- then that word maps to the corresponding action
--- so: sentence in context Neg1, disjunction for x in ["eat", "lay-down", "pray", "fight", "run"]: (word1 == *, word2 == *, word3 == *, word4 == x) -> x
+-- Bridge rule: the 4th word of a sentence maps to the corresponding action.
+-- For each known action word x: if word4 == x then action x is activated.
+-- The action class uses Neg1 context, so if no single action word is determined,
+-- the action set is empty (Neg1 [0]).
+word4_to_action :: MDD
+word4_to_action = conSet
+  [ sentence ["*", "*", "*", x] .->. action x
+  | x <- Map.keys actions
+  ]
 
--- All scene implications combined
+-- All scene implications combined (including the word-to-action bridge)
 agent_specifics :: MDD
-agent_specifics = conSet [scene_brown_bear, scene_black_bear, scene_white_bear]
+agent_specifics = conSet [scene_brown_bear, scene_black_bear, scene_white_bear, word4_to_action]
 
--- scene 0: Alice sees no bear, but knows the saying (rules are loaded)
+-- scene 0: Alice sees no bear, but knows the sayi  ng (rules are loaded)
 scene0 :: MDD
 scene0 = agent_specifics .*. rules
 
 -- scene 1: Alice sees a black bear
 scene1 :: MDD
-scene1 = conSet [agent_specifics, rules, shape 1 ["bear-like"], color 1 ["black"]]
+scene1 = conSet [shape 1 ["bear-like"], color 1 ["black"]]
 
 -- check whether fight is the only valid action
 check :: Bool
@@ -265,22 +274,51 @@ run = do
   setCurrentDirectory ("output" </> "bears")
 
   -- ── Rules ─────────────────────────────────────────────────────
-  putStrLn "\n=== Rule 1: bear brown then lay-down ==="
-  generateNamed "rule1_bear_brown_laydown" rule1
+  -- putStrLn "\n=== Rule 1: bear brown then lay-down ==="
+  -- generateNamed "rule1_bear_brown_laydown" rule1
 
-  putStrLn "\n=== Rule 2: bear black then fight ==="
-  generateNamed "rule2_bear_black_fight" rule2
+  -- putStrLn "\n=== Rule 2: bear black then fight ==="
+  -- generateNamed "rule2_bear_black_fight" rule2
 
-  putStrLn "\n=== Rule 3: bear white then pray ==="
-  generateNamed "rule3_bear_white_pray" rule3
+  -- putStrLn "\n=== Rule 3: bear white then pray ==="
+  -- generateNamed "rule3_bear_white_pray" rule3
 
-  putStrLn "\n=== All rules (disjunction) ==="
-  generateNamed "rules_all" rules
+  -- putStrLn "\n=== All rules (disjunction) ==="
+  -- generateNamed "rules_all" rules
 
-  -- ── Scenes ────────────────────────────────────────────────────
+  -- -- ── Word-to-Action bridge ─────────────────────────────────────
+  -- putStrLn "\n=== Word4 to Action bridge ==="
+  -- generateNamed "word4_to_action" word4_to_action
+
+  -- ── Debug: individual scene implications ─────────────────────
+  -- putStrLn "\n=== Debug: scene_brown_bear (visual -> sentence implication) ==="
+  -- generateNamed "debug_scene_brown_bear" scene_brown_bear
+
+  -- putStrLn "\n=== Debug: scene_black_bear (visual -> sentence implication) ==="
+  -- generateNamed "debug_scene_black_bear" scene_black_bear
+
+  -- putStrLn "\n=== Debug: scene_white_bear (visual -> sentence implication) ==="
+  -- generateNamed "debug_scene_white_bear" scene_white_bear
+
+  -- ── Debug: pairwise combinations inside agent_specifics ─────
+  putStrLn "\n=== Debug: scene_brown .*. scene_black ==="
+  let brown_and_black = scene_brown_bear .*. scene_black_bear
+  generateNamed "debug_brown_and_black" brown_and_black
+
+  putStrLn "\n=== Debug: (brown .*. black) .*. scene_white ==="
+  let three_scenes = brown_and_black .*. scene_white_bear
+  generateNamed "debug_three_scenes" three_scenes
+
+  putStrLn "\n=== Debug: three_scenes .*. word4_to_action ==="
+  let agent_specifics_built = three_scenes .*. word4_to_action
+  generateNamed "debug_agent_specifics" agent_specifics_built
+
+  -- ── Debug: agent_specifics .*. rules (this is scene0) ───────
   putStrLn "\n=== Scene 0: Alice knows the saying ==="
-  generateNamed "scene0_rules" scene0
+  let scene0_built = agent_specifics_built .*. rules
+  generateNamed "scene0_rules" scene0_built
 
+  -- ── Scene 1 ─────────────────────────────────────────────────
   putStrLn "\n=== Scene 1: Alice sees a black bear ==="
   generateNamed "scene1_black_bear" scene1
 

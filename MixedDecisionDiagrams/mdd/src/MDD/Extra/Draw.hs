@@ -46,7 +46,7 @@ data Show_setting = ShowSetting {
 -- | Global settings for display and debugging behavior
 settings :: Show_setting
 settings = ShowSetting {
-                color = True -- colorize
+                color = False -- colorize
             ,   draw_tree = False
             ,   display_node_id's = False
             ,   display_context = False
@@ -62,9 +62,9 @@ settings = ShowSetting {
 
             ,   debug_dc_stack = False
             ,   display_level = False
-            ,   display_dcAs = True
-            ,   display_dcBs = True
-            ,   display_dcRs = True
+            ,   display_dcAs = False
+            ,   display_dcBs = False
+            ,   display_dcRs = False
 }
 
 -- * Color Utilities

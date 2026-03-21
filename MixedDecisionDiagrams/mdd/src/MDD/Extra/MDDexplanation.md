@@ -283,3 +283,7 @@ current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next
 - nasty bug:
 ```dcA_leaf_cases c s a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, s ++ "Dc") $
         applyInfA @Dc c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc```
+
+- other potential bugs:
+- make a script with top dc in neg context, is it handeled correctly?
+- does dc stack traversal handle endinfnodes (catchup) correctly? do they have their own stack?

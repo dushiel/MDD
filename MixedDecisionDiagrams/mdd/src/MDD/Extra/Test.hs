@@ -13,7 +13,7 @@ import MDD.Types
 import MDD.Extra.Interface
 import MDD.Construction (path, add_path)
 import SMCDEL.Symbolic.Bool
-import MDD.Extra.Draw (debug5, emptyFile)
+import MDD.Extra.Draw (debug5)
 
 -- Construct DD's containing a single path for testing
 -- place them in the context ( t_c ) for availability during test case
@@ -130,7 +130,6 @@ n'dc'  = add_path ndc              (P' [(1, Neg0, P' [(1, Dc0, P'' [0])])])
 
 test :: IO ()
 test = do
-    emptyFile
     mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
     testAdvancedOps
     testForallExists
@@ -339,7 +338,6 @@ testAdvancedOps = do
 testForallExists :: IO ()
 testForallExists = do
     putStrLn "Running Forall and Exists Tests..."
-    emptyFile
     let results = [
             -- restrict [1,1] True dc2 == restrict [1,1] False dc2
             -- restrict [1,3] False n2 == ddOf' $ Or (Var n23) (Var n2)
