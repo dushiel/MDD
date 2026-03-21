@@ -131,13 +131,13 @@ createDotGraph' staticNodeLookup startNodeId visited colorized hideUnknown namin
             Unknown'          -> ("?", "square",   if colorized then "DarkOrange" else "",  [-1])
             -- ✅ Use the naming map or default to the last integer of the position vector.
             Node' p _ _       -> (fromMaybe (show (safeLast p)) (Map.lookup p namingMap), "circle", "", p)
-            InfNodes' p _ _ _ -> ("{" ++ fromMaybe (show (safeLast p)) (Map.lookup p namingMap) ++ "}", "trapezium", if colorized then "SteelBlue" else "", p)
-            EndInfNode' _     -> ("", "diamond",  "", [-2])
+            ClassNode' p _ _ _ -> ("{" ++ fromMaybe (show (safeLast p)) (Map.lookup p namingMap) ++ "}", "trapezium", if colorized then "SteelBlue" else "", p)
+            EndClassNode' _     -> ("", "diamond",  "", [-2])
 
           nodeIdStr = "node" ++ show (abs (fst startNodeId)) ++ "_" ++ show (snd startNodeId)
           commonAttrs = " [label=\"" ++ nodeLabel ++ "\", shape=" ++ nodeShape
           specificAttrs = case nodeData of
-              EndInfNode' _ -> ", fontsize=8, margin=\"0.08,0.08\", width=0.3, height=0.3"
+              EndClassNode' _ -> ", fontsize=8, margin=\"0.08,0.08\", width=0.3, height=0.3"
               _             -> ", width=0.5, height=0.25, margin=\"0.025,0.001\""
           colorAttr = if null fontColor then "" else ", fontcolor=" ++ fontColor
           nodeDefString = nodeIdStr ++ commonAttrs ++ specificAttrs ++ colorAttr ++ "];"
@@ -155,7 +155,7 @@ createDotGraph' staticNodeLookup startNodeId visited colorized hideUnknown namin
                   newEdges = lEdge ++ rEdge
               in (lDefs ++ rDefs, lEdges ++ rEdges ++ newEdges, v2)
 
-            InfNodes' _ dc p n ->
+            ClassNode' _ dc p n ->
               let (dcDefs, dcEdges, v1) = createDotGraph' staticNodeLookup dc updatedVisited colorized hideUnknown namingMap
                   (pDefs, pEdges, v2) = if p /= (0,0) then createDotGraph' staticNodeLookup p v1 colorized hideUnknown namingMap else ([], [], v1)
                   (nDefs, nEdges, v3) = if n /= (0,0) then createDotGraph' staticNodeLookup n v2 colorized hideUnknown namingMap else ([], [], v2)
@@ -166,7 +166,7 @@ createDotGraph' staticNodeLookup startNodeId visited colorized hideUnknown namin
                   newEdges = dcEdge ++ pEdge ++ nEdge
               in (dcDefs ++ pDefs ++ nDefs, dcEdges ++ pEdges ++ nEdges ++ newEdges, v3)
 
-            EndInfNode' cons ->
+            EndClassNode' cons ->
               let (consDefs, consEdges, v1) = createDotGraph' staticNodeLookup cons updatedVisited colorized hideUnknown namingMap
                   edgeColor = if colorized then "fontcolor=dimgray" else ""
                   newEdges = maybe [] (\target -> [nodeIdStr ++ " -> " ++ target ++ " [style=\"dotted\", arrowsize=0.75, " ++ edgeColor ++ "];"]) (Map.lookup cons v1)
@@ -183,7 +183,7 @@ createDotGraph staticNodeLookup startNode colorized hideUnknown namingMap =
     (allNodes, allEdges, _) = createDotGraph' staticNodeLookup startNode Map.empty colorized hideUnknown namingMap
 
     (leafAndUnknownNodes, rest1) = partition (\(_, _, pos) -> pos == [-1]) allNodes
-    (endInfNodes, regularNodes)  = partition (\(_, _, pos) -> pos == [-2]) rest1
+    (endClassNode, regularNodes)  = partition (\(_, _, pos) -> pos == [-2]) rest1
 
     regularPositions = map (\(_, _, pos) -> pos) regularNodes
     posMap = generatePositionMap regularPositions
@@ -199,7 +199,7 @@ createDotGraph staticNodeLookup startNode colorized hideUnknown namingMap =
         unlines (map ("    " ++) defs) ++
         "  }") nodesByRank
 
-    endInfNodeDefs = unlines $ map (("  " ++) . (\(_, def, _) -> def)) endInfNodes
+    endClassNodeDefs = unlines $ map (("  " ++) . (\(_, def, _) -> def)) endClassNode
 
     leafDefs = map (\(_, def, _) -> def) leafAndUnknownNodes
     leafBlock = if null leafDefs then "" else
@@ -213,7 +213,7 @@ createDotGraph staticNodeLookup startNode colorized hideUnknown namingMap =
   (if colorized then "  graph [bgcolor=white];\n" else "") ++
   "  edge [fontsize=10];\n\n" ++
   rankBlocks ++ "\n" ++
-  endInfNodeDefs ++ "\n" ++
+  endClassNodeDefs ++ "\n" ++
   leafBlock ++ "\n" ++
   unlines (map ("  "++) allEdges) ++
   "}\n"

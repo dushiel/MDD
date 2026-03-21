@@ -16,14 +16,14 @@ instance Hashable Dd where
   hash Unknown = 0
   hash (Leaf b) = if b then 1 else 2
   hash (Node idx l r) = idx `hashWithSalt` fst l `hashWithSalt` fst r
-  hash (InfNodes idx dc p n) = idx `hashWithSalt` fst dc `hashWithSalt` fst p `hashWithSalt` fst n
-  hash (EndInfNode d) = fst d `hashWithSalt` (3::Int)
+  hash (ClassNode idx dc p n) = idx `hashWithSalt` fst dc `hashWithSalt` fst p `hashWithSalt` fst n
+  hash (EndClassNode d) = fst d `hashWithSalt` (3::Int)
 
   hashWithSalt _ Unknown = 0
   hashWithSalt _ (Leaf b) = if b then 1 else 2
   hashWithSalt s (Node idx l r) = s `hashWithSalt` idx `hashWithSalt` fst l `hashWithSalt` fst r
-  hashWithSalt s (InfNodes idx dc n p) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n `hashWithSalt` fst p
-  hashWithSalt s (EndInfNode d) = s `hashWithSalt` fst d `hashWithSalt` (3::Int)
+  hashWithSalt s (ClassNode idx dc n p) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n `hashWithSalt` fst p
+  hashWithSalt s (EndClassNode d) = s `hashWithSalt` fst d `hashWithSalt` (3::Int)
 
 -- | Initial lookup table with standard leaf nodes (0: Unknown, 1: True, 2: False)
 init_lookup :: NodeLookup

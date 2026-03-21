@@ -18,8 +18,8 @@ import GHC.Generics (Generic)
 -- | Static translation is provided for visualization.
 -- This assigns a fixed global order to all declared variables for consistent Graphviz rendering.
 data DdStatic =  Node' [Int] NodeId NodeId               -- left = pos (solid line in graph), right = neg (dotted line in graph)
-                | InfNodes' [Int] NodeId NodeId NodeId -- in order of types Dc, Neg, Pos
-                | EndInfNode' NodeId
+                | ClassNode' [Int] NodeId NodeId NodeId -- in order of types Dc, Neg, Pos
+                | EndClassNode' NodeId
                 | Leaf' Bool
                 | Unknown'
     deriving (Eq, Show, Generic)
@@ -39,14 +39,14 @@ instance Hashable DdStatic where
   hash Unknown' = (0::Int)
   hash (Leaf' b) = if b then (1::Int) else (2::Int)
   hash (Node' idx l r) = (last idx) `hashWithSalt` fst l `hashWithSalt` fst r
-  hash (InfNodes' idx dc p n) = (last idx) `hashWithSalt` fst dc `hashWithSalt` fst p `hashWithSalt` fst n
-  hash (EndInfNode' d) = fst d `hashWithSalt` (3::Int)
+  hash (ClassNode' idx dc p n) = (last idx) `hashWithSalt` fst dc `hashWithSalt` fst p `hashWithSalt` fst n
+  hash (EndClassNode' d) = fst d `hashWithSalt` (3::Int)
 
   hashWithSalt s Unknown' = s `hashWithSalt` (0::Int)
   hashWithSalt s (Leaf' b) = s `hashWithSalt` (if b then (1::Int) else (2::Int))
   hashWithSalt s (Node' idx l r) = s `hashWithSalt` idx `hashWithSalt` fst l `hashWithSalt` fst r
-  hashWithSalt s (InfNodes' idx dc n p) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n `hashWithSalt` fst p
-  hashWithSalt s (EndInfNode' d) = s `hashWithSalt` fst d `hashWithSalt` (3::Int)
+  hashWithSalt s (ClassNode' idx dc n p) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n `hashWithSalt` fst p
+  hashWithSalt s (EndClassNode' d) = s `hashWithSalt` fst d `hashWithSalt` (3::Int)
 
 defaultNodeMapStatic :: StaticNodeLookup
 defaultNodeMapStatic = HashMap.fromList [
@@ -86,20 +86,20 @@ to_static_form ctx node = go defaultNodeMapStatic ctx node
             (snl2, (negR, _)) = go snl1 c (getNode c neg_child)
         in insert_static snl2 $ Node' (get_static_lv c ++ [position]) posR negR
 
-    go snl c d@(_, InfNodes position dc p n) =
+    go snl c d@(_, ClassNode position dc p n) =
         let c_dc = add_to_level_ (position, Dc) c
             (snl1, (r_dc, _)) = go snl c_dc (getNode c dc)
             c_n = add_to_level_ (position, Neg) (reset_stack_un c_dc c)
             (snl2, (r_n, _)) = go snl1 c_n (getNode c n)
             c_p = add_to_level_ (position, Pos) (reset_stack_un c_n c)
             (snl3, (r_p, _)) = go snl2 c_p (getNode c p)
-        in insert_static snl3 $ InfNodes' (get_static_lv c ++ [position]) r_dc r_p r_n
+        in insert_static snl3 $ ClassNode' (get_static_lv c ++ [position]) r_dc r_p r_n
 
-    go snl c d@(_, EndInfNode a) =
+    go snl c d@(_, EndClassNode a) =
         let (_ : lvs) = un_current_level c
             c' = c { un_current_level = lvs }
             (snl1, (result, _)) = go snl c' (getNode c a)
-        in insert_static snl1 $ EndInfNode' result
+        in insert_static snl1 $ EndClassNode' result
 
     go snl _ (_, Leaf b) = insert_static snl (Leaf' b)
     go snl _ (_, Unknown) = insert_static snl Unknown'
@@ -109,13 +109,13 @@ allVars :: UnOpContext -> Node -> [Position]
 allVars ctx d@(_, Node position pos_child neg_child) =
   [get_static_lv ctx ++ [position]] ++
    allVars ctx (getNode ctx pos_child) ++ allVars ctx (getNode ctx neg_child)
-allVars ctx d@(_, InfNodes position dc p n) =
+allVars ctx d@(_, ClassNode position dc p n) =
     let c_dc = add_to_level_ (position, Dc) ctx
         c_n = add_to_level_ (position, Neg) ctx
         c_p = add_to_level_ (position, Pos) ctx
     in [get_static_lv ctx ++ [position]] ++
         allVars c_dc (getNode ctx dc) ++ allVars c_n (getNode ctx n) ++ allVars c_p (getNode ctx p)
-allVars ctx d@(_, EndInfNode a) =
+allVars ctx d@(_, EndClassNode a) =
     let (_ : lvs) = un_current_level ctx
     in allVars (ctx { un_current_level = lvs }) (getNode ctx a)
 allVars _ (_, Leaf _) = []

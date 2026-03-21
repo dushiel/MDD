@@ -79,9 +79,9 @@ data Inf = Dc | Neg | Pos
 data Dd
   = Node Int NodeId NodeId
     -- ^ Branching node: (position, pos child, neg child)
-  | InfNodes Int NodeId NodeId NodeId
+  | ClassNode Int NodeId NodeId NodeId
     -- ^ Class node: (position, dc, neg, pos branches)
-  | EndInfNode NodeId
+  | EndClassNode NodeId
     -- ^ Class exit marker
   | Leaf Bool
     -- ^ Terminal (True/False)

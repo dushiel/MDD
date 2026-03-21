@@ -67,14 +67,14 @@ negation' c d@(node_id, Node position pos_child neg_child)  = withCache_ c d $ l
     (c1, (posR, _)) = negation' c (getNode c pos_child)
     (c2, (negR, _)) = negation' c1 (getNode c1 neg_child)
     in insert c2 $ Node position posR negR
-negation' c d@(node_id, InfNodes position dc p n) = withCache_ c d $ let
+negation' c d@(node_id, ClassNode position dc p n) = withCache_ c d $ let
     (c1, (r_dc, _)) = negation' c (getNode c dc)
     (c2, (r_n, _)) = negation' c1 (getNode c1 n)
     (c3, (r_p, _)) = negation' c2 (getNode c2 p)
-        in insert c3 $ InfNodes position r_dc r_p r_n
-negation' c d@(node_id, EndInfNode a) = withCache_ c  d $ let
+        in insert c3 $ ClassNode position r_dc r_p r_n
+negation' c d@(node_id, EndClassNode a) = withCache_ c  d $ let
     (c1, (result, _)) = negation' c (getNode c a)
-    in insert c1 $ EndInfNode result
+    in insert c1 $ EndClassNode result
 negation' c (_, Leaf b) = (c, ((hash $ Leaf (not b), 0), Leaf (not b)))
 negation' c u@(_, Unknown) = (c, u)
 
@@ -132,30 +132,30 @@ instance (DdF3 a) => DdUnary a where
                 3 -> -- Same class: infer normal node at target position
                     let (c', d') = inferNode @a c (last na) d
                     in restrict_node_set @a c' (na : nas) b d'
-                4 -> -- Previous layer: infer EndInfNode to exit current class
-                    let (c1, endinf_wrapped) = insert c (EndInfNode (fst d))
-                    in restrict_node_set @a c1 (na : nas) b endinf_wrapped
+                4 -> -- Previous layer: infer EndClassNode to exit current class
+                    let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
+                    in restrict_node_set @a c1 (na : nas) b endclass_wrapped
                 5 -> -- Deeper layer: infer InfNode at the appropriate position
                     let
                         infnode_position = na !! length (init current_path)
-                        (c1, d1) = insert c (EndInfNode (fst d))
+                        (c1, d1) = insert c (EndClassNode (fst d))
                         (c2, d2) = inferInfNode @a c1 infnode_position d1
                     in restrict_node_set @a c2 (na : nas) b d2
                 _ -> error ("compare_current_target_positions returned unexpected case: " ++ show case_code)
 
 
-    restrict_node_set c (na : nas) b d@(node_id, InfNodes position dc p n) =
+    restrict_node_set c (na : nas) b d@(node_id, ClassNode position dc p n) =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
       where
-        restrict_node_set_internal c (na : nas) b d@(node_id, InfNodes position dc p n) =
-            -- Check if we need to infer InfNodes (if we've passed the target position)
+        restrict_node_set_internal c (na : nas) b d@(node_id, ClassNode position dc p n) =
+            -- Check if we need to infer ClassNode (if we've passed the target position)
             let current_path = (reverse $ map fst $ un_current_level c) ++ [position]
                 cp = -- trace ("infnode!!! comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = case " ++ show (compare_current_target_positions current_path na))
                     current_path
             in if cp > na
                 then -- We've passed the target position, need to infer an InfNode at the target
                     let infnode_position = na !! length (init current_path)
-                        (c1, d1) = insert c (EndInfNode (fst d))
+                        (c1, d1) = insert c (EndClassNode (fst d))
                         (c2, d2) = inferInfNode @a c1 infnode_position d1
                     in restrict_node_set @a c2 (na : nas) b d2
                 else let
@@ -166,18 +166,18 @@ instance (DdF3 a) => DdUnary a where
                     c3_ = add_to_stack_ (position, Pos) (getNode c2 dc, dcR) (reset_stack_un c2 c)
                     (c3, pR) = restrict_node_set @Pos (traverse_dc_unary @a "inf pos" c3_ p) (na : nas) b (getNode c2 p)
 
-                    in absorb_unary @a $ applyElimRule @a (reset_stack_un c3 c) $ InfNodes position (fst dcR) (fst pR) (fst nR)
+                    in absorb_unary @a $ applyElimRule @a (reset_stack_un c3 c) $ ClassNode position (fst dcR) (fst pR) (fst nR)
 
-    -- | Restricts/quantifies variables in an EndInfNode (class exit marker).
+    -- | Restricts/quantifies variables in an EndClassNode (class exit marker).
     -- |
     -- | This function handles restriction when exiting a class hierarchy. Similar to binary's
-    -- | `endinf_case`, it pops the inference type stack to determine which inference context
+    -- | `endclass_case`, it pops the inference type stack to determine which inference context
     -- | (Dc/Neg/Pos) was used in the previous class, then applies the appropriate restriction operation.
-    restrict_node_set c (na : nas) b d@(node_id, EndInfNode child) =
+    restrict_node_set c (na : nas) b d@(node_id, EndClassNode child) =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
       where
-        restrict_node_set_internal c (na : nas) b d@(node_id, EndInfNode child) =
-            -- For EndInfNode, current_path is just the current level (no position to append)
+        restrict_node_set_internal c (na : nas) b d@(node_id, EndClassNode child) =
+            -- For EndClassNode, current_path is just the current level (no position to append)
             let current_path = reverse $ map fst $ un_current_level c
                 case_code = -- trace ("comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = case " ++ show (determine_inference_type current_path na))
                     (determine_inference_type current_path na)
@@ -185,22 +185,22 @@ instance (DdF3 a) => DdUnary a where
                 3 -> -- Same class: infer normal node at target position
                     let (c', d') = inferNode @a c (last na) d
                     in restrict_node_set @a c' (na : nas) b d'
-                4 -> -- Previous layer: handle EndInfNode (pop stack and continue with child)
+                4 -> -- Previous layer: handle EndClassNode (pop stack and continue with child)
                     let
                         -- Pop the inference type stack to get the inference context for the current class
                         (c_, inf) = pop_stack_ c
-                        -- Synchronize dc_stack traversal for the EndInfNode case
-                        c' = traverse_dc_unary @a "endinf" c_ node_id
+                        -- Synchronize dc_stack traversal for the EndClassNode case
+                        c' = traverse_dc_unary @a "endclass" c_ node_id
                         (c'', (r, _)) = case inf of
                              Dc -> restrict_node_set @Dc c' (na : nas) b (getNode c child)
                              Pos -> restrict_node_set @Pos c' (na : nas) b (getNode c child)
                              Neg -> restrict_node_set @Neg c' (na : nas) b (getNode c child)
-                    in absorb_unary @a $ applyElimRule' @a (reset_stack_un c'' c, EndInfNode r)
+                    in absorb_unary @a $ applyElimRule' @a (reset_stack_un c'' c, EndClassNode r)
                 5 -> -- Deeper layer: infer InfNode at the appropriate position
                     let
                         current_lv = current_path
                         infnode_position = na !! length current_lv  -- int at index (length current_path) in na
-                        (c1, d1) = insert c (EndInfNode (fst d))
+                        (c1, d1) = insert c (EndClassNode (fst d))
                         (c2, d2) = inferInfNode @a c1 infnode_position d1
                     in restrict_node_set @a c2 (na : nas) b d2
                 _ -> error ("determine_inference_type returned unexpected case: " ++ show case_code)
@@ -217,14 +217,14 @@ instance (DdF3 a) => DdUnary a where
                 3 -> -- Same class: infer normal node at target position
                     let (c', d') = inferNode @a c (last na) d
                     in restrict_node_set @a c' (na : nas) b d'
-                4 -> -- Previous layer: infer EndInfNode to exit current class
-                    let (c1, endinf_wrapped) = insert c (EndInfNode (fst d))
-                    in restrict_node_set @a c1 (na : nas) b endinf_wrapped
+                4 -> -- Previous layer: infer EndClassNode to exit current class
+                    let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
+                    in restrict_node_set @a c1 (na : nas) b endclass_wrapped
                 5 -> -- Deeper layer: infer InfNode at the appropriate position
                     let
                         current_lv = current_path
                         infnode_position = na !! length current_lv  -- int at index (length current_path) in na
-                        (c1, d1) = insert c (EndInfNode (fst d))
+                        (c1, d1) = insert c (EndClassNode (fst d))
                         (c2, d2) = inferInfNode @a c1 infnode_position d1
                     in (restrict_node_set @a c2 (na : nas) b d2)
                 _ -> error ("compare_current_target_positions returned unexpected case: " ++ show case_code)
@@ -240,9 +240,9 @@ instance (DdF3 a) => DdUnary a where
                 3 -> -- Same class: infer normal node at target position
                     let (c', d') = inferNode @a c (last na) d
                     in restrict_node_set @a c' (na : nas) b d'
-                4 -> -- Previous layer: infer EndInfNode to exit current class
-                    let (c1, endinf_wrapped) = insert c (EndInfNode (fst d))
-                    in restrict_node_set @a c1 (na : nas) b endinf_wrapped
+                4 -> -- Previous layer: infer EndClassNode to exit current class
+                    let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
+                    in restrict_node_set @a c1 (na : nas) b endclass_wrapped
                 5 -> -- Deeper layer: infer InfNode at the appropriate position
                     let
                         current_lv = current_path
@@ -285,14 +285,14 @@ compare_current_target_positions current_path na
 -- |
 -- | Returns:
 -- |   3: Target is in the same class (current_lv and init na match), infer normal node
--- |   4: Target is on a previous layer class progression (current_lv and init na differ), infer endinf node
+-- |   4: Target is on a previous layer class progression (current_lv and init na differ), infer endclass node
 -- |   5: Target requires entering a deeper class layer (init na is longer than current_level and they share a prefix), infer infnode
 determine_inference_type :: Position -> Position -> Int
 determine_inference_type current_level na
     | null current_level || null na = error "determine_inference_type: empty position"
     | current_level == init na = 3  -- Same class: infer normal node, with position last na
     | length (init na) > length current_level && sharesPrefix = 5  -- Deeper layer: infer infnode
-    | otherwise = 4  -- Previous layer: infer endinf node
+    | otherwise = 4  -- Previous layer: infer endclass node
   where
     -- Check if current_level and na share a common prefix (up to the length of current_level)
     sharesPrefix = and (zipWith (==) current_level (take (length current_level) na))

@@ -62,6 +62,16 @@ pop_stack' ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs), bin_current_level = (lAs,
             n = (max (length lAs) (length lBs)) - 1
             trim k xs = if length xs <= k then xs else drop (length xs - k) xs
 
+pop_stackA :: BiOpContext -> (BiOpContext, Inf)
+pop_stackA ctx =
+    let (_ : lvA@(_, infA) : lvsA, lvsB) = bin_current_level ctx
+    in (ctx{bin_current_level = (lvA : lvsA, lvsB)}, infA)
+
+pop_stackB :: BiOpContext -> (BiOpContext, Inf)
+pop_stackB ctx =
+    let (lvsA, _ : lvB@(_, infB) : lvsB) = bin_current_level ctx
+    in (ctx{bin_current_level = (lvsA, lvB : lvsB)}, infB)
+
 reset_stack_bin :: BiOpContext -> BiOpContext -> BiOpContext
 reset_stack_bin new old = new { bin_dc_stack = bin_dc_stack old, bin_current_level = bin_current_level old }
 
@@ -104,16 +114,16 @@ move_dc c m node =
             else if m == "neg child" then getNode c neg_child
             else error $ "processStackElement: undefined move '" ++ m ++ "' for Node pattern: " ++ show_node c node
 
-        (_, EndInfNode child) ->
-            if m == "endinf" then getNode c child
+        (_, EndClassNode child) ->
+            if m == "endclass" then getNode c child
             else (if m `elem` ["pos child", "neg child", "inf pos", "inf neg", "inf dc"] then node
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndInfNode pattern: " ++ show_node c node)
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndClassNode pattern: " ++ show_node c node)
 
-        (_, InfNodes position dc p n) ->
+        (_, ClassNode position dc p n) ->
             if m == "inf pos" then getNode c p
             else if m == "inf neg" then getNode c n
             else if m == "inf dc" then getNode c dc
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for InfNodes pattern: " ++ show_node c node
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for ClassNode pattern: " ++ show_node c node
 
         (_, Leaf _) ->
             node
@@ -132,12 +142,28 @@ traverse_dc_generic catchupFn s c refNode dcNode =
                | position == idx -> move_dc c s dcNode  -- Positions match: move down
                | position < idx -> move_dc c s (catchupFn s c dcNode idx)  -- dcNode behind: catch up
         ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchupFn s c dcNode (-1))  -- Catch up to terminal
-        ( (_, Node{}), (_, EndInfNode{}) ) -> move_dc c s (catchupFn s c dcNode (-1))  -- Catch up to terminal
-        ( (_, EndInfNode{}), (_, EndInfNode{}) ) -> move_dc c s dcNode  -- Both EndInfNodes: move down
+        ( (_, Node{}), (_, EndClassNode{}) ) -> move_dc c s (catchupFn s c dcNode (-1))  -- Catch up to terminal
+        ( (_, EndClassNode{}), (_, EndClassNode{}) ) -> move_dc c s dcNode  -- Both EndClassNode: move down
         ( _, (_, Unknown) ) -> move_dc c s dcNode  -- refNode Unknown: move down dcNode
         ( (_, Unknown), _ ) -> dcNode  -- dcNode Unknown: return as-is (resolves from stack)
-        ( (_, InfNodes position _ _ _), (_, InfNodes idx _ _ _) ) ->
+        ( (_, ClassNode position _ _ _), (_, ClassNode idx _ _ _) ) ->
             if | position > idx -> dcNode  -- dcNode ahead: no catchup
                | position == idx -> move_dc c s dcNode  -- Positions match: move down
-               | position < idx -> dcNode  -- dcNode behind: no catchup (InfNodes handled separately)
+               | position < idx -> dcNode  -- dcNode behind: no catchup (ClassNode handled separately)
         _ -> dcNode  -- Default: return as-is
+
+traverse_dcA_endclass :: BiOpContext -> NodeId -> BiOpContext
+traverse_dcA_endclass ctx refA =
+    let (dcAs, dcBs, dcRs) = bin_dc_stack ctx
+        refNode = getNode ctx refA
+        moveDc dc = traverse_dc_generic (\_ _ n _ -> n) "endclass" ctx refNode dc
+        new_dcAs = map moveDc dcAs
+    in ctx { bin_dc_stack = (new_dcAs, dcBs, dcRs) }
+
+traverse_dcB_endclass :: BiOpContext -> NodeId -> BiOpContext
+traverse_dcB_endclass ctx refB =
+    let (dcAs, dcBs, dcRs) = bin_dc_stack ctx
+        refNode = getNode ctx refB
+        moveDc dc = traverse_dc_generic (\_ _ n _ -> n) "endclass" ctx refNode dc
+        new_dcBs = map moveDc dcBs
+    in ctx { bin_dc_stack = (dcAs, new_dcBs, dcRs) }

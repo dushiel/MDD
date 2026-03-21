@@ -82,13 +82,13 @@ absorb' (c@UCxt{un_dc_stack = dc : fs }, a@(_, Unknown)) = (c, a)
 absorb' (c@UCxt{un_dc_stack = dc : fs }, a@(_, Leaf _))
     | a == dc = (c, ((0,0), Unknown))
     | otherwise = (c,a)
-absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, InfNodes int d p n))
+absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, ClassNode int d p n))
     | a == dc = (c, ((0,0), Unknown))
     | otherwise =
         let (c', r1) = absorb' @a (c, getNode c d)
             (c'', r2) = absorb' @a (c', getNode c p)
             (c''', r3) = absorb' @a (c'', getNode c n)
-            absorbed_inf = applyElimRule @a c''' $ InfNodes int (fst r1) (fst r2) (fst r3)
+            absorbed_inf = applyElimRule @a c''' $ ClassNode int (fst r1) (fst r2) (fst r3)
         in if (snd absorbed_inf) == dc then (c, ((0,0), Unknown)) else absorbed_inf
 absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, Node int p n))  =
     let (c', r1) = absorb' @a (c, getNode c p)
@@ -96,7 +96,7 @@ absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, Node int p n))  =
         absorbed_node = applyElimRule @a c'' $ Node int (fst r1) (fst r2)
     in if (snd absorbed_node) == dc then (c, ((0,0), Unknown)) else absorbed_node
 
-absorb' (c@UCxt{un_dc_stack = dc@(_, EndInfNode dc') : fs }, a@(_, EndInfNode a'))
+absorb' (c@UCxt{un_dc_stack = dc@(_, EndClassNode dc') : fs }, a@(_, EndClassNode a'))
     | a == dc = (c, ((0,0), Unknown))
     | otherwise = absorb' @a (c{un_dc_stack = getNode c dc' : fs}, getNode c a')
 -- todo: need to add many traversal cases still (?), where inference happens.
@@ -122,13 +122,13 @@ instance DdF3 Dc where
 
 
     applyElimRule c d@(Node _ p n) = if p == n then (c, getNode c p) else insert c d
-    applyElimRule c (InfNodes _ (1,0) (0,0) (0,0)) = (c, ((1,0), Leaf True))
-    applyElimRule c (InfNodes _ (2,0) (0,0) (0,0)) = (c, ((2,0), Leaf False))
-    applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
-    applyElimRule c d@(InfNodes _ consq (0,0) (0,0)) = case getDd c consq of
-        EndInfNode d' -> (c, getNode c d') -- Elim InfNode and EndInfNode pair if they immediatly follow up on each other
+    applyElimRule c (ClassNode _ (1,0) (0,0) (0,0)) = (c, ((1,0), Leaf True))
+    applyElimRule c (ClassNode _ (2,0) (0,0) (0,0)) = (c, ((2,0), Leaf False))
+    applyElimRule c (ClassNode _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
+    applyElimRule c d@(ClassNode _ consq (0,0) (0,0)) = case getDd c consq of
+        EndClassNode d' -> (c, getNode c d') -- Elim InfNode and EndClassNode pair if they immediatly follow up on each other
         _ -> insert c d
-    applyElimRule c d@(EndInfNode r) = case getDd c r of
+    applyElimRule c d@(EndClassNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)
         Unknown -> (c, getNode c r)
         _ -> insert c d
@@ -136,7 +136,7 @@ instance DdF3 Dc where
 
     inferNode :: HasNodeLookup c => c -> Int -> Node -> (c, Node)
     inferNode c position (n_id, n) = insert c (Node position n_id n_id)
-    inferInfNode c position (n_id, n) = insert c $ InfNodes position n_id (0,0) (0,0)
+    inferInfNode c position (n_id, n) = insert c $ ClassNode position n_id (0,0) (0,0)
     -- | Dc catchup: No catchup needed for Dc (both branches are valid, no inference needed).
     catchup _ _ n _ = n
     to_str = "Dc"
@@ -156,13 +156,13 @@ instance DdF3 Pos where
 
     -- | Pos elimination rule: Eliminate nodes where neg branch is Unknown (only pos is valid).
     applyElimRule c (Node _ posC (0, 0)) = (c, getNode c posC)
-    applyElimRule c (InfNodes _ (0,0) (1,0) (0,0)) = (c, ((1,0), Leaf True))
-    applyElimRule c (InfNodes _ (0,0) (2,0) (0,0)) = (c, ((2,0), Leaf False))
-    applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
-    applyElimRule c d@(InfNodes _ (0,0) consq (0,0)) = case getDd c consq of
-        EndInfNode d' -> (c, getNode c d')
+    applyElimRule c (ClassNode _ (0,0) (1,0) (0,0)) = (c, ((1,0), Leaf True))
+    applyElimRule c (ClassNode _ (0,0) (2,0) (0,0)) = (c, ((2,0), Leaf False))
+    applyElimRule c (ClassNode _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
+    applyElimRule c d@(ClassNode _ (0,0) consq (0,0)) = case getDd c consq of
+        EndClassNode d' -> (c, getNode c d')
         _ -> insert c d
-    applyElimRule c d@(EndInfNode r) = case getDd c r of
+    applyElimRule c d@(EndClassNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)
         Unknown -> (c, getNode c r)
         _ -> insert c d
@@ -170,8 +170,8 @@ instance DdF3 Pos where
 
     -- | Create inferred Node at position: pos branch set, neg = Unknown (only pos valid).
     inferNode c position (n_id, n) = insert c (Node position n_id (0,0))
-    -- | Create inferred InfNodes at position: only pos branch set (dc/neg empty).
-    inferInfNode c position (n_id, n) = insert c $ InfNodes position (0,0) n_id (0,0)
+    -- | Create inferred ClassNode at position: only pos branch set (dc/neg empty).
+    inferInfNode c position (n_id, n) = insert c $ ClassNode position (0,0) n_id (0,0)
 
     -- | Pos catchup: When dc_stack lags behind main traversal, infer missing nodes.
     catchup s c n@(_, Node positionA _ _) idx
@@ -193,13 +193,13 @@ instance DdF3 Neg where
             (c'', (r_node_id, _)) = f c' s (getNode c' a_id) r
         in (c'', getDd c'' r_node_id)
     applyElimRule c (Node _ (0, 0) negC) = (c, getNode c negC)
-    applyElimRule c (InfNodes _ (0,0) (0,0) (1,0)) = (c, ((1,0), Leaf True))
-    applyElimRule c (InfNodes _ (0,0) (0,0) (2,0)) = (c, ((2,0), Leaf False))
-    applyElimRule c (InfNodes _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
-    applyElimRule c d@(InfNodes _ (0,0) (0,0) consq) = case getDd c consq of
-        EndInfNode d' -> (c, getNode c d')
+    applyElimRule c (ClassNode _ (0,0) (0,0) (1,0)) = (c, ((1,0), Leaf True))
+    applyElimRule c (ClassNode _ (0,0) (0,0) (2,0)) = (c, ((2,0), Leaf False))
+    applyElimRule c (ClassNode _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
+    applyElimRule c d@(ClassNode _ (0,0) (0,0) consq) = case getDd c consq of
+        EndClassNode d' -> (c, getNode c d')
         _ -> insert c d
-    applyElimRule c d@(EndInfNode r) = case getDd c r of
+    applyElimRule c d@(EndClassNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)
         Unknown -> (c, getNode c r)
         _ -> insert c d
@@ -207,7 +207,7 @@ instance DdF3 Neg where
 
 
     inferNode c position (n_id, n) = insert c (Node position (0,0) n_id)
-    inferInfNode c position (n_id, n) = insert c $ InfNodes position (0,0) (0,0) n_id
+    inferInfNode c position (n_id, n) = insert c $ ClassNode position (0,0) (0,0) n_id
 
     -- | Neg catchup: When dc_stack lags behind main traversal, infer missing nodes.
     catchup s c n@(_, Node positionA _ _) idx

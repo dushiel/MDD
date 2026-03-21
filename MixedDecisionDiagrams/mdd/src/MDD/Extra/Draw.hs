@@ -138,24 +138,24 @@ showTree' c f d@(nid, Node a l r) =
         res = ("("++ f a ++") " ++ col Dull Blue (show_id nid)) : concat (indentChildren [s1, s2])
     in withCache' c'' d res
 
-showTree' c f d@(nid, InfNodes a dc (0,0) (0,0)) = withCache' c' d $
+showTree' c f d@(nid, ClassNode a dc (0,0) (0,0)) = withCache' c' d $
     ("<"++ f a ++ "> dc " ++ col Dull Blue (show_id nid)) : "  ║  " :
     concat (indentInfChildren [s1])
     where
         (c', s1) = showTree' c f (getNode c dc)
-showTree' c f d@(nid, InfNodes a dc p (0, 0)) = withCache' c'' d $
+showTree' c f d@(nid, ClassNode a dc p (0, 0)) = withCache' c'' d $
     ("<"++ f a ++ "> dc, p " ++ col Dull Blue (show_id nid)) : "  ║  " :
     concat (indentInfChildren [s1, s2])
     where
         (c', s1) = showTree' c f (getNode c dc)
         (c'', s2) = showTree' c' f (getNode c' p)
-showTree' c f d@(nid, InfNodes a dc (0, 0) n) = withCache' c'' d $
+showTree' c f d@(nid, ClassNode a dc (0, 0) n) = withCache' c'' d $
     ("<"++ f a ++ "> dc, n " ++ col Dull Blue (show_id nid)) : "  ║  " :
     concat (indentInfChildren [s1, r_p1])
     where
         (c', s1) = showTree' c f (getNode c dc)
         (c'', r_p1) = showTree' c' f (getNode c' n)
-showTree' c f d@(nid, InfNodes a dc p n) = withCache' c''' d $
+showTree' c f d@(nid, ClassNode a dc p n) = withCache' c''' d $
     ("<"++ f a ++ "> dc, p, n " ++ col Dull Blue (show_id nid)) : "  ║  " :
     concat (indentInfChildren [s1, r_p, r_n])
     where
@@ -163,7 +163,7 @@ showTree' c f d@(nid, InfNodes a dc p n) = withCache' c''' d $
         (c'', s1) = showTree' c' f (getNode c' dc)
         (c''', r_n) = showTree' c'' f (getNode c'' n)
 
-showTree' c f d@(nid, EndInfNode cons) =
+showTree' c f d@(nid, EndClassNode cons) =
     let (c', s1) = showTree' c f (getNode c cons)
         res = ("<> " ++ col Dull Blue (show_id nid)) : "  ║  " : concat (indentInfChildren [s1])
     in withCache' c' d res
@@ -200,8 +200,8 @@ show_dd s _ (_, Leaf True)
   | otherwise = "[1]"
 show_dd s c (d_id, d) = case d of
   Node i rC lC -> show_i i "orange" ++ " (" ++ show_dd s c (getNode c rC) ++ ") (" ++ show_dd s c (getNode c lC) ++ ")"
-  InfNodes i dc p n -> show_i i "chill blue" ++ " <{dc: " ++ show_dd s c (getNode c dc) ++ "} {p: " ++ show_dd s c (getNode c p) ++ "} {n: " ++ show_dd s c (getNode c n) ++ "}"
-  EndInfNode child -> (if color s then colorize "chill blue" "<>" else "<>") ++ show_dd s c (getNode c child)
+  ClassNode i dc p n -> show_i i "chill blue" ++ " <{dc: " ++ show_dd s c (getNode c dc) ++ "} {p: " ++ show_dd s c (getNode c p) ++ "} {n: " ++ show_dd s c (getNode c n) ++ "}"
+  EndClassNode child -> (if color s then colorize "chill blue" "<>" else "<>") ++ show_dd s c (getNode c child)
   _ -> error "should not be possible"
   where
     show_i i clr = (if display_node_id's s then (if color s then colorize "blue" ("#" ++ show d_id) else ("#" ++ show d_id)) ++ " " else "")
