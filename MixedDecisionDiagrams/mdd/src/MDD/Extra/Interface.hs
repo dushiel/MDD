@@ -14,9 +14,7 @@ import Data.List
 import Data.Maybe (fromJust)
 import Data.List (foldl')
 
--- |======================================== Dd Manipulation operators interactive ==============================================
 
--- Constants for standard leaf nodes
 top_n, bot_n, unk_n :: Node
 top_n = (l_1, Leaf True)
 bot_n = (l_0, Leaf False)

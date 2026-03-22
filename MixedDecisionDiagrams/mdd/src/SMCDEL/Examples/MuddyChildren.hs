@@ -84,11 +84,10 @@ runMuddy n m = do
 -- * K-Logic Implementation
 -- =============================================================================
 
--- | Helper to create an explicit equivalence relation MDD for K-logic.
+
 makeEquivRel :: [Prp] -> [Prp] -> K.RelMDD
 makeEquivRel vocab obsVars = Tagged final_mdd
   where
-    -- Start with Top in the relational context
     topRel = top
     combine mdd_acc p =
         let
@@ -108,7 +107,7 @@ makeEquivRel vocab obsVars = Tagged final_mdd
 
     final_mdd = foldl combine topRel obsVars
 
--- | Initialize K-logic Muddy Children Scene
+
 mudScnInitK :: Int -> Int -> K.BelScene
 mudScnInitK n m = (K.BlS vocab law obs_pair, actual)
   where
@@ -119,13 +118,13 @@ mudScnInitK n m = (K.BlS vocab law obs_pair, actual)
         let
             my_obs_vars = sort $ delete (intToPrp vocabAsPropsDomain i) vocab
             rel = makeEquivRel vocab my_obs_vars
-            agentIndex = i - 1  -- Use 0-based indices: child 1 -> index 0, child 2 -> index 1, etc.
+            agentIndex = i - 1
         in (show i, agentIndex, rel)
     obs_list = map buildObs [1..n]
     obs_pair = K.joinRelations obs_list
 
 
--- | Run the simulation in GHCi using K-Logic structures.
+
 runMuddyK :: Int -> Int -> IO ()
 runMuddyK n m = do
   putStrLn $ "Initializing K-puzzle with " ++ show n ++ " children, " ++ show m ++ " muddy."

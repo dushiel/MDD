@@ -18,9 +18,7 @@ import MDD.Types hiding (Neg)
 import MDD.Extra.Interface
 import MDD.Extra.Draw (settings, show_dd, show_node, show_mdd)
 
--- =============================================================================
--- * Domain Definitions
--- =============================================================================
+-- * refactored with AI
 
 -- | Standard domain (0, 0) for state law propositions
 standardDomain :: [(Int, InfL)]
@@ -29,6 +27,10 @@ standardDomain = [(0, Dc1), (1, Dc1)]
 -- | Standard domain (0, 1) for event variables in transformers
 eventFactsDomain :: [(Int, InfL)]
 eventFactsDomain = [(0, Dc1), (0, Dc1)]
+
+-- | Event facts domain with Neg1 inner context, for constraining which events have occurred
+eventFactsDomainNeg :: [(Int, InfL)]
+eventFactsDomainNeg = [(0, Dc1), (0, Neg1)]
 
 -- | Index agent domain for observables
 agentDomain :: [(Int, InfL)]
@@ -45,86 +47,9 @@ cpDomain :: [(Int, InfL)]
 cpDomain = [(3, Dc1)]
 
 
-
-agentPos :: Int -> Position
-agentPos i = toOrdinal (intToPrp agentDomain i)
-
-agentVar :: Int -> MDD
-agentVar i = var' (Ll agentDomain i)
-
-joinRelations :: [(Agent, Int, RelMDD)] -> (M.Map Agent Int, RelMDD)
-joinRelations rels =
-  let
-    agentMap = M.fromList (map (\(agent, i, _) -> (agent, i)) rels)
-
-    -- Combine relations: (AgentVar_i -> R_i)
-    combine (agent, i, rel) =
-        let aVar = agentVar i
-            r = untag rel
-        in aVar .->. r
-
-    combinedRel = conSet (map combine rels)
-  in (agentMap, Tagged combinedRel)
-
--- =============================================================================
--- * Phase 1: Relational Infrastructure
--- =============================================================================
-
-mvP, cpP :: Prp -> Prp
-mvP (P (Ll ((_, inf):xs) i)) =
-    let (mvDomainNum, _) = head mvDomain
-    in P (Ll ((mvDomainNum, inf):xs) i)
-mvP p = error $ "mvP failed: Unexpected Prp structure: " ++ show p
-
-cpP (P (Ll ((_, inf):xs) i)) =
-    let (cpDomainNum, _) = head cpDomain
-    in P (Ll ((cpDomainNum, inf):xs) i)
-cpP p = error $ "cpP failed: Unexpected Prp structure: " ++ show p
-
-unmvcpP :: Prp -> Prp
-unmvcpP (P (Ll ((_, inf):xs) i)) =
-    let (standardDomainNum, _) = head standardDomain
-    in P (Ll ((standardDomainNum, inf):xs) i)
-unmvcpP p = error $ "unmvcpP failed: Unexpected Prp structure: " ++ show p
-
-mv, cp :: [Prp] -> [Prp]
-mv = map mvP
-cp = map cpP
-
 data Dubbel
 type RelMDD = Tagged Dubbel MDD
 
--- | Shifts a standard MDD (domain 0) to the Copy/Target domain (domain 2)
-cpMdd :: [Prp] -> MDD -> RelMDD
-cpMdd vocab mdd =
-    let relabeling = map (\p -> (toOrdinal p, toOrdinal (cpP p))) vocab
-    in Tagged $ relabelWith relabeling mdd
-
--- | Shifts a standard MDD (domain 0) to the Model/Source domain (domain 1)
-mvMdd :: [Prp] -> MDD -> RelMDD
-mvMdd vocab mdd =
-    let relabeling = map (\p -> (toOrdinal p, toOrdinal (mvP p))) vocab
-    in Tagged $ relabelWith relabeling mdd
-
--- | Shifts a Relational MDD (domains 1) back to standard domain (0)
-unmvMdd :: [Prp] -> RelMDD -> MDD
-unmvMdd vocab tagged_node =
-    let mdd = untag tagged_node
-        relabelingMv = map (\p -> (toOrdinal (mvP p), toOrdinal p)) vocab
-    in relabelWith relabelingMv mdd
-
--- | Shifts a Relational MDD (domains 2) back to standard domain (0)
-uncpMdd :: [Prp] -> RelMDD -> MDD
-uncpMdd vocab tagged_node =
-    let mdd = untag tagged_node
-        relabelingCp = map (\p -> (toOrdinal (cpP p), toOrdinal p)) vocab
-    in relabelWith relabelingCp mdd
-
--- =============================================================================
--- * Belief Structures
--- =============================================================================
-
--- Removed explicit Context field. It is now implicit in MDD and RelMDD.
 data BelStruct = BlS [Prp]              -- vocabulary
                      MDD                -- state law (on standard vars)
                      (M.Map Agent Int, RelMDD) -- observation laws
@@ -141,10 +66,6 @@ instance HasAgents BelStruct where
 
 instance Pointed BelStruct KnState
 instance Pointed BelStruct Node
-
--- =============================================================================
--- * Transformers and Events
--- =============================================================================
 
 data Transformer = Trf
   [Prp]                 -- addprops (new event variables)
@@ -165,12 +86,9 @@ instance HasPrecondition Transformer where
 instance HasPrecondition Event where
   preOf (Trf addprops addlaw _ _, facts) =
       -- Simplistic precondition check: Exists addprops (facts AND addlaw)
-      -- This ignores the state-dependent parts for now, simpler than BDD.
+      -- This ignores the state-dependent parts for now.. todo?
       Exists addprops (Conj [facts, addlaw])
 
--- =============================================================================
--- * Main Translation (Formula -> MDD)
--- =============================================================================
 
 mddOf :: BelStruct -> Form -> MDD
 mddOf _   Top           = top
@@ -207,30 +125,30 @@ mddOf bls@(BlS allprops lawmdd (ags, obdds)) (K i form) =
     ps_target = map toOrdinal (cp allprops)
     forall_res = forallSet ps_target imp_res
 
+    -- 7. Map Source variables (mv) back to Standard variables
     res = unmvMdd allprops (Tagged forall_res)
 
-  in
-    -- 7. Map Source variables (mv) back to Standard variables
-    debugTrace ("\n=== K Operator Debugging ===" ++
-               "\nAgent: " ++ show i ++
-               "\nFormula: " ++ show form ++
-               "\nAll props: " ++ show allprops ++
-               "\n\n--- 1. Law (cp) ---" ++
-               "\nLaw (original): " ++ show_mdd lawmdd ++
-               "\nLaw (shifted): " ++ show_mdd law_cp ++
-               "\n\n--- 2. Formula (cp) ---" ++
-               "\nFormula Node: " ++ show_mdd form_node ++
-               "\nFormula (shifted): " ++ show_mdd form_cp ++
-               "\n\n--- 3. Relation ---" ++
-               "\nOmega_i: " ++ show_mdd omega_i ++
-               "\n\n--- 5. Implication Chain ---" ++
-               "\nImp Res: " ++ show_mdd imp_res ++
-               "\n\n--- 6. Quantify Target ---" ++
-               "\nTarget Props: " ++ show ps_target ++
-               "\nForall Res: " ++ show_mdd forall_res ++
-               "\n\n--- 7. Final Result ---" ++
-               "\nFinal Result: " ++ show_mdd res ++ "\n")
-               res
+  in res
+    -- debugTrace ("\n=== K Operator Debugging ===" ++
+    --            "\nAgent: " ++ show i ++
+    --            "\nFormula: " ++ show form ++
+    --            "\nAll props: " ++ show allprops ++
+    --            "\n\n--- 1. Law (cp) ---" ++
+    --            "\nLaw (original): " ++ show_mdd lawmdd ++
+    --            "\nLaw (shifted): " ++ show_mdd law_cp ++
+    --            "\n\n--- 2. Formula (cp) ---" ++
+    --            "\nFormula Node: " ++ show_mdd form_node ++
+    --            "\nFormula (shifted): " ++ show_mdd form_cp ++
+    --            "\n\n--- 3. Relation ---" ++
+    --            "\nOmega_i: " ++ show_mdd omega_i ++
+    --            "\n\n--- 5. Implication Chain ---" ++
+    --            "\nImp Res: " ++ show_mdd imp_res ++
+    --            "\n\n--- 6. Quantify Target ---" ++
+    --            "\nTarget Props: " ++ show ps_target ++
+    --            "\nForall Res: " ++ show_mdd forall_res ++
+    --            "\n\n--- 7. Final Result ---" ++
+    --            "\nFinal Result: " ++ show_mdd res ++ "\n")
+
 
 mddOf bls (Kw i form) =
   let
@@ -280,7 +198,6 @@ mddOf bls (Ckw ags form) =
         ck_neg_form = mddOf bls (Ck ags (Neg form))
     in ck_form .+. ck_neg_form
 
--- Private Announcement (Legacy implementation using structural update helper)
 mddOf bls@(BlS props _ _) (Announce ags f g) =
   let
     domain = case props of
@@ -299,25 +216,21 @@ mddOf bls@(BlS props _ _) (AnnounceW ags f g) =
                 [] -> standardDomain
     p_k = freshp props domain
     k_pos = toOrdinal p_k
-
-    rhs_true = restrict k_pos True (mddOf (announce bls ags f) g)
-    rhs_false = restrict k_pos True (mddOf (announce bls ags (Neg f)) g)
   in
-    ite (mddOf bls f) rhs_true rhs_false
-
-mddOf _ (Dia _ _) = error "Dynamic operators not yet implemented for K_MDD"
+    ite (mddOf bls f)
+        (restrict k_pos True (mddOf (announce bls ags f) g))
+        (restrict k_pos True (mddOf (announce bls ags (Neg f)) g))
 
 mddOf bls (PubAnnounce form1 form2) =
     mddOf bls form1 .->. mddOf (bls `update` form1) form2
 
 mddOf bls (PubAnnounceW form1 form2) =
     ite (mddOf bls form1)
-        (mddOf (pubAnnounce bls form1) form2)
-        (mddOf (pubAnnounce bls (Neg form1)) form2)
+        (mddOf (bls `update` form1) form2)
+        (mddOf (bls `update` Neg form1) form2)
 
--- =============================================================================
--- * Semantics and Updates
--- =============================================================================
+mddOf _ (Dia _ _) = error "Dynamic operators not yet implemented for K_MDD"
+
 
 validViaMdd :: BelStruct -> Form -> Bool
 validViaMdd bls@(BlS _ lawmdd _) f =
@@ -341,8 +254,6 @@ instance Semantics BelStruct where
 instance Semantics BelScene where
   isTrue = evalViaMdd
 
-pubAnnounce :: BelStruct -> Form -> BelStruct
-pubAnnounce bls f = update bls f
 
 instance Update BelStruct Form where
   checks = []
@@ -355,19 +266,10 @@ instance Update BelStruct Form where
 instance Update BelScene Form where
   unsafeUpdate (kns,s) psi = (unsafeUpdate kns psi, s)
 
-
--- =============================================================================
--- * Event / Transformer Update Logic
--- =============================================================================
-
-getLevelL :: Prp -> LevelL
-getLevelL (P l) = l
-
 instance Update BelScene Event where
   unsafeUpdate (bls@(BlS props lawmdd (blsAgs, blsObs)), s) (trf, eventFacts) =
       let
           print_debug = False
-          -- Helper function for conditional tracing
           debugTrace msg val = if print_debug then trace msg val else val
 
           -- 1. Extract Transformer components (addprops are in eventFactsDomain (0,0), distinct from state vars (0,1))
@@ -401,11 +303,8 @@ instance Update BelScene Event where
             existSet (map toOrdinal eventFactsProps)
             (relabelWith copyRelOrd lawmdd)
 
-          -- (b) Event Law: mddOf the addlaw
-          -- Note: mddOf requires a BelStruct. We construct a temporary one
-          -- containing all necessary vars to parse the formula.
-          tempBls = BlS (props ++ addprops ++ copyChangeProps) top (M.empty, Tagged top)
-          law_event = mddOf tempBls addlaw -- todo use boolmddof to avoid tempbls
+          -- (b) Event Law
+          law_event = boolMddOf addlaw
 
           -- (c) Assignment Laws: p <-> psi(p_copy)
           -- For each p in changelaw, p takes the value of psi.
@@ -413,14 +312,14 @@ instance Update BelScene Event where
           assign_laws = map (\(p, psi) ->
               let
                   p_node = var' (getLevelL p)
-                  psi_node = mddOf tempBls psi -- psi might use props or addprops
+                  psi_node = boolMddOf psi
                   psi_shifted = relabelWith copyRelOrd psi_node -- shift psi to use copies
               in
                   p_node .<->. psi_shifted
             ) (M.toList changelaw)
 
           newLawNode' = conSet (law_shifted : law_event : assign_laws)
-          newLawNode =
+          newLawNode = newLawNode'
               -- debugTrace ("\n=== STEP 1: Prepare Transformer ===" ++
                     --  "\nOriginal props: " ++ show props ++
                     --  "\nAddprops: " ++ show addprops ++
@@ -447,12 +346,12 @@ instance Update BelScene Event where
                     --    (zip [1..] assign_laws)) ++
                     --  "\n\n=== STEP 3: Final New Law ===" ++
                     --  "\nNew law node: " ++ show_mdd newLawNode' ++ "\n")
-                     newLawNode'
+
 
           -- 4. Construct New Relations
           -- Agents distinguish 'addprops' via eventObs.
           -- Agents distinguish 'changeprops' (p) via their old relations on 'copyChangeProps' (p_copy).
-          -- We need to shift the old relations: mv(p) -> mv(p_copy), cp(p) -> cp(p_copy)
+          -- shift the old relations: mv(p) -> mv(p_copy), cp(p) -> cp(p_copy)
 
           copyRelMV = map (\(p,q) -> (toOrdinal (mvP p), toOrdinal (mvP q))) copyRel
           copyRelCP = map (\(p,q) -> (toOrdinal (cpP p), toOrdinal (cpP q))) copyRel
@@ -471,7 +370,7 @@ instance Update BelScene Event where
 
                   aVar = agentVar i
 
-              in
+              in aVar .->. newRel
                 -- debugTrace ("\n--- updateRel for Agent: " ++ show agent ++
                 --                  " (index: " ++ show i ++ ") ---" ++
                 --                  "\nAgent position: " ++ show (agentPos i) ++
@@ -482,17 +381,17 @@ instance Update BelScene Event where
                 --                  "\n\nCombined new relation (old .*. event): " ++ show_mdd newRel ++
                 --                  "\nAgent variable: " ++ show_mdd aVar ++
                 --                  "\nFinal result (aVar .->. newRel): " ++ show_mdd (aVar .->. newRel) ++ "\n")
-                                 aVar .->. newRel
+
 
           newRelMDD = conSet (map updateRel (M.keys blsAgs))
-          newObs =
+          newObs = (blsAgs, Tagged newRelMDD)
             -- debugTrace ("\n=== STEP 4: Construct New Relations ===" ++
             --          "\nCopy relabeling MV: " ++ show copyRelMV ++
             --          "\nCopy relabeling CP: " ++ show copyRelCP ++
             --          "\nFull copy relabeling: " ++ show fullCopyRelOrd ++
             --          "\nNew observations (combined): " ++
             --            (show_mdd newRelMDD))
-                     (blsAgs, Tagged newRelMDD)
+
 
           -- 5. Construct New State
           -- s is the old state (MDD).
@@ -503,24 +402,24 @@ instance Update BelScene Event where
           eventFactsProps = propsInForm eventFacts
           propsToQuantify = changeprops ++ eventFactsProps
           r' = existSet (map toOrdinal propsToQuantify) r
-          s_copy =
-            debugTrace ("\n=== STEP 5: Construct New State ===" ++
-            "\nOriginal state s: " ++ show_mdd s ++
-            "\n\n=== STEP 5a: Relabel State to Copies ===" ++
-            "\nRelabeling with: " ++ show copyRelOrd ++
-            "\nBefore quantification (r): " ++ show_mdd r ++
-            "\nQuantifying out: " ++ show (map toOrdinal propsToQuantify) ++
-            "\nAfter quantification (r'): " ++ show_mdd r' ++ "\n")
-            r'
+          s_copy = r'
+            -- debugTrace ("\n=== STEP 5: Construct New State ===" ++
+            -- "\nOriginal state s: " ++ show_mdd s ++
+            -- "\n\n=== STEP 5a: Relabel State to Copies ===" ++
+            -- "\nRelabeling with: " ++ show copyRelOrd ++
+            -- "\nBefore quantification (r): " ++ show_mdd r ++
+            -- "\nQuantifying out: " ++ show (map toOrdinal propsToQuantify) ++
+            -- "\nAfter quantification (r'): " ++ show_mdd r' ++ "\n")
+
 
           -- (b) Intersect with assignments and event facts
           -- This effectively calculates the new values of p based on psi(p_copy) and s(p_copy)
           -- and sets addprops based on eventFacts.
-          factsNode = mddOf tempBls eventFacts
+          factsNode = boolMddOf eventFacts
 
           assign_laws_conj = conSet assign_laws
 
-          newStateNode =
+          newStateNode = (conSet [s_copy, factsNode, assign_laws_conj])
             -- debugTrace ("\n=== STEP 5b: Event Facts Node ===" ++
             --          "\nEvent facts formula: " ++ show eventFacts ++
             --          "\nFacts node: " ++ show_mdd factsNode ++
@@ -531,21 +430,114 @@ instance Update BelScene Event where
             --          "\n  factsNode: " ++ show_mdd factsNode ++
             --          "\n  assign_laws_conj: " ++ show_mdd assign_laws_conj ++
             --          "\nFinal new state: " ++ show_mdd (conSet [s_copy, factsNode, assign_laws_conj]) ++ "\n")
-            (conSet [s_copy, factsNode, assign_laws_conj])
+
 
           -- 6. Final Vocabulary
-          newProps =
+          newProps = (props ++ addprops ++ copyChangeProps)
             -- debugTrace ("\n=== STEP 6: Final Vocabulary ===" ++
             --          "\nOriginal props: " ++ show props ++
             --          "\nAdded props: " ++ show addprops ++
             --          "\nCopy change props: " ++ show copyChangeProps ++
             --          "\nFinal new props: " ++ show (props ++ addprops ++ copyChangeProps) ++ "\n")
-                     (props ++ addprops ++ copyChangeProps)
+
 
       in (BlS newProps newLawNode newObs, newStateNode)
 
 
--- Simple announce wrapper
+getLevelL :: Prp -> LevelL
+getLevelL (P l) = l
+
+agentPos :: Int -> Position
+agentPos i = toOrdinal (intToPrp agentDomain i)
+
+agentVar :: Int -> MDD
+agentVar i = var' (Ll agentDomain i)
+
+joinRelations :: [(Agent, Int, RelMDD)] -> (M.Map Agent Int, RelMDD)
+joinRelations rels =
+  let
+    agentMap = M.fromList (map (\(agent, i, _) -> (agent, i)) rels)
+
+    -- Combine relations: (AgentVar_i -> R_i)
+    combine (agent, i, rel) =
+        let aVar = agentVar i
+            r = untag rel
+        in aVar .->. r
+
+    combinedRel = conSet (map combine rels)
+  in (agentMap, Tagged combinedRel)
+
+mvP, cpP :: Prp -> Prp
+mvP (P (Ll ((_, inf):xs) i)) =
+    let (mvDomainNum, _) = head mvDomain
+    in P (Ll ((mvDomainNum, inf):xs) i)
+mvP p = error $ "mvP failed: Unexpected Prp structure: " ++ show p
+
+cpP (P (Ll ((_, inf):xs) i)) =
+    let (cpDomainNum, _) = head cpDomain
+    in P (Ll ((cpDomainNum, inf):xs) i)
+cpP p = error $ "cpP failed: Unexpected Prp structure: " ++ show p
+
+unmvcpP :: Prp -> Prp
+unmvcpP (P (Ll ((_, inf):xs) i)) =
+    let (standardDomainNum, _) = head standardDomain
+    in P (Ll ((standardDomainNum, inf):xs) i)
+unmvcpP p = error $ "unmvcpP failed: Unexpected Prp structure: " ++ show p
+
+mv, cp :: [Prp] -> [Prp]
+mv = map mvP
+cp = map cpP
+
+-- | Shifts a standard MDD (domain 0) to the Copy/Target domain (domain 2)
+cpMdd :: [Prp] -> MDD -> RelMDD
+cpMdd vocab mdd =
+    let relabeling = map (\p -> (toOrdinal p, toOrdinal (cpP p))) vocab
+    in Tagged $ relabelWith relabeling mdd
+
+-- | Shifts a standard MDD (domain 0) to the Model/Source domain (domain 1)
+mvMdd :: [Prp] -> MDD -> RelMDD
+mvMdd vocab mdd =
+    let relabeling = map (\p -> (toOrdinal p, toOrdinal (mvP p))) vocab
+    in Tagged $ relabelWith relabeling mdd
+
+-- | Shifts a Relational MDD (domains 1) back to standard domain (0)
+unmvMdd :: [Prp] -> RelMDD -> MDD
+unmvMdd vocab tagged_node =
+    let mdd = untag tagged_node
+        relabelingMv = map (\p -> (toOrdinal (mvP p), toOrdinal p)) vocab
+    in relabelWith relabelingMv mdd
+
+-- | Shifts a Relational MDD (domains 2) back to standard domain (0)
+uncpMdd :: [Prp] -> RelMDD -> MDD
+uncpMdd vocab tagged_node =
+    let mdd = untag tagged_node
+        relabelingCp = map (\p -> (toOrdinal (cpP p), toOrdinal p)) vocab
+    in relabelWith relabelingCp mdd
+
+totalRelMdd :: RelMDD
+totalRelMdd = Tagged top
+
+-- Helper for Identity Relation (Distinguishes p)
+-- Relation: mv(p) <-> cp(p)
+allsameMdd :: [Prp] -> RelMDD
+allsameMdd ps =
+    let
+        mddList = map (\p ->
+            let
+                mv_node = boolMddOf (PrpF $ mvP p)
+                cp_node = boolMddOf (PrpF $ cpP p)
+            in mv_node .<->. cp_node
+            ) ps
+    in Tagged (conSet mddList)
+
+-- Helper for Copy Relation (Copies p's value)
+cpRelMdd :: [Prp] -> Form -> RelMDD
+cpRelMdd vocab f =
+    let
+        node = boolMddOf f
+        rel = untag $ cpMdd vocab node
+    in Tagged rel
+
 announce :: BelStruct -> [Agent] -> Form -> BelStruct
 announce bls@(BlS props lawmdd (ags, obdds)) target_ags psi =
   let

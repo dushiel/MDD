@@ -14,6 +14,8 @@ import MDD.Extra.Interface
 import MDD.Extra.Draw (settings, show_dd)
 import Debug.Trace (trace, traceShow)
 
+-- * build with AI
+
 -- | Knowledge structures using a Mixed Decision Diagram.
 data KnowStruct =
   KnS [Prp] MDD [(Agent,[Prp])]

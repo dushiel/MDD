@@ -30,7 +30,7 @@ data Form
 ddOf :: NodeLookup -> Form -> MDD
 ddOf nl Top = MDD (nl, top_n)
 ddOf nl Bot = MDD (nl, bot_n)
--- ddOf c Unknown = (c, unk)
+-- ddOf nl Unknown = (nl, unk)
 ddOf nl (Negate a) = (-.) (ddOf nl a)
 ddOf nl (And a b) = (ddOf nl a) .*. (ddOf nl b)
 ddOf nl (Or a b) = (ddOf nl a) .+. (ddOf nl b)

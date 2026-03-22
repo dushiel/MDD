@@ -22,6 +22,7 @@ import Control.DeepSeq (deepseq)
 -- Provides tree visualization, string representation, and debug output utilities.
 
 -- * Debugging and Drawing Configuration
+-- * refactored with AI
 
 data Show_setting = ShowSetting {
   color :: Bool,

@@ -2,73 +2,25 @@ module SMCDEL.Examples.SallyAnne where
 
 import Data.Map.Strict (fromList)
 import qualified Data.Map.Strict as M
-import Data.Tagged (Tagged(..), untag)
+import Data.Tagged (untag)
 
 import SMCDEL.Internal.Language
 import SMCDEL.Symbolic.K_MDD
 import SMCDEL.Symbolic.S5_MDD (boolMddOf)
 import MDD.Types (InfL(..), Path(..), MDD)
 import MDD.Extra.Interface
-import MDD.Extra.Draw (settings, show_dd)
 import MDD.Extra.Dot (generateGraphImage)
 import System.Directory (createDirectoryIfMissing, setCurrentDirectory, getCurrentDirectory, renameFile)
 import System.FilePath ((</>))
 import Control.Monad (when)
-import Debug.Trace (trace)
 
--- =============================================================================
--- * Setup
--- =============================================================================
 
--- Vocabulary
+-- Vocabulary:
 -- Using domains from K_MDD.hs: standardDomain for state law props, eventFactsDomain for events
 pp, tt, qq :: Prp
 pp = intToPrp standardDomain 1 -- Sally Present
 tt = intToPrp standardDomain 2 -- Marble in Basket
 qq = intToPrp eventFactsDomain 3 -- Event Variable (for Anne moves marble)
-
--- Helper for Total Relation (Ignorance)
-totalRelMdd :: RelMDD
-totalRelMdd = Tagged top
-
--- Helper for Identity Relation (Distinguishes p)
--- Relation: mv(p) <-> cp(p)
-allsameMdd :: [Prp] -> RelMDD
-allsameMdd ps =
-    let
-        mddList = map (\p ->
-            let
-                -- Create temporary BelStruct for single variable
-                tempBls = BlS [p] top (M.empty, Tagged top)
-                mv_node = mddOf tempBls (PrpF $ mvP p)
-                cp_node = mddOf tempBls (PrpF $ cpP p)
-            in mv_node .<->. cp_node
-            ) ps
-    in Tagged (conSet mddList)
-
--- Helper for Copy Relation (Copies p's value)
-cpRelMdd :: Form -> RelMDD
-cpRelMdd f =
-    let
-        -- Evaluate f in Target (cp)
-        -- To do this cleanly without a BelStruct, we assume f is simple BDD
-        -- But here we can just construct it.
-        -- f is likely simple logic.
-        -- If f is "Neg q", we want Rel = (-. cp_q)
-        -- We construct a temporary structure to parse f
-        tempStruct = BlS [pp,tt,qq] top (M.empty, Tagged top)
-        node = mddOf tempStruct f
-        -- This node is on standard vars. We need to shift to cp.
-        -- K_MDD.cpMdd does this.
-        rel = untag $ cpMdd [pp,tt,qq] node
-    in Tagged rel
-
--- =============================================================================
--- * Initial State
--- =============================================================================
-
-eventFactsDomain2 :: [(Int, InfL)]
-eventFactsDomain2 = [(0, Dc1), (0, Neg1)]
 
 sallyInit :: BelScene
 sallyInit = (BlS vocab law obs, actual)
@@ -76,16 +28,13 @@ sallyInit = (BlS vocab law obs, actual)
     vocab  = [pp, tt]
     -- Law: It is publicly known that Sally is present (pp) and Marble NOT in basket (She hasn't put it in yet) and that no special events have taken place.
     law    = boolMddOf (Conj [PrpF pp, Neg (PrpF tt)
-        , PrpF $ intToPrp eventFactsDomain2 0
+        , PrpF $ intToPrp eventFactsDomainNeg 0
         ])
-    -- Agent indices: "Anne" -> 2, "Sally" -> 1
+    -- Agent indices:
     obs    = joinRelations [ ("Anne", 2, totalRelMdd), ("Sally", 1, totalRelMdd) ]
     -- Actual: pp, not tt (inferred in neg1, domain [0,0]), not any event (neg1 context in domain [0,1])
     actual = var (P' [(0, Neg1, P' [(1, Neg1, P'' [1]), (0, Neg1, P'' [0])])])
 
--- =============================================================================
--- * Actions
--- =============================================================================
 
 -- 1. Sally puts marble in basket
 -- Action: tt := Top. Both see it.
@@ -94,12 +43,9 @@ sallyPutsMarble =
     let
         trf = Trf
                 [] -- No new event vars needed (public assignment)
-                Top -- Law
+                Top
                 (fromList [(tt, Top)]) -- Assignment: tt becomes True
                 (joinRelations [("Anne", 2, totalRelMdd), ("Sally", 1, totalRelMdd)]) -- Everyone sees everything (Identity on event)
-                -- Note: totalRelMdd is just Top.
-                -- Since there are no addprops, relations over empty set are just Top.
-                -- Agent indices must match sallyInit: "Anne" -> 2, "Sally" -> 1
     in (trf, Top)
 
 -- 2. Sally leaves
@@ -112,40 +58,30 @@ sallyLeaves =
                 Top
                 (fromList [(pp, Bot)]) -- Assignment: pp becomes False
                 (joinRelations [("Anne", 2, totalRelMdd), ("Sally", 1, totalRelMdd)])
-                -- Agent indices must match sallyInit: "Anne" -> 2, "Sally" -> 1
     in (trf, Top)
 
 -- 3. Anne puts marble in box (Moves it)
--- This is the tricky one.
 -- Event q: Marble moves (tt := False). Anne sees q. Sally sees "not q".
 -- Event not q: Nothing happens.
--- We model this with 'qq'.
 anneMovesMarble :: Event
 anneMovesMarble =
     let
-        -- Assignments depend on qq
-        -- if qq then tt := Bot (Moved)
-        -- if not qq then tt := tt (No change)
-        -- Logic: tt <-> (not qq AND tt_old) OR (qq AND False)
-        -- Simplified: tt := (not qq -> tt) & (qq -> Bot)  (From BDD version)
         assignTT = Conj [Impl (Neg (PrpF qq)) (PrpF tt), Impl (PrpF qq) Bot]
 
         trf = Trf
                 [qq] -- New event var
-                Top  -- Law
+                Top
                 (M.fromList [(tt, assignTT)])
                 (joinRelations [
                     ("Anne", 2, allsameMdd [qq]), -- Anne distinguishes q (sees if it moved)
-                    ("Sally", 1, cpRelMdd (Neg (PrpF qq))) -- Sally only considers worlds where q is False (didn't move)
+                    ("Sally", 1, cpRelMdd [pp,tt,qq] (Neg (PrpF qq))) -- Sally only considers worlds where q is False (didn't move)
                 ])
-                -- Agent indices must match sallyInit: "Anne" -> 2, "Sally" -> 1
 
         -- The actual event that happens is q (marble moved)
         facts = PrpF qq
     in (trf, facts)
 
 -- 4. Sally comes back
--- Action: pp := Top. Both see it.
 sallyReturns :: Event
 sallyReturns =
     let
@@ -154,13 +90,9 @@ sallyReturns =
                 Top
                 (fromList [(pp, Top)])
                 (joinRelations [("Anne", 2, totalRelMdd), ("Sally", 1, totalRelMdd)])
-                -- Agent indices must match sallyInit: "Anne" -> 2, "Sally" -> 1
     in (trf, Top)
 
 
--- =============================================================================
--- * Execution
--- =============================================================================
 
 runSallyAnne :: Bool -> IO ()
 runSallyAnne generateOutput = do
@@ -220,7 +152,6 @@ printStatus folderName scn@(bls@(BlS _ law obs), actual) = do
     putStrLn $ "    Status: Sally Present=" ++ show p ++ ", Marble in Basket=" ++ show t
 
     -- Create output folder and scene folder, then generate images
-    originalDir <- getCurrentDirectory
     createDirectoryIfMissing True "output"
     createDirectoryIfMissing True ("output" </> folderName)
     setCurrentDirectory ("output" </> folderName)
@@ -243,6 +174,3 @@ printStatus folderName scn@(bls@(BlS _ law obs), actual) = do
 
     (success3, msg3) <- generateGraphImageNamed (untag (snd obs)) "obs_law_total"
     when success3 $ putStrLn $ "    " ++ msg3
-
-    -- Restore original directory
-    setCurrentDirectory originalDir

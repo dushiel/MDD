@@ -18,6 +18,8 @@ import System.FilePath ((</>))
 import System.Directory (getCurrentDirectory)
 import Control.Monad (when, guard)
 
+-- * Build with AI
+
 -- | Build namingMap entries for a domain at a given position prefix.
 --   e.g. domainNaming [3,1,2] colors  =>  [([3,1,2,1], "red"), ([3,1,2,7], "brown"), ...]
 domainNaming :: [Int] -> Map.Map String Int -> Map.Map [Int] String

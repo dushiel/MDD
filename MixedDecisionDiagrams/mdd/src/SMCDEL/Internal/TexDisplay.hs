@@ -15,6 +15,8 @@ import Data.GraphViz.Types.Generalised
 import Data.GraphViz.Types.Monadic
 import Data.Time.Clock.POSIX
 
+-- * Under construction!
+
 begintab, endtab, newline :: String
 begintab  = "\\\\begin{tabular}{c}"
 endtab    = "\\\\end{tabular}"
