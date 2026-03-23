@@ -269,20 +269,14 @@ current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next
 - clean up type signatures
 - cull the unknowns out of the dc_stack
 - more efficient ifte implementation
-- clean up test suit
 - write about why absorb does not need the other inference cases?
 - dc catchup?
 - tests for returning to ZDD inference, catchup in
 - more efficient pop stack
 - naive relabel (just change the numbers, do have to reindex in hashmap after traversal)
 
-- more complete test suit
-- fuller example
-- add index dd to K
-- nodes on the level of ClassNode
 - fun parser
 - hashing with level
-- refactor out the json logging
 
 
 - nasty bug:
@@ -290,5 +284,4 @@ current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next
         applyInfA @Dc c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc```
 
 - other potential bugs:
-- make a script with top dc in neg context, is it handeled correctly?
 - does dc stack traversal handle endClassNode (catchup) correctly? do they have their own stack?
