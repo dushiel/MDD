@@ -54,7 +54,7 @@ settings = ShowSetting {
             ,   display_leaf_cases = True
             ,   display_end_infs = True
             ,   display_dc_traversal = False
-
+            -- Traversal trace: keep False for cabal test; True only while debugging (see .cursor/skills/debug-mdd-test).
             ,   debug_on = False
 
             ,   debug_open = True
@@ -190,9 +190,9 @@ show_context c = show (getLookup c)
 show_dd :: (HasNodeLookup c) => Show_setting -> c -> Node -> String
 show_dd s@ShowSetting{display_context=True} c d = show_context c ++ show_dd s{display_context=False} c d
 show_dd ShowSetting{draw_tree=True} _ _ = "Tree drawing requested but logic not linked here."
-show_dd s _ (_, Unknown) = ""
---   | color s = "[" ++ colorize "purple" "." ++ "]"
---   | otherwise = "[.]"
+show_dd s _ (_, Unknown) -- = "[.]"
+  | color s = "[" ++ colorize "purple" "." ++ "]"
+  | otherwise = "[.]"
 show_dd s _ (_, Leaf False)
   | color s = "[" ++ colorize "soft red" "0" ++ "]"
   | otherwise = "[0]"

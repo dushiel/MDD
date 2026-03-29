@@ -18,6 +18,8 @@ tests = testGroup "Unary Operations"
   , restrictNegTests
   , restrictPosTests
   , shannonExpansionTests
+  , restrictNestedTests
+  , shannonNestedTests
   ]
 
 -- ============================================================
@@ -217,4 +219,108 @@ shannonExpansionTests = testGroup "Shannon Expansion"
       let x = ddOf t_c (Or (Var p2) (Var p3))
           v = ddOf t_c (Var dc2)
       in ((v .*. restrict [1, 2] True x) .+. ((-.) v .*. restrict [1, 2] False x)) @?= x
+  ]
+
+-- ============================================================
+-- Restrict on nested variables
+-- ============================================================
+--
+-- For nested variables, the position includes the full class path.
+-- dcdc2 (Dc1 outer class 1, Dc1 inner class 1, position 2)
+-- is addressed as [1, 1, 2].
+
+restrictNestedTests :: TestTree
+restrictNestedTests = testGroup "Restrict (Nested)"
+  [ testCase "restrict True vs False differ for nested Dc variable" $
+      let x = ddOf t_c (Var dcdc2)
+      in restrict [1, 1, 2] True x /= restrict [1, 1, 2] False x
+           @? "restricting dcdc2 to True vs False should differ"
+
+  , testCase "restrict True AND restrict False on nested Dc gives bot" $
+      let x = ddOf t_c (Var dcdc2)
+      in (restrict [1, 1, 2] True x .*. restrict [1, 1, 2] False x) @?= bot
+
+  , testCase "restrict on nested top == top" $
+      restrict [1, 1, 2] True top @?= top
+
+  , testCase "restrict on nested bot == bot" $
+      restrict [1, 1, 2] True bot @?= bot
+
+  , testCase "restrict True vs False differ for nested Neg variable" $
+      let x = ddOf t_c (Var nn2)
+      in restrict [1, 1, 2] True x /= restrict [1, 1, 2] False x
+           @? "restricting nn2 to True vs False should differ"
+
+  , testCase "restrict pos True on nn2 is not bot (inner item present)" $
+      let x = ddOf t_c (Var nn2)
+      in restrict [1, 1, 2] True x /= bot
+           @? "restricting nn2 to inner pos 2 True should not be bot"
+
+  , testCase "restrict pos False on nn2 gives bot (inner item removed, nothing left)" $
+      let x = ddOf t_c (Var nn2)
+      in restrict [1, 1, 2] False x @?= bot
+
+  , testCase "restrict True AND restrict False on nested Neg gives bot" $
+      let x = ddOf t_c (Var nn2)
+      in (restrict [1, 1, 2] True x .*. restrict [1, 1, 2] False x) @?= bot
+
+  , testCase "restrict on mixed nested: restrict[1,1,1] True on dcn1 is not bot" $
+      let x = ddOf t_c (Var dcn1)
+      in restrict [1, 1, 1] True x /= bot
+           @? "restricting dcn1 inner pos 1 True should not be bot"
+
+  , testCase "restrict on mixed nested: restrict[1,1,1] False on dcn1 gives bot" $
+      let x = ddOf t_c (Var dcn1)
+      in restrict [1, 1, 1] False x @?= bot
+
+  , testCase "restrict on compound nested: restrict[1,1,2] True on (dcdc2 OR dcdc3) is not bot" $
+      let x = ddOf t_c (Or (Var dcdc2) (Var dcdc3))
+      in restrict [1, 1, 2] True x /= bot
+           @? "restricting (dcdc2 OR dcdc3) inner pos 2 True should not be bot"
+
+  , testCase "restrict on compound nested: restrict[1,1,2] False on (dcdc2 OR dcdc3) is not bot" $
+      let x = ddOf t_c (Or (Var dcdc2) (Var dcdc3))
+      in restrict [1, 1, 2] False x /= bot
+           @? "restricting (dcdc2 OR dcdc3) inner pos 2 False should not be bot (dcdc3 remains)"
+  ]
+
+-- ============================================================
+-- Shannon expansion on nested variables
+-- ============================================================
+--
+-- Shannon: (v AND restrict pos True x) OR (NOT v AND restrict pos False x) == x
+-- For nested variables, v is a Dc variable at the same nested position,
+-- and the restrict position matches.
+
+shannonNestedTests :: TestTree
+shannonNestedTests = testGroup "Shannon Expansion (Nested)"
+  [ testCase "Shannon on dcdc2 (nested Dc)" $
+      let x = ddOf t_c (Var dcdc2)
+          v = ddOf t_c (Var dcdc2)
+      in ((v .*. restrict [1, 1, 2] True x) .+. ((-.) v .*. restrict [1, 1, 2] False x)) @?= x
+
+  , testCase "Shannon on nn2 (nested Neg)" $
+      let x = ddOf t_c (Var nn2)
+          v = ddOf t_c (Var dcdc2)
+      in ((v .*. restrict [1, 1, 2] True x) .+. ((-.) v .*. restrict [1, 1, 2] False x)) @?= x
+
+  , testCase "Shannon on compound nested Dc: dcdc2 AND dcdc3" $
+      let x = ddOf t_c (And (Var dcdc2) (Var dcdc3))
+          v = ddOf t_c (Var dcdc2)
+      in ((v .*. restrict [1, 1, 2] True x) .+. ((-.) v .*. restrict [1, 1, 2] False x)) @?= x
+
+  , testCase "Shannon on compound nested Dc: dcdc2 OR dcdc3" $
+      let x = ddOf t_c (Or (Var dcdc2) (Var dcdc3))
+          v = ddOf t_c (Var dcdc2)
+      in ((v .*. restrict [1, 1, 2] True x) .+. ((-.) v .*. restrict [1, 1, 2] False x)) @?= x
+
+  , testCase "Shannon on mixed nested: dcn1 OR dcn23" $
+      let x = ddOf t_c (Or (Var dcn1) (Var dcn23))
+          v = ddOf t_c (Var dcdc2)
+      in ((v .*. restrict [1, 1, 2] True x) .+. ((-.) v .*. restrict [1, 1, 2] False x)) @?= x
+
+  , testCase "Shannon on compound nested Neg: nn2 OR nn3" $
+      let x = ddOf t_c (Or (Var nn2) (Var nn3))
+          v = ddOf t_c (Var dcdc2)
+      in ((v .*. restrict [1, 1, 2] True x) .+. ((-.) v .*. restrict [1, 1, 2] False x)) @?= x
   ]

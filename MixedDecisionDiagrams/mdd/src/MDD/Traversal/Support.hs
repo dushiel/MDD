@@ -24,11 +24,7 @@ import Debug.Trace (trace)
 
 -- | Elimination and Inference rule typeclass (DdF3).
 -- |
--- | This typeclass defines the inference and elimination rules for the three inference types:
--- |   - Dc (Don't-care): Nodes where both positive and negative evaluations lead to the same child are eliminated
--- |   - Pos (Positive literal): Nodes where only the positive evaluation is valid (negative leads to Unknown) are eliminated
--- |   - Neg (Negative literal): Nodes where only the negative evaluation is valid (positive leads to Unknown) are eliminated
--- |
+-- | This typeclass defines the inference and elimination rules for the three inference types: Dc, Neg, Pos
 -- | Each instance implements:
 -- |   - infer(Inf)NodeA/infer(Inf)NodeB: Create inferred nodes when one argument is missing a variable at the lowest position of the two
 -- |   - applyElimRule: Apply the elimination rule to remove redundant nodes
@@ -43,7 +39,7 @@ class DdF3 (a :: Inf) where
 
     applyElimRule :: (HasNodeLookup c) => c -> Dd -> (c, Node)
     inferNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
-    inferInfNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
+    inferClassNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
     catchup :: (HasNodeLookup c) => String -> c -> Node -> Int -> Node
     to_str :: String
 
@@ -54,7 +50,6 @@ applyElimRule' (c, d) = applyElimRule @a c d
 
 -- * Redundancy Elimination (absorb)
 
-
 -- | Absorb is a unary MDD manipulation
 -- | The absorb function maintains canonical representation by eliminating redundant branches.
 
@@ -62,12 +57,9 @@ applyElimRule' (c, d) = applyElimRule @a c d
 absorb :: forall a. (DdF3 a) => (BiOpContext, Node) -> (BiOpContext, Node)
 absorb (c, n) =
     let
-        -- Convert binary context to unary context for absorb operation
         unaryCtx = binaryToUnaryContext c
-        -- Call unary absorb (using Dc inference type since we're comparing with continuous background)
         (unaryCtx', n') = absorb_unary @a (unaryCtx, n)
     in
-        -- Convert back to binary context, preserving original state
         (unaryToBinaryContext unaryCtx' c, n')
 
 
@@ -76,7 +68,7 @@ absorb_unary :: forall a. (DdF3 a) => (UnOpContext, Node) -> (UnOpContext, Node)
 absorb_unary (c, n) = absorb' @a (c, n)
 
 absorb' :: forall a. (DdF3 a) => (UnOpContext, Node) -> (UnOpContext, Node)
--- | given a dcR and a pos or ng results, sets sub-paths in the local inf-domain which agree with the dcR to unknown ("absorbing them")
+-- | given a dcR and a pos or neg results, sets sub-paths in the local class-domain which agree with the dcR to unknown ("absorbing them")
 absorb' (c@UCxt{un_dc_stack = dc@(_, Unknown) : fs }, a) = absorb' @a (c{un_dc_stack = fs}, a) -- resolve Unknown in dc traversal to a previous layer
 absorb' (c@UCxt{un_dc_stack = dc : fs }, a@(_, Unknown)) = (c, a)
 absorb' (c@UCxt{un_dc_stack = dc : fs }, a@(_, Leaf _))
@@ -90,6 +82,24 @@ absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, ClassNode int d p n))
             (c''', r3) = absorb' @a (c'', getNode c n)
             absorbed_inf = applyElimRule @a c''' $ ClassNode int (fst r1) (fst r2) (fst r3)
         in if (snd absorbed_inf) == dc then (c, ((0,0), Unknown)) else absorbed_inf
+absorb' (c@UCxt{un_dc_stack = dc@(_, Node dc_pos dc_p dc_n)  : fs }, a@(_, Node int p n))
+    | a == dc = (c, ((0,0), Unknown))
+    | dc_pos > int =
+        let dc_child = case to_str @a of
+                "Neg" -> getNode c dc_n
+                "Pos" -> getNode c dc_p
+                _     -> getNode c dc_p
+        in absorb' @a (c{un_dc_stack = dc_child : fs}, a)
+    | dc_pos == int =
+        let (c', r1) = absorb' @a (c{un_dc_stack = getNode c dc_p : fs}, getNode c p)
+            (c'', r2) = absorb' @a (c'{un_dc_stack = getNode c dc_n : fs}, getNode c n)
+            absorbed_node = applyElimRule @a c''{un_dc_stack = dc : fs} $ Node int (fst r1) (fst r2)
+        in if (snd absorbed_node) == dc then (c, ((0,0), Unknown)) else absorbed_node
+    | otherwise =
+        let (c', r1) = absorb' @a (c, getNode c p)
+            (c'', r2) = absorb' @a (c', getNode c n)
+            absorbed_node = applyElimRule @a c'' $ Node int (fst r1) (fst r2)
+        in if (snd absorbed_node) == dc then (c, ((0,0), Unknown)) else absorbed_node
 absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, Node int p n))  =
     let (c', r1) = absorb' @a (c, getNode c p)
         (c'', r2) = absorb' @a (c', getNode c n)
@@ -130,7 +140,7 @@ instance DdF3 Dc where
     applyElimRule c (ClassNode _ (2,0) (0,0) (0,0)) = (c, ((2,0), Leaf False))
     applyElimRule c (ClassNode _ (0,0) (0,0) (0,0)) = (c, ((0,0), Unknown))
     applyElimRule c d@(ClassNode _ consq (0,0) (0,0)) = case getDd c consq of
-        EndClassNode d' -> (c, getNode c d') -- Elim InfNode and EndClassNode pair if they immediatly follow up on each other
+        EndClassNode d' -> (c, getNode c d') -- Elim ClassNode and EndClassNode pair if they immediatly follow up on each other
         _ -> insert c d
     applyElimRule c d@(EndClassNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)
@@ -140,8 +150,7 @@ instance DdF3 Dc where
 
     inferNode :: HasNodeLookup c => c -> Int -> Node -> (c, Node)
     inferNode c position (n_id, n) = insert c (Node position n_id n_id)
-    inferInfNode c position (n_id, n) = insert c $ ClassNode position n_id (0,0) (0,0)
-    -- | Dc catchup: No catchup needed for Dc (both branches are valid, no inference needed).
+    inferClassNode c position (n_id, n) = insert c $ ClassNode position n_id (0,0) (0,0)
     catchup _ _ n _ = n
     to_str = "Dc"
 
@@ -172,10 +181,11 @@ instance DdF3 Pos where
         _ -> insert c d
     applyElimRule c d = insert c d
 
-    -- | Create inferred Node at position: pos branch set, neg = Unknown (only pos valid).
+
+    -- pos node inference
     inferNode c position (n_id, n) = insert c (Node position n_id (0,0))
-    -- | Create inferred ClassNode at position: only pos branch set (dc/neg empty).
-    inferInfNode c position (n_id, n) = insert c $ ClassNode position (0,0) n_id (0,0)
+    -- pos class node inference
+    inferClassNode c position (n_id, n) = insert c $ ClassNode position (0,0) n_id (0,0)
 
     -- | Pos catchup: When dc_stack lags behind main traversal, infer missing nodes.
     catchup s c n@(_, Node positionA _ _) idx
@@ -211,7 +221,7 @@ instance DdF3 Neg where
 
 
     inferNode c position (n_id, n) = insert c (Node position (0,0) n_id)
-    inferInfNode c position (n_id, n) = insert c $ ClassNode position (0,0) (0,0) n_id
+    inferClassNode c position (n_id, n) = insert c $ ClassNode position (0,0) (0,0) n_id
 
     -- | Neg catchup: When dc_stack lags behind main traversal, infer missing nodes.
     catchup s c n@(_, Node positionA _ _) idx
@@ -222,19 +232,13 @@ instance DdF3 Neg where
     to_str = "Neg"
 
 -- | Traversal Helper (Dd1_helper).
--- |
--- | This typeclass provides functions to synchronize the dc_stack traversal with the main
--- | MDD traversal. When the main traversal skips variables (due to elimination rules),
--- | the dc_stack needs to "catch up" to stay synchronized.
+-- This typeclass provides functions to synchronize the dc_stack traversal with the main  MDD traversal.
+-- When the main traversal skips variables (due to elimination rules), the dc_stack needs to "catch up" to stay synchronized.
 class Dd1_helper (a :: Inf) where
-    -- | Synchronizes the dc_stack with the main traversal for two NodeIds.
-    -- | Updates all dc branches (dcA, dcB, dcR) in the stack to match the current position.
     traverse_dc :: String -> BiOpContext -> NodeId -> NodeId -> BiOpContext
 
 instance (DdF3 a) => Dd1_helper a where
     -- | Synchronizes the entire dc_stack with the main traversal.
-    -- | If inference type is Dc, no synchronization needed (both branches valid).
-    -- | Otherwise, update all dc branches in the stack using traverse_dc_generic.
     traverse_dc s c a b = debug_dc_traverse s c a b $
         if to_str @a == "Dc" then c  -- Dc: no catchup needed -- todo this is not true! fix this in the future.
         else

@@ -13,12 +13,12 @@ import Data.Hashable
 import GHC.Generics (Generic)
 
 
--- | AI generated code
+-- * AI generated code
 
 -- | Static translation is provided for visualization.
 -- This assigns a fixed global order to all declared variables for consistent Graphviz rendering.
 data DdStatic =  Node' [Int] NodeId NodeId               -- left = pos (solid line in graph), right = neg (dotted line in graph)
-                | ClassNode' [Int] NodeId NodeId NodeId -- in order of types Dc, Neg, Pos
+                | ClassNode' [Int] NodeId NodeId NodeId -- in order of types Dc, Pos, Neg
                 | EndClassNode' NodeId
                 | Leaf' Bool
                 | Unknown'
@@ -45,7 +45,7 @@ instance Hashable DdStatic where
   hashWithSalt s Unknown' = s `hashWithSalt` (0::Int)
   hashWithSalt s (Leaf' b) = s `hashWithSalt` (if b then (1::Int) else (2::Int))
   hashWithSalt s (Node' idx l r) = s `hashWithSalt` idx `hashWithSalt` fst l `hashWithSalt` fst r
-  hashWithSalt s (ClassNode' idx dc n p) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n `hashWithSalt` fst p
+  hashWithSalt s (ClassNode' idx dc p n) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst p `hashWithSalt` fst n
   hashWithSalt s (EndClassNode' d) = s `hashWithSalt` fst d `hashWithSalt` (3::Int)
 
 defaultNodeMapStatic :: StaticNodeLookup

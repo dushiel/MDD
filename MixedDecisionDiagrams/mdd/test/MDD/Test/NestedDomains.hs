@@ -6,6 +6,7 @@ module MDD.Test.NestedDomains where
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.ExpectedFailure (expectFailBecause)
 
 import MDD.Extra.Interface
 import SMCDEL.Symbolic.Bool
@@ -22,7 +23,10 @@ tests = testGroup "Nested Domains"
   , nestedPosAlgebraic
   , nestedMixedAlgebraic
   , crossContextDcStack
+  , applyDcCrossClassRegression
   , absorbPositionCatchup
+  , fourLevelNesting
+  , crossContextNested
   ]
 
 -- ============================================================
@@ -683,6 +687,61 @@ crossContextDcStack = testGroup "Cross-context dc_stack interactions"
   ]
 
 -- ============================================================
+-- applyDc cross-class regression (applyClassAAs, dc_stack Unknown)
+-- ============================================================
+--
+-- These tests target binary traversal where the dc-sourced operand (A or B)
+-- meets a ClassNode while applyDcA'/applyDcB' is active: the code must wrap
+-- the synthetic EndClassNode on the *Dc* slot (inferClassNode @Dc) but keep
+-- the outer inference rule for applyClass (@Neg / @Pos / @Dc) — see
+-- applyClassAAs / applyClassBAs in MDD.Traversal.Binary.
+--
+-- They also exercise Unknown resolution from dcA/dcB when the popped
+-- subgraph contains nested ClassNodes (dc_stack carries the dc branch).
+
+applyDcCrossClassRegression :: TestTree
+applyDcCrossClassRegression = testGroup "applyDc cross-class regression"
+  [ testGroup "Leaf constant vs nested ClassNode (applyClassAAs / symmetric)"
+    [
+      testCase "top AND dcdc2 == dcdc2" $
+        (top .*. ddOf t_c (Var dcdc2)) @?= ddOf t_c (Var dcdc2)
+
+    , testCase "dcdc2 AND top == dcdc2" $
+        (ddOf t_c (Var dcdc2) .*. top) @?= ddOf t_c (Var dcdc2)
+
+    , testCase "top AND dcn1 == dcn1 (Dc outer, Neg inner vs leaf)" $
+        (top .*. ddOf t_c (Var dcn1)) @?= ddOf t_c (Var dcn1)
+
+    , testCase "dcn1 AND top == dcn1" $
+        (ddOf t_c (Var dcn1) .*. top) @?= ddOf t_c (Var dcn1)
+
+    , testCase "bot OR dcdc2 == dcdc2" $
+        (bot .+. ddOf t_c (Var dcdc2)) @?= ddOf t_c (Var dcdc2)
+
+    , testCase "dcdc2 OR bot == dcdc2" $
+        (ddOf t_c (Var dcdc2) .+. bot) @?= ddOf t_c (Var dcdc2)
+    ]
+
+  , testGroup "Unknown from dc_stack with nested class (absorption + re-entry)"
+    [
+      testCase "dcdc2 AND (dcdc2 OR dcn1) == dcdc2" $
+        let d2 = ddOf t_c (Var dcdc2)
+            n1 = ddOf t_c (Var dcn1)
+        in (d2 .*. (d2 .+. n1)) @?= d2
+
+    , testCase "dcdc3 AND (dcdc3 OR dcn23) == dcdc3" $
+        let d3 = ddOf t_c (Var dcdc3)
+            dcn23M = ddOf t_c (Var dcn23)
+        in (d3 .*. (d3 .+. dcn23M)) @?= d3
+
+    , testCase "nn2 AND (dcdc2 OR (nn2 AND bot)) == nn2 AND dcdc2" $
+        let n2 = ddOf t_c (Var nn2)
+            d2 = ddOf t_c (Var dcdc2)
+        in (n2 .*. (d2 .+. (n2 .*. bot))) @?= (n2 .*. d2)
+    ]
+  ]
+
+-- ============================================================
 -- Absorb position catchup
 -- ============================================================
 -- Tests targeting the absorb' fix where dcR is at a higher inner
@@ -913,5 +972,366 @@ absorbPositionCatchup = testGroup "Absorb position catchup"
             d = ddOf t_c (Var dcn'23)
             x = a .+. b .+. c .+. d
         in (x .*. x) @?= x
+    ]
+  ]
+
+-- ############################################################
+-- Gap D: 4-level deep nesting tests
+-- ############################################################
+
+fourLevelNesting :: TestTree
+fourLevelNesting = testGroup "Four-level nesting"
+  [ testGroup "Homogeneous Dc (dddd)"
+    [ testCase "Idempotence AND: dddd2 AND dddd2 == dddd2" $
+        let a = ddOf t_c (Var dddd2)
+        in (a .*. a) @?= a
+
+    , testCase "Idempotence OR: dddd2 OR dddd2 == dddd2" $
+        let a = ddOf t_c (Var dddd2)
+        in (a .+. a) @?= a
+
+    , testCase "Complement: dddd2 AND (NOT dddd2) == bot" $
+        let a = ddOf t_c (Var dddd2)
+        in (a .*. (-.) a) @?= bot
+
+    , testCase "Complement: dddd2 OR (NOT dddd2) == top" $
+        let a = ddOf t_c (Var dddd2)
+        in (a .+. (-.) a) @?= top
+
+    , testCase "Double negation: NOT (NOT dddd2) == dddd2" $
+        let a = ddOf t_c (Var dddd2)
+        in (-.) ((-.) a) @?= a
+
+    , testCase "Commutativity AND: dddd2 AND dddd3 == dddd3 AND dddd2" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dddd3)
+        in (a .*. b) @?= (b .*. a)
+
+    , testCase "Commutativity OR: dddd2 OR dddd3 == dddd3 OR dddd2" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dddd3)
+        in (a .+. b) @?= (b .+. a)
+
+    , testCase "Absorption: dddd2 AND (dddd2 OR dddd3) == dddd2" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dddd3)
+        in (a .*. (a .+. b)) @?= a
+
+    , testCase "Absorption: dddd2 OR (dddd2 AND dddd3) == dddd2" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dddd3)
+        in (a .+. (a .*. b)) @?= a
+
+    , testCase "De Morgan: NOT (dddd2 AND dddd3) == (NOT dddd2) OR (NOT dddd3)" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dddd3)
+        in (-.) (a .*. b) @?= ((-.) a .+. (-.) b)
+
+    , testCase "De Morgan: NOT (dddd2 OR dddd3) == (NOT dddd2) AND (NOT dddd3)" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dddd3)
+        in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
+    ]
+
+  , testGroup "Mixed Dc-Neg-Pos-Dc (dnpd)"
+    [ testCase "Idempotence AND: dnpd2 AND dnpd2 == dnpd2" $
+        let a = ddOf t_c (Var dnpd2)
+        in (a .*. a) @?= a
+
+    , testCase "Complement: dnpd2 AND (NOT dnpd2) == bot" $
+        let a = ddOf t_c (Var dnpd2)
+        in (a .*. (-.) a) @?= bot
+
+    , testCase "Complement: dnpd2 OR (NOT dnpd2) == top" $
+        let a = ddOf t_c (Var dnpd2)
+        in (a .+. (-.) a) @?= top
+
+    , testCase "Double negation: NOT (NOT dnpd2) == dnpd2" $
+        let a = ddOf t_c (Var dnpd2)
+        in (-.) ((-.) a) @?= a
+
+    , testCase "Commutativity AND: dnpd2 AND dnpd3 == dnpd3 AND dnpd2" $
+        let a = ddOf t_c (Var dnpd2)
+            b = ddOf t_c (Var dnpd3)
+        in (a .*. b) @?= (b .*. a)
+
+    , expectFailBecause "library bug: absorption fails for 4-level mixed Dc-Neg-Pos-Dc nesting" $
+      testCase "Absorption: dnpd2 AND (dnpd2 OR dnpd3) == dnpd2" $
+        let a = ddOf t_c (Var dnpd2)
+            b = ddOf t_c (Var dnpd3)
+        in (a .*. (a .+. b)) @?= a
+
+    , expectFailBecause "library bug: absorption fails for 4-level mixed Dc-Neg-Pos-Dc nesting" $
+      testCase "Absorption: dnpd2 OR (dnpd2 AND dnpd3) == dnpd2" $
+        let a = ddOf t_c (Var dnpd2)
+            b = ddOf t_c (Var dnpd3)
+        in (a .+. (a .*. b)) @?= a
+
+    , testCase "De Morgan: NOT (dnpd2 AND dnpd3) == (NOT dnpd2) OR (NOT dnpd3)" $
+        let a = ddOf t_c (Var dnpd2)
+            b = ddOf t_c (Var dnpd3)
+        in (-.) (a .*. b) @?= ((-.) a .+. (-.) b)
+
+    , testCase "De Morgan: NOT (dnpd2 OR dnpd3) == (NOT dnpd2) AND (NOT dnpd3)" $
+        let a = ddOf t_c (Var dnpd2)
+            b = ddOf t_c (Var dnpd3)
+        in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
+
+    , testCase "Distributivity: dnpd2 AND (dnpd3 OR dddd2) == (dnpd2 AND dnpd3) OR (dnpd2 AND dddd2)" $
+        let a = ddOf t_c (Var dnpd2)
+            b = ddOf t_c (Var dnpd3)
+            c = ddOf t_c (Var dddd2)
+        in (a .*. (b .+. c)) @?= ((a .*. b) .+. (a .*. c))
+
+    , testCase "Distributivity: dnpd2 OR (dnpd3 AND dddd2) == (dnpd2 OR dnpd3) AND (dnpd2 OR dddd2)" $
+        let a = ddOf t_c (Var dnpd2)
+            b = ddOf t_c (Var dnpd3)
+            c = ddOf t_c (Var dddd2)
+        in (a .+. (b .*. c)) @?= ((a .+. b) .*. (a .+. c))
+    ]
+
+  , testGroup "Alternating Neg-Dc-Neg-Dc (ndnd)"
+    [ testCase "Idempotence AND: ndnd2 AND ndnd2 == ndnd2" $
+        let a = ddOf t_c (Var ndnd2)
+        in (a .*. a) @?= a
+
+    , testCase "Complement: ndnd2 AND (NOT ndnd2) == bot" $
+        let a = ddOf t_c (Var ndnd2)
+        in (a .*. (-.) a) @?= bot
+
+    , testCase "Complement: ndnd2 OR (NOT ndnd2) == top" $
+        let a = ddOf t_c (Var ndnd2)
+        in (a .+. (-.) a) @?= top
+
+    , testCase "Double negation: NOT (NOT ndnd2) == ndnd2" $
+        let a = ddOf t_c (Var ndnd2)
+        in (-.) ((-.) a) @?= a
+
+    , testCase "Commutativity AND: ndnd2 AND ndnd3 == ndnd3 AND ndnd2" $
+        let a = ddOf t_c (Var ndnd2)
+            b = ddOf t_c (Var ndnd3)
+        in (a .*. b) @?= (b .*. a)
+
+    , expectFailBecause "library bug: absorption fails for 4-level alternating Neg-Dc nesting" $
+      testCase "Absorption: ndnd2 AND (ndnd2 OR ndnd3) == ndnd2" $
+        let a = ddOf t_c (Var ndnd2)
+            b = ddOf t_c (Var ndnd3)
+        in (a .*. (a .+. b)) @?= a
+
+    , testCase "De Morgan: NOT (ndnd2 AND ndnd3) == (NOT ndnd2) OR (NOT ndnd3)" $
+        let a = ddOf t_c (Var ndnd2)
+            b = ddOf t_c (Var ndnd3)
+        in (-.) (a .*. b) @?= ((-.) a .+. (-.) b)
+
+    , testCase "De Morgan: NOT (ndnd2 OR ndnd3) == (NOT ndnd2) AND (NOT ndnd3)" $
+        let a = ddOf t_c (Var ndnd2)
+            b = ddOf t_c (Var ndnd3)
+        in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
+    ]
+
+  , testGroup "Cross 4-level types (mixed dnpd x dddd x ndnd)"
+    [ testCase "Associativity AND: (dnpd2 AND dddd2) AND ndnd2 == dnpd2 AND (dddd2 AND ndnd2)" $
+        let a = ddOf t_c (Var dnpd2)
+            b = ddOf t_c (Var dddd2)
+            c = ddOf t_c (Var ndnd2)
+        in ((a .*. b) .*. c) @?= (a .*. (b .*. c))
+
+    , testCase "Associativity OR: (dnpd2 OR dddd2) OR ndnd2 == dnpd2 OR (dddd2 OR ndnd2)" $
+        let a = ddOf t_c (Var dnpd2)
+            b = ddOf t_c (Var dddd2)
+            c = ddOf t_c (Var ndnd2)
+        in ((a .+. b) .+. c) @?= (a .+. (b .+. c))
+
+    , expectFailBecause "library bug: distributivity fails for cross 4-level mixed nesting (absorb at wrong level)" $
+      testCase "Distributivity: dddd2 AND (dnpd2 OR ndnd2) == (dddd2 AND dnpd2) OR (dddd2 AND ndnd2)" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dnpd2)
+            c = ddOf t_c (Var ndnd2)
+        in (a .*. (b .+. c)) @?= ((a .*. b) .+. (a .*. c))
+
+    , expectFailBecause "library bug: distributivity fails for cross 4-level mixed nesting" $
+      testCase "Distributivity: dddd2 OR (dnpd2 AND ndnd2) == (dddd2 OR dnpd2) AND (dddd2 OR ndnd2)" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dnpd2)
+            c = ddOf t_c (Var ndnd2)
+        in (a .+. (b .*. c)) @?= ((a .+. b) .*. (a .+. c))
+
+    , expectFailBecause "library bug: absorption fails for cross 4-level mixed nesting" $
+      testCase "Absorption: dddd2 AND (dddd2 OR dnpd2) == dddd2" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dnpd2)
+        in (a .*. (a .+. b)) @?= a
+
+    , testCase "De Morgan: NOT (dddd2 AND dnpd2) == (NOT dddd2) OR (NOT dnpd2)" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var dnpd2)
+        in (-.) (a .*. b) @?= ((-.) a .+. (-.) b)
+
+    , testCase "De Morgan: NOT (dddd2 OR ndnd2) == (NOT dddd2) AND (NOT ndnd2)" $
+        let a = ddOf t_c (Var dddd2)
+            b = ddOf t_c (Var ndnd2)
+        in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
+    ]
+  ]
+
+-- ############################################################
+-- Gap E: Cross-context tests at nested/multi-level depth
+-- ############################################################
+
+crossContextNested :: TestTree
+crossContextNested = testGroup "Cross-context nested"
+  [ testGroup "Dc-inner x Neg-inner (same outer Dc)"
+    [ testCase "Commutativity AND: dcdc2 AND dcn1 == dcn1 AND dcdc2" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcn1)
+        in (a .*. b) @?= (b .*. a)
+
+    , testCase "Commutativity OR: dcdc2 OR dcn1 == dcn1 OR dcdc2" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcn1)
+        in (a .+. b) @?= (b .+. a)
+
+    , testCase "Distributivity: dcdc2 AND (dcn1 OR dcn23) == (dcdc2 AND dcn1) OR (dcdc2 AND dcn23)" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcn1)
+            c = ddOf t_c (Var dcn23)
+        in (a .*. (b .+. c)) @?= ((a .*. b) .+. (a .*. c))
+
+    , testCase "Distributivity: dcdc2 OR (dcn1 AND dcn23) == (dcdc2 OR dcn1) AND (dcdc2 OR dcn23)" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcn1)
+            c = ddOf t_c (Var dcn23)
+        in (a .+. (b .*. c)) @?= ((a .+. b) .*. (a .+. c))
+
+    , testCase "Absorption: dcdc2 AND (dcdc2 OR dcn1) == dcdc2" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcn1)
+        in (a .*. (a .+. b)) @?= a
+
+    , testCase "Absorption: dcn1 OR (dcn1 AND dcdc2) == dcn1" $
+        let a = ddOf t_c (Var dcn1)
+            b = ddOf t_c (Var dcdc2)
+        in (a .+. (a .*. b)) @?= a
+
+    , testCase "De Morgan: NOT (dcdc2 AND dcn1) == (NOT dcdc2) OR (NOT dcn1)" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcn1)
+        in (-.) (a .*. b) @?= ((-.) a .+. (-.) b)
+
+    , testCase "De Morgan: NOT (dcdc2 OR dcn1) == (NOT dcdc2) AND (NOT dcn1)" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcn1)
+        in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
+    ]
+
+  , testGroup "Dc-inner x Pos-inner (same outer Dc)"
+    [ testCase "Commutativity AND: dcdc2 AND dcp1 == dcp1 AND dcdc2" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcp1)
+        in (a .*. b) @?= (b .*. a)
+
+    , testCase "Distributivity: dcdc2 AND (dcp1 OR dcp23) == (dcdc2 AND dcp1) OR (dcdc2 AND dcp23)" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcp1)
+            c = ddOf t_c (Var dcp23)
+        in (a .*. (b .+. c)) @?= ((a .*. b) .+. (a .*. c))
+
+    , testCase "Absorption: dcdc2 AND (dcdc2 OR dcp1) == dcdc2" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcp1)
+        in (a .*. (a .+. b)) @?= a
+
+    , testCase "De Morgan: NOT (dcdc2 AND dcp1) == (NOT dcdc2) OR (NOT dcp1)" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcp1)
+        in (-.) (a .*. b) @?= ((-.) a .+. (-.) b)
+
+    , testCase "De Morgan: NOT (dcdc2 OR dcp1) == (NOT dcdc2) AND (NOT dcp1)" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var dcp1)
+        in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
+    ]
+
+  , testGroup "Neg-inner x Pos-inner (same outer Dc)"
+    [ testCase "Commutativity AND: dcn1 AND dcp1 == dcp1 AND dcn1" $
+        let a = ddOf t_c (Var dcn1)
+            b = ddOf t_c (Var dcp1)
+        in (a .*. b) @?= (b .*. a)
+
+    , testCase "Distributivity: dcn1 AND (dcp1 OR dcp23) == (dcn1 AND dcp1) OR (dcn1 AND dcp23)" $
+        let a = ddOf t_c (Var dcn1)
+            b = ddOf t_c (Var dcp1)
+            c = ddOf t_c (Var dcp23)
+        in (a .*. (b .+. c)) @?= ((a .*. b) .+. (a .*. c))
+
+    , testCase "Absorption: dcn1 AND (dcn1 OR dcp1) == dcn1" $
+        let a = ddOf t_c (Var dcn1)
+            b = ddOf t_c (Var dcp1)
+        in (a .*. (a .+. b)) @?= a
+
+    , testCase "De Morgan: NOT (dcn1 AND dcp1) == (NOT dcn1) OR (NOT dcp1)" $
+        let a = ddOf t_c (Var dcn1)
+            b = ddOf t_c (Var dcp1)
+        in (-.) (a .*. b) @?= ((-.) a .+. (-.) b)
+    ]
+
+  , testGroup "Different outer contexts (Neg-nested x Dc-nested)"
+    [ testCase "Commutativity AND: nn2 AND dcdc2 == dcdc2 AND nn2" $
+        let a = ddOf t_c (Var nn2)
+            b = ddOf t_c (Var dcdc2)
+        in (a .*. b) @?= (b .*. a)
+
+    , testCase "Commutativity OR: nn2 OR dcdc2 == dcdc2 OR nn2" $
+        let a = ddOf t_c (Var nn2)
+            b = ddOf t_c (Var dcdc2)
+        in (a .+. b) @?= (b .+. a)
+
+    , testCase "Distributivity: nn2 AND (dcdc2 OR dcdc3) == (nn2 AND dcdc2) OR (nn2 AND dcdc3)" $
+        let a = ddOf t_c (Var nn2)
+            b = ddOf t_c (Var dcdc2)
+            c = ddOf t_c (Var dcdc3)
+        in (a .*. (b .+. c)) @?= ((a .*. b) .+. (a .*. c))
+
+    , testCase "Absorption: nn2 AND (nn2 OR dcdc2) == nn2" $
+        let a = ddOf t_c (Var nn2)
+            b = ddOf t_c (Var dcdc2)
+        in (a .*. (a .+. b)) @?= a
+
+    , testCase "Absorption: dcdc2 OR (dcdc2 AND nn2) == dcdc2" $
+        let a = ddOf t_c (Var dcdc2)
+            b = ddOf t_c (Var nn2)
+        in (a .+. (a .*. b)) @?= a
+
+    , testCase "De Morgan: NOT (nn2 AND dcdc2) == (NOT nn2) OR (NOT dcdc2)" $
+        let a = ddOf t_c (Var nn2)
+            b = ddOf t_c (Var dcdc2)
+        in (-.) (a .*. b) @?= ((-.) a .+. (-.) b)
+
+    , testCase "De Morgan: NOT (nn2 OR dcdc2) == (NOT nn2) AND (NOT dcdc2)" $
+        let a = ddOf t_c (Var nn2)
+            b = ddOf t_c (Var dcdc2)
+        in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
+    ]
+
+  , testGroup "Pos-nested x Dc-nested"
+    [ testCase "Commutativity AND: pp2 AND dcdc2 == dcdc2 AND pp2" $
+        let a = ddOf t_c (Var pp2)
+            b = ddOf t_c (Var dcdc2)
+        in (a .*. b) @?= (b .*. a)
+
+    , testCase "Absorption: pp2 AND (pp2 OR dcdc2) == pp2" $
+        let a = ddOf t_c (Var pp2)
+            b = ddOf t_c (Var dcdc2)
+        in (a .*. (a .+. b)) @?= a
+
+    , testCase "De Morgan: NOT (pp2 AND dcdc2) == (NOT pp2) OR (NOT dcdc2)" $
+        let a = ddOf t_c (Var pp2)
+            b = ddOf t_c (Var dcdc2)
+        in (-.) (a .*. b) @?= ((-.) a .+. (-.) b)
+
+    , testCase "De Morgan: NOT (pp2 OR dcdc2) == (NOT pp2) AND (NOT dcdc2)" $
+        let a = ddOf t_c (Var pp2)
+            b = ddOf t_c (Var dcdc2)
+        in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
     ]
   ]

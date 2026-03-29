@@ -195,10 +195,41 @@ cs_dc_sub3 = add_path cs_neg_bound123
     (P' [(1, Dc1, P' [(3, Dc1, P'' [4])])])
 
 -- ============================================================
+-- 4-level deep nesting: Dc -> Dc -> Dc -> Dc (homogeneous)
+-- ============================================================
+
+dddd2  = add_path cs_dc_sub3
+    (P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P'' [2])])])])])
+dddd3  = add_path dddd2
+    (P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P'' [3])])])])])
+dddd'2 = add_path dddd3
+    (P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P'' [-2])])])])])
+
+-- ============================================================
+-- 4-level deep nesting: Dc -> Neg -> Pos -> Dc (mixed at every level)
+-- ============================================================
+
+dnpd2  = add_path dddd'2
+    (P' [(1, Dc1, P' [(1, Neg1, P' [(1, Pos1, P' [(1, Dc1, P'' [2])])])])])
+dnpd3  = add_path dnpd2
+    (P' [(1, Dc1, P' [(1, Neg1, P' [(1, Pos1, P' [(1, Dc1, P'' [3])])])])])
+dnpd'2 = add_path dnpd3
+    (P' [(1, Dc1, P' [(1, Neg1, P' [(1, Pos1, P' [(1, Dc1, P'' [-2])])])])])
+
+-- ============================================================
+-- 4-level deep nesting: Neg -> Dc -> Neg -> Dc (alternating)
+-- ============================================================
+
+ndnd2  = add_path dnpd'2
+    (P' [(1, Neg1, P' [(1, Dc1, P' [(1, Neg1, P' [(1, Dc1, P'' [2])])])])])
+ndnd3  = add_path ndnd2
+    (P' [(1, Neg1, P' [(1, Dc1, P' [(1, Neg1, P' [(1, Dc1, P'' [3])])])])])
+
+-- ============================================================
 -- The shared test context (NodeLookup) containing all variables
 -- ============================================================
 
-(t_c, _) = unMDD cs_dc_sub3
+(t_c, _) = unMDD ndnd3
 
 -- ============================================================
 -- Advanced operations context

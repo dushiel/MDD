@@ -22,6 +22,7 @@ tests = testGroup "Quantification"
   , negQuantTests
   , posQuantTests
   , crossClassQuantTests
+  , nestedQuantTests
   ]
 
 -- ============================================================
@@ -279,4 +280,78 @@ crossClassQuantTests = testGroup "Cross-class quantification"
   , testCase "exist on Dc var: exist[1,2] dc2 == top (standard BDD behavior)" $
       let x = ddOf t_c (Var dc2)
       in exist [1, 2] x @?= top
+  ]
+
+-- ============================================================
+-- Quantification over nested variables
+-- ============================================================
+--
+-- For a nested variable like dcdc2 (Dc1 outer class 1, Dc1 inner
+-- class 1, position 2), the position to quantify over the inner
+-- variable is [1, 1, 2].
+-- For nn2 (Neg1 outer class 1, Neg1 inner class 1, position 2),
+-- the inner position is also [1, 1, 2].
+
+nestedQuantTests :: TestTree
+nestedQuantTests = testGroup "Nested quantification"
+  [ testCase "forall over nested Dc var: forall[1,1,2] dcdc2 == bot" $
+      let x = ddOf t_c (Var dcdc2)
+      in forall [1, 1, 2] x @?= bot
+
+  , testCase "exist over nested Dc var: exist[1,1,2] dcdc2 == top" $
+      let x = ddOf t_c (Var dcdc2)
+      in exist [1, 1, 2] x @?= top
+
+  , testCase "forall over nested Neg var: forall[1,1,2] nn2 == bot" $
+      let x = ddOf t_c (Var nn2)
+      in forall [1, 1, 2] x @?= bot
+
+  , testCase "exist over nested Neg var: exist[1,1,2] nn2 is not bot" $
+      let x = ddOf t_c (Var nn2)
+      in exist [1, 1, 2] x /= bot
+           @? "exist over nested nn2 should not be bot"
+
+  , testCase "forall over compound nested Dc: forall[1,1,2] (dcdc2 OR dcdc3) == dcdc3" $
+      let x = ddOf t_c (Or (Var dcdc2) (Var dcdc3))
+      in forall [1, 1, 2] x @?= ddOf t_c (Var dcdc3)
+
+  , testCase "exist over compound nested Dc: exist[1,1,2] (dcdc2 AND dcdc3) is not bot" $
+      let x = ddOf t_c (And (Var dcdc2) (Var dcdc3))
+      in exist [1, 1, 2] x /= bot
+           @? "exist[1,1,2] on nested Dc conjunction should not be bot"
+
+  , testCase "forall over compound nested Neg: forall[1,1,2] (nn2 OR nn3) == bot" $
+      let x = ddOf t_c (Or (Var nn2) (Var nn3))
+      in forall [1, 1, 2] x @?= bot
+
+  , testCase "exist over compound nested Neg: exist[1,1,2] (nn2 OR nn3) is not bot" $
+      let x = ddOf t_c (Or (Var nn2) (Var nn3))
+      in exist [1, 1, 2] x /= bot
+           @? "exist[1,1,2] on nested Neg union should not be bot"
+
+  , testCase "forall nested trivial: forall[1,1,2] top == top" $
+      forall [1, 1, 2] top @?= top
+
+  , testCase "forall nested trivial: forall[1,1,2] bot == bot" $
+      forall [1, 1, 2] bot @?= bot
+
+  , testCase "exist nested trivial: exist[1,1,2] top == top" $
+      exist [1, 1, 2] top @?= top
+
+  , testCase "exist nested trivial: exist[1,1,2] bot == bot" $
+      exist [1, 1, 2] bot @?= bot
+
+  , testCase "forall over outer class of nested term: forall[1,2] dcdc2 is not top" $
+      let x = ddOf t_c (Var dcdc2)
+      in forall [1, 2] x /= top
+           @? "forall over outer position of nested Dc should not be top"
+
+  , testCase "exist over mixed nested: exist[1,1,1] dcn1 is not bot" $
+      let x = ddOf t_c (Var dcn1)
+      in exist [1, 1, 1] x /= bot
+           @? "exist over inner position of dcn1 should not be bot"
+
+  , testCase "forall over mixed nested: forall[1,1,1] dcn1 == bot" $
+      let x = ddOf t_c (Var dcn1)
+      in forall [1, 1, 1] x @?= bot
   ]

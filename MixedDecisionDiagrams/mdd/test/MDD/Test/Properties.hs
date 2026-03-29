@@ -6,6 +6,7 @@ module MDD.Test.Properties where
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.ExpectedFailure (expectFailBecause)
 
 import MDD.Types
 import MDD.Extra.Interface
@@ -67,6 +68,12 @@ tests = testGroup "Algebraic Properties"
     , dc0DeMorganLaws
     , dc0DoubleNegationLaws
     , dc0Dc1InteractionLaws
+    ]
+  , testGroup "Cross-context"
+    [ crossCommutativityLaws
+    , crossDistributivityLaws
+    , crossAbsorptionLaws
+    , crossDeMorganLaws
     ]
   ]
 
@@ -700,4 +707,101 @@ dc0Dc1InteractionLaws = testGroup "Dc0 vs Dc1 interaction"
   , testCase "dc0_2 cross-class: dc0_2 AND dc0__2 is satisfiable" $
       let d0v_2 = ddOf t_c (Var dc0__2)
       in (d0v2 .*. d0v_2) /= bot @? "Dc0 cross-class vars should be independent"
+  ]
+
+-- ############################################################
+-- Cross-context: algebraic properties across inference contexts
+-- ############################################################
+--
+-- These test algebraic laws where operands come from different
+-- inference contexts (Dc1, Neg1, Pos1). This exercises the most
+-- complex traversal paths where implicit backgrounds differ.
+
+-- ============================================================
+-- Cross-context: Commutativity
+-- ============================================================
+
+crossCommutativityLaws :: TestTree
+crossCommutativityLaws = testGroup "Commutativity"
+  [ testCase "dc2 AND n2 == n2 AND dc2 (Dc x Neg)" $
+      (v2 .*. nv2) @?= (nv2 .*. v2)
+  , testCase "dc2 OR n2 == n2 OR dc2 (Dc x Neg)" $
+      (v2 .+. nv2) @?= (nv2 .+. v2)
+  , testCase "dc2 AND p2 == p2 AND dc2 (Dc x Pos)" $
+      (v2 .*. pv2) @?= (pv2 .*. v2)
+  , testCase "dc2 OR p2 == p2 OR dc2 (Dc x Pos)" $
+      (v2 .+. pv2) @?= (pv2 .+. v2)
+  , testCase "n2 AND p2 == p2 AND n2 (Neg x Pos)" $
+      (nv2 .*. pv2) @?= (pv2 .*. nv2)
+  , testCase "n2 OR p2 == p2 OR n2 (Neg x Pos)" $
+      (nv2 .+. pv2) @?= (pv2 .+. nv2)
+  ]
+
+-- ============================================================
+-- Cross-context: Distributivity
+-- ============================================================
+
+crossDistributivityLaws :: TestTree
+crossDistributivityLaws = testGroup "Distributivity"
+  [ testCase "dc2 AND (n2 OR n3) == (dc2 AND n2) OR (dc2 AND n3) (Dc over Neg)" $
+      (v2 .*. (nv2 .+. nv3)) @?= ((v2 .*. nv2) .+. (v2 .*. nv3))
+  , testCase "dc2 OR (n2 AND n3) == (dc2 OR n2) AND (dc2 OR n3) (Dc over Neg)" $
+      (v2 .+. (nv2 .*. nv3)) @?= ((v2 .+. nv2) .*. (v2 .+. nv3))
+  , testCase "dc2 AND (p2 OR p3) == (dc2 AND p2) OR (dc2 AND p3) (Dc over Pos)" $
+      (v2 .*. (pv2 .+. pv3)) @?= ((v2 .*. pv2) .+. (v2 .*. pv3))
+  , testCase "dc2 OR (p2 AND p3) == (dc2 OR p2) AND (dc2 OR p3) (Dc over Pos)" $
+      (v2 .+. (pv2 .*. pv3)) @?= ((v2 .+. pv2) .*. (v2 .+. pv3))
+  , testCase "n2 AND (dc2 OR dc3) == (n2 AND dc2) OR (n2 AND dc3) (Neg over Dc)" $
+      (nv2 .*. (v2 .+. v3)) @?= ((nv2 .*. v2) .+. (nv2 .*. v3))
+  , testCase "n2 OR (dc2 AND dc3) == (n2 OR dc2) AND (n2 OR dc3) (Neg over Dc)" $
+      (nv2 .+. (v2 .*. v3)) @?= ((nv2 .+. v2) .*. (nv2 .+. v3))
+  , testCase "p2 AND (dc2 OR dc3) == (p2 AND dc2) OR (p2 AND dc3) (Pos over Dc)" $
+      (pv2 .*. (v2 .+. v3)) @?= ((pv2 .*. v2) .+. (pv2 .*. v3))
+  , expectFailBecause "library bug: Pos-edge not reduced in cross-context OR-over-AND" $
+    testCase "p2 OR (dc2 AND dc3) == (p2 OR dc2) AND (p2 OR dc3) (Pos over Dc)" $
+      (pv2 .+. (v2 .*. v3)) @?= ((pv2 .+. v2) .*. (pv2 .+. v3))
+  ]
+
+-- ============================================================
+-- Cross-context: Absorption
+-- ============================================================
+
+crossAbsorptionLaws :: TestTree
+crossAbsorptionLaws = testGroup "Absorption"
+  [ testCase "dc2 AND (dc2 OR n2) == dc2 (Dc absorbs Dc+Neg)" $
+      (v2 .*. (v2 .+. nv2)) @?= v2
+  , testCase "dc2 OR (dc2 AND n2) == dc2 (Dc absorbs Dc*Neg)" $
+      (v2 .+. (v2 .*. nv2)) @?= v2
+  , testCase "dc2 AND (dc2 OR p2) == dc2 (Dc absorbs Dc+Pos)" $
+      (v2 .*. (v2 .+. pv2)) @?= v2
+  , testCase "dc2 OR (dc2 AND p2) == dc2 (Dc absorbs Dc*Pos)" $
+      (v2 .+. (v2 .*. pv2)) @?= v2
+  , testCase "n2 AND (n2 OR dc2) == n2 (Neg absorbs Neg+Dc)" $
+      (nv2 .*. (nv2 .+. v2)) @?= nv2
+  , testCase "n2 OR (n2 AND dc2) == n2 (Neg absorbs Neg*Dc)" $
+      (nv2 .+. (nv2 .*. v2)) @?= nv2
+  , testCase "p2 AND (p2 OR dc2) == p2 (Pos absorbs Pos+Dc)" $
+      (pv2 .*. (pv2 .+. v2)) @?= pv2
+  , testCase "p2 OR (p2 AND dc2) == p2 (Pos absorbs Pos*Dc)" $
+      (pv2 .+. (pv2 .*. v2)) @?= pv2
+  ]
+
+-- ============================================================
+-- Cross-context: De Morgan
+-- ============================================================
+
+crossDeMorganLaws :: TestTree
+crossDeMorganLaws = testGroup "De Morgan"
+  [ testCase "NOT (dc2 AND n2) == (NOT dc2) OR (NOT n2) (Dc x Neg)" $
+      (-.) (v2 .*. nv2) @?= ((-.) v2 .+. (-.) nv2)
+  , testCase "NOT (dc2 OR n2) == (NOT dc2) AND (NOT n2) (Dc x Neg)" $
+      (-.) (v2 .+. nv2) @?= ((-.) v2 .*. (-.) nv2)
+  , testCase "NOT (dc2 AND p2) == (NOT dc2) OR (NOT p2) (Dc x Pos)" $
+      (-.) (v2 .*. pv2) @?= ((-.) v2 .+. (-.) pv2)
+  , testCase "NOT (dc2 OR p2) == (NOT dc2) AND (NOT p2) (Dc x Pos)" $
+      (-.) (v2 .+. pv2) @?= ((-.) v2 .*. (-.) pv2)
+  , testCase "NOT (n2 AND p2) == (NOT n2) OR (NOT p2) (Neg x Pos)" $
+      (-.) (nv2 .*. pv2) @?= ((-.) nv2 .+. (-.) pv2)
+  , testCase "NOT (n2 OR p2) == (NOT n2) AND (NOT p2) (Neg x Pos)" $
+      (-.) (nv2 .+. pv2) @?= ((-.) nv2 .*. (-.) pv2)
   ]

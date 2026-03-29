@@ -91,7 +91,7 @@ The dc stands for dont-care literal inference/elimination rule, which means tha
 Dc inference is often used as default when taking variables to be acting as properties / atribute-labels (of a state or object). e.g. colors, is-it-raining, is-sally-present
 
 The pos stands for the positive literal inference/elimination rule, which means that on that branch the nodes which only have their positive evaluation as a valid path (i.e. their negative evaluation leads to Uknown) are eliminated and inferred during traversal / interpretation.
-The neg stands for the negative literal inference/elimination rule, which means that on that branch the nodes which only have their positive evaluation as a valid path (i.e. their positive evaluation leads to Uknown) are eliminated and inferred during traversal / interpretation.
+The neg stands for the negative literal inference/elimination rule, which means that on that branch the nodes which only have their negative evaluation as a valid path (i.e. their positive evaluation leads to Uknown) are eliminated and inferred during traversal / interpretation.
 
 Pos and Neg inference are usually the default when describing item sets / objects. The class variable then represents all posible items and the positive evaluations are the items that are present. e.g. from all agents, take Alice and Bob (Neg inference for all other agents). Or take all agents except for Carrol (Pos inference for all agents except Carrol).
 
@@ -237,12 +237,12 @@ The refactored codebase is organized into focused modules with clear responsibil
 
 
 1. The dc_stack structure: In `MDD.Traversal.Context`, dc_stack is defined as ([Node], [Node], [Node]). Is it used to track the hierarchy of ClassNode as you descend into sub-classes?
-1. the dc_stack structure is used to track the hierarchy of ClassNode as you descend into sub-classes. It represents dcA, dcB and dcR respectively. dcR is the resulting continuous dc branch of the current ClassNode context / subgraph. See in calculating the of the current ClassNode, in applyInf, that first the dcR is calculated, then the neg and pos components.
+1. the dc_stack structure is used to track the hierarchy of ClassNode as you descend into sub-classes. It represents dcA, dcB and dcR respectively. dcR is the resulting continuous dc branch of the current ClassNode context / subgraph. See in calculating the of the current ClassNode, in applyClass, that first the dcR is calculated, then the neg and pos components.
 
 
 dcR is mainly used for checking whether the final result needs to be absorbed.
 
-dcA and dcB are the dc components of the input arguments when calling applyInf, and are mainly used when replacing an encountered Unknown leaf branch with a evaluation of the previous layer.
+dcA and dcB are the dc components of the input arguments when calling applyClass, and are mainly used when replacing an encountered Unknown leaf branch with a evaluation of the previous layer.
 
 As a previous layer of the dc's can also evaluate to Unkown, all previous layers are tracked along and Unknown evaluations can be resolved by cascading along the list. The latest encountered dc branches are in the first position of the stack.
 
@@ -264,24 +264,24 @@ current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next
 # future addons:
 
 - add colorized drawtree setting
-- add better equality check for eq instance of MDD
 - double check whether elim rules are applied to path constructurs eventhough the parse input gets eliminated (e.g. -1 in neg1)
 - clean up type signatures
-- cull the unknowns out of the dc_stack
-- more efficient ifte implementation
 - write about why absorb does not need the other inference cases?
 - dc catchup?
 - tests for returning to ZDD inference, catchup in
-- more efficient pop stack
-- naive relabel (just change the numbers, do have to reindex in hashmap after traversal)
+- cull the unknowns out of the dc_stack
+- dc stack / unknown resolution: Unify the three parallel lists into [(Node, Node, Node)] and change Unknown resolution from destructive pop to indexed lookup. Eliminates the asymmetric-length problem and trim logic entirely. Larger refactor, separate effort.
+- improve relabeling: by using a naive relabel (if the nodes at the different positions are not related at all we can just change the numbers, do have to reindex in hashmap after traversal)
+- use absorb only when neccessary: when a result has been formed. similarly for node elimination?
 
 - fun parser
 - hashing with level
+- latexify s5/k
 
 
 - nasty bug:
 ```dcA_leaf_cases c s a@(a_id, Leaf _) b@(b_id, ClassNode{}) = withCache c (a, b, s ++ "Dc") $
-        applyInfA @Dc c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc```
+        applyClassA @Dc c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc```
 
 - other potential bugs:
 - does dc stack traversal handle endClassNode (catchup) correctly? do they have their own stack?
