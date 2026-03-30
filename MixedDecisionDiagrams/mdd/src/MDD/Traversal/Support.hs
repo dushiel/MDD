@@ -67,16 +67,32 @@ absorb (c, n) =
 absorb_unary :: forall a. (DdF3 a) => (UnOpContext, Node) -> (UnOpContext, Node)
 absorb_unary (c, n) = absorb' @a (c, n)
 
+
+-- currently a complex version of the absorb function is implemented. lets build a simpeler alternative that follows the following rules:
+-- naive absorb minimizes the pos / neg branches of a class with respect to the class' resulting dc branch. it should only be used after the branches have been calculated (in the resolution of applyclass).
+-- then does a simulatuous traversal of the pos/neg branch with the local dcR, recursively/depth-first down every sub branch
+-- until the traversal encouters the endclass node of the local class where an equality check can be applied between the pos/neg branch and the dcR (equal = absorb, not-equal = unchanged)
+-- if a boolean leaf node is encountered, then an endclassnode should be inferred
+-- if an unknown node is encountered for pos/neg branch, then it is already absorbed, let it stay absorbed
+-- if an unknownn node is encountered for the dcR, then substitute it with the closest outer dcR from the dcR stack
+-- if it enters a new class an alternative traversal function is called, that only does simultanuous traversal without absorption - until the same class level is arrived at again and the absorption continues as above.
+-- the dcR stack is kept up-to-date during traversal
+
+-- the non-naive version of the absorb function tries to be more efficient by trying to perform absorb on multiple levels at the same time.
+-- replace it with the naive version, i.e. wherever absorb' is called.
+-- then make it so that absorb is only called at the applyclass site.
+-- then test whether it is still working with the test suite.
+
 absorb' :: forall a. (DdF3 a) => (UnOpContext, Node) -> (UnOpContext, Node)
--- | given a dcR and a pos or neg results, sets sub-paths in the local class-domain which agree with the dcR to unknown ("absorbing them")
-absorb' (c@UCxt{un_dc_stack = dc@(_, Unknown) : fs }, a) = absorb' @a (c{un_dc_stack = fs}, a) -- resolve Unknown in dc traversal to a previous layer
+-- | given a dcR and a pos or neg branch (result), sets sub-paths in the local class-domain which agree with the dcR to unknown ("absorbing them")
+absorb' (c@UCxt{un_dc_stack = dc@(_, Unknown) : fs }, a) = absorb' @a (c{un_dc_stack = fs}, a) -- resolve Unknown in dc traversal to a previous outer class layer
 absorb' (c@UCxt{un_dc_stack = dc : fs }, a@(_, Unknown)) = (c, a)
 absorb' (c@UCxt{un_dc_stack = dc : fs }, a@(_, Leaf _))
     | a == dc = (c, ((0,0), Unknown))
-    | otherwise = (c,a)
+    | otherwise = (c,a) -- todo!: dc might lead to equal leaf if passing through local context of finite branch - after the local context they will have the same context and therefore the same rule will apply
 absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, ClassNode int d p n))
     | a == dc = (c, ((0,0), Unknown))
-    | otherwise =
+    | otherwise = -- todo!: add d to dc_stack as we recurse inside that class with absorb, no?
         let (c', r1) = absorb' @a (c, getNode c d)
             (c'', r2) = absorb' @a (c', getNode c p)
             (c''', r3) = absorb' @a (c'', getNode c n)
@@ -107,6 +123,7 @@ absorb' (c@UCxt{un_dc_stack = dc  : fs }, a@(_, Node int p n))  =
     in if (snd absorbed_node) == dc then (c, ((0,0), Unknown)) else absorbed_node
 
 absorb' (c@UCxt{un_dc_stack = dc@(_, EndClassNode dc') : fs }, a@(_, EndClassNode a'))
+    -- endclassnode case should be end of recursion if on the level where absorb was called from.  - after the local context they will have the same context and therefore the same rule will apply
     | a == dc = (c, ((0,0), Unknown))
     | otherwise =
         let (c', r) = absorb' @a (c{un_dc_stack = getNode c dc' : fs}, getNode c a')
@@ -118,6 +135,11 @@ absorb' (c@UCxt{un_dc_stack = dc : fs }, a)
     | a == dc = (c, ((0,0), Unknown))
     | otherwise = (c,a)
 absorb' (c@UCxt{un_dc_stack = [] }, a) = (c, a) -- error "empty dc stack in absorb?"
+
+
+
+
+
 
 instance DdF3 Dc where
     inferNodeA f c s a (_, Node positionB pos_childB neg_childB) =
