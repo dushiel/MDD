@@ -136,21 +136,24 @@ traverse_dc_generic :: (HasNodeLookup c) =>
     (String -> c -> Node -> Int -> Node)  -- ^ catchup function (from DdF3 instance)
     -> String -> c -> Node -> Node -> Node
 traverse_dc_generic catchupFn s c refNode dcNode =
-    case (dcNode, refNode) of
-        ( (_, Node position _ _), (_, Node idx _ _) ) ->
-            if | position > idx -> dcNode  -- dcNode ahead: no catchup needed
-               | position == idx -> move_dc c s dcNode  -- Positions match: move down
-               | position < idx -> move_dc c s (catchupFn s c dcNode idx)  -- dcNode behind: catch up
-        ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchupFn s c dcNode (-1))  -- Catch up to terminal
-        ( (_, Node{}), (_, EndClassNode{}) ) -> move_dc c s (catchupFn s c dcNode (-1))  -- Catch up to terminal
-        ( (_, EndClassNode{}), (_, EndClassNode{}) ) -> move_dc c s dcNode  -- Both EndClassNode: move down
-        ( _, (_, Unknown) ) -> dcNode  -- refNode Unknown: return as-is (Unknown resolves from dc_stack separately)
-        ( (_, Unknown), _ ) -> dcNode  -- dcNode Unknown: return as-is (resolves from stack)
-        ( (_, ClassNode position _ _ _), (_, ClassNode idx _ _ _) ) ->
-            if | position > idx -> dcNode  -- dcNode ahead: no catchup
-               | position == idx -> move_dc c s dcNode  -- Positions match: move down
-               | position < idx -> dcNode  -- dcNode behind: no catchup (ClassNode handled separately)
-        _ -> dcNode  -- Default: return as-is
+    let result = case (dcNode, refNode) of
+            ( (_, Node position _ _), (_, Node idx _ _) ) ->
+                if | position > idx -> dcNode
+                   | position == idx -> move_dc c s dcNode
+                   | position < idx -> move_dc c s (catchupFn s c dcNode idx)
+            ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchupFn s c dcNode (-1))
+            ( (_, Node{}), (_, EndClassNode{}) ) -> move_dc c s (catchupFn s c dcNode (-1))
+            ( (_, EndClassNode{}), (_, EndClassNode{}) ) -> move_dc c s dcNode
+            ( _, (_, Unknown) ) -> dcNode
+            ( (_, Unknown), _ ) -> dcNode
+            ( (_, ClassNode position _ _ _), (_, ClassNode idx _ _ _) ) ->
+                if | position > idx -> dcNode
+                   | position == idx -> move_dc c s dcNode
+                   | position < idx -> dcNode
+            ( (_, Leaf _), (_, EndClassNode{}) ) -> dcNode
+            ( (_, ClassNode _ dc _ _), (_, EndClassNode{}) ) -> getNode c dc
+            _ -> dcNode
+    in result
 
 traverse_dcA_endclass :: BiOpContext -> NodeId -> BiOpContext
 traverse_dcA_endclass ctx refA =
