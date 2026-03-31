@@ -37,7 +37,7 @@ class DdF3 (a :: Inf) where
     applyElimRule :: (HasNodeLookup c) => c -> Dd -> (c, Node)
     inferNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
     inferClassNode :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
-    catchup :: (HasNodeLookup c) => String -> c -> Node -> Int -> Node
+    catchup :: (HasNodeLookup c) => c -> Node -> Int -> Node
     to_str :: String
 
 applyElimRule' :: forall a. (DdF3 a) => (UnOpContext, Dd) -> (UnOpContext, Node)
@@ -337,7 +337,7 @@ instance DdF3 Dc where
     inferNode :: HasNodeLookup c => c -> Int -> Node -> (c, Node)
     inferNode c position (n_id, n) = insert c (Node position n_id n_id)
     inferClassNode c position (n_id, n) = insert c $ ClassNode position n_id (0,0) (0,0)
-    catchup _ _ n _ = n
+    catchup _ n _ = n
     to_str = "Dc"
 
 -- | Instance for Pos (Positive literal) inference/elimination rule.
@@ -374,12 +374,11 @@ instance DdF3 Pos where
     -- pos class node inference
     inferClassNode c position (n_id, n) = insert c $ ClassNode position (0,0) n_id (0,0)
 
-    -- | Pos catchup: When dc_stack lags behind main traversal, infer missing nodes.
-    catchup s c n@(_, Node positionA _ _) idx
-        | idx == -1 = catchup @Pos s c (move_dc c s n ) idx  -- Follow pos branch
-        | idx > positionA = catchup @Pos s c (move_dc c s n ) idx  -- Follow pos branch
+    catchup c n@(_, Node positionA pos_child _) idx
+        | idx == -1       = catchup @Pos c (getNode c pos_child) idx
+        | idx > positionA = catchup @Pos c (getNode c pos_child) idx
         | otherwise = n
-    catchup _ _ n _ = n  -- Non-Node: no catchup needed
+    catchup _ n _ = n
     to_str = "Pos"
 
 -- | Instance for Neg (Negative literal) inference/elimination rule.
@@ -411,12 +410,11 @@ instance DdF3 Neg where
     inferNode c position (n_id, n) = insert c (Node position (0,0) n_id)
     inferClassNode c position (n_id, n) = insert c $ ClassNode position (0,0) (0,0) n_id
 
-    -- | Neg catchup: When dc_stack lags behind main traversal, infer missing nodes.
-    catchup s c n@(_, Node positionA _ _) idx
-        | idx == -1 = catchup @Neg s c (move_dc c s n) idx  -- Follow neg branch
-        | idx > positionA = catchup @Neg s c (move_dc c s n) idx  -- Follow neg branch
+    catchup c n@(_, Node positionA _ neg_child) idx
+        | idx == -1       = catchup @Neg c (getNode c neg_child) idx
+        | idx > positionA = catchup @Neg c (getNode c neg_child) idx
         | otherwise = n
-    catchup _ _ n _ = n  -- Non-Node: no catchup needed
+    catchup _ n _ = n
     to_str = "Neg"
 
 -- | Traversal Helper (Dd1_helper).
@@ -428,13 +426,12 @@ class Dd1_helper (a :: Inf) where
 instance (DdF3 a) => Dd1_helper a where
     -- | Synchronizes the entire dc_stack with the main traversal.
     traverse_dc s c a b = debug_dc_traverse s c a b $
-        if to_str @a == "Dc" then c  -- Dc: no catchup needed -- todo this is not true! fix this in the future.
-        else
             let (dcAs, dcBs, dcRs) = (bin_dc_stack c)
-                -- Update dcA branches using reference node A
-                new_dcAs = map (traverse_dc_generic (catchup @a) s c (getNode c a)) dcAs
-                -- Update dcB branches using reference node B
-                new_dcBs = map (traverse_dc_generic (catchup @a) s c (getNode c b)) dcBs
-                -- Update dcR branches using reference node A (should be at the same level as B)
-                new_dcRs = map (traverse_dc_generic (catchup @a) s c (getNode c a)) dcRs
+                refA = getNode c a
+                refB = getNode c b
+                isLeaf (_, Leaf{}) = True
+                isLeaf _           = False
+                new_dcAs = if isLeaf refA then dcAs else map (traverse_dc_generic (catchup @a) (to_str @a) s c refA) dcAs
+                new_dcBs = if isLeaf refB then dcBs else map (traverse_dc_generic (catchup @a) (to_str @a) s c refB) dcBs
+                new_dcRs = if isLeaf refA then dcRs else map (traverse_dc_generic (catchup @a) (to_str @a) s c refA) dcRs
             in c { bin_dc_stack = (new_dcAs, new_dcBs, new_dcRs) }

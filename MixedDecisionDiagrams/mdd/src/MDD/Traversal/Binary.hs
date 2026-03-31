@@ -103,10 +103,10 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
         --   -> traverse_dc synchronizes dc_stack traversal with main traversal (handles "catch-up")
         --   -> reset_stack_bin restores original stack state between branches
         | positionA == positionB =
-            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB  -- Sync dc_stack for pos branch
+            let c_ = traverse_dc @a "pos child" c a_id b_id
                 (c', (pos_result, _)) = apply @a c_ s pos_childA pos_childB
 
-                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) neg_childA neg_childB  -- Sync dc_stack for neg branch
+                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) a_id b_id
                 (c'', (neg_result, _)) = apply @a c_' s neg_childA neg_childB
             in withCache c (a, b, s) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
         -- Case 7: positionA < positionB (A's variable comes before B's in ordering)
@@ -213,10 +213,10 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     -- Cases 7-9: Node vs Node (B is from Dc, so uses @Dc@ inference when positionA < positionB)
     applyDcB' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         | positionA == positionB =
-            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
+            let c_ = traverse_dc @a "pos child" c a_id b_id
                 (c', (pos_result, _)) = applyDcB @a c_ s pos_childA pos_childB
 
-                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) neg_childA neg_childB
+                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) a_id b_id
                 (c'', (neg_result, _)) = applyDcB @a c_' s neg_childA neg_childB
             in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
         | positionA < positionB = uncurry (applyElimRule @a) (inferNodeB' @Dc (applyDcB' @a) c s a b)  -- B is Dc, use @Dc@ inference
@@ -295,10 +295,10 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     -- Cases 7-9: Node vs Node (A is from Dc, so uses @Dc@ inference when positionA > positionB)
     applyDcA' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         | positionA == positionB =
-            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
+            let c_ = traverse_dc @a "pos child" c a_id b_id
                 (c', (pos_result, _)) = applyDcA @a c_ s pos_childA pos_childB
 
-                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) neg_childA neg_childB
+                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) a_id b_id
                 (c'', (neg_result, _)) = applyDcA @a c_' s neg_childA neg_childB
             in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
         | positionA < positionB = uncurry (applyElimRule @a) (inferNodeB' @a (applyDcA' @a) c s a b)
@@ -391,15 +391,15 @@ applyClass' :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (B
 applyClass' c s a@(a_id, ClassNode positionA dcA pA nA) b@(b_id, ClassNode positionB dcB pB nB)
     | positionA == positionB =
         let
-            c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc @a "class dc" c dcA dcB)
+            c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc @a "class dc" c a_id b_id)
             (c1, dcR) = apply @Dc c_ s dcA dcB
             (c1', dcR') = absorb_dc @Dc c1 positionA dcR
 
-            c2_ = add_to_stack (positionA, Neg) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a "class neg" (reset_stack_bin c1' c) nA nB)
+            c2_ = add_to_stack (positionA, Neg) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a "class neg" (reset_stack_bin c1' c) a_id b_id)
             (c2, nR) = apply @Neg c2_ s nA nB
             (c2', nR') = absorb @Neg c2 positionA dcR' nR
 
-            c3_ = add_to_stack (positionA, Pos) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a "class pos" (reset_stack_bin c2' c) pA pB)
+            c3_ = add_to_stack (positionA, Pos) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a "class pos" (reset_stack_bin c2' c) a_id b_id)
             (c3, pR) = apply @Pos c3_ s pA pB
             (c3', pR') = absorb @Pos c3 positionA dcR' pR
 

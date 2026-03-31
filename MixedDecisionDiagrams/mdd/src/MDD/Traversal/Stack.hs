@@ -19,6 +19,8 @@ module MDD.Traversal.Stack
   , pop_dc'
   , move_dc
   , traverse_dc_generic
+  , traverse_dcA_endclass
+  , traverse_dcB_endclass
   ) where
 
 import MDD.Types
@@ -46,9 +48,9 @@ pop_dcB'' ctx@BCxt{bin_dc_stack = (dcA, dcB : fs, dcR), bin_current_level = (lvA
 pop_dcB'' _ = error "requested dcB from empty stack"
 
 add_to_stack :: (Int, Inf) -> (Node, Node, Node) -> BiOpContext -> BiOpContext
-add_to_stack class (dcA, dcB, dcR) ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs)} =
+add_to_stack cls (dcA, dcB, dcR) ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs)} =
     let (lvsA, lvsB) = bin_current_level ctx in
-    ctx{bin_dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), bin_current_level = (class : lvsA, class : lvsB)}
+    ctx{bin_dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), bin_current_level = (cls : lvsA, cls : lvsB)}
 
 pop_stack' :: BiOpContext -> (BiOpContext, (Inf, Inf))
 pop_stack' ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs), bin_current_level = (lAs, lBs)}
@@ -76,14 +78,14 @@ reset_stack_bin :: BiOpContext -> BiOpContext -> BiOpContext
 reset_stack_bin new old = new { bin_dc_stack = bin_dc_stack old, bin_current_level = bin_current_level old }
 
 add_to_stack_ :: (Int, Inf) -> (Node, Node) -> UnOpContext -> UnOpContext
-add_to_stack_ class (dc, dcR) ctx@UCxt{un_dc_stack = dcRs} =
+add_to_stack_ cls (dc, dcR) ctx@UCxt{un_dc_stack = dcRs} =
     let lvs = un_current_level ctx in
-    ctx{un_dc_stack = dcR : dcRs, un_current_level = (class : lvs)}
+    ctx{un_dc_stack = dcR : dcRs, un_current_level = (cls : lvs)}
 
 add_to_level_ :: (Int, Inf) -> UnOpContext -> UnOpContext
-add_to_level_ class ctx =
+add_to_level_ cls ctx =
     let lvs = un_current_level ctx in
-    ctx{un_current_level = class : lvs}
+    ctx{un_current_level = cls : lvs}
 
 pop_stack_ :: UnOpContext -> (UnOpContext, Inf)
 pop_stack_ ctx@UCxt{un_dc_stack = dcRs, un_current_level = lvs} =
@@ -133,32 +135,88 @@ move_dc c m node =
 
 
 traverse_dc_generic :: (HasNodeLookup c) =>
-    (String -> c -> Node -> Int -> Node)  -- ^ catchup function (from DdF3 instance)
-    -> String -> c -> Node -> Node -> Node
-traverse_dc_generic catchupFn s c refNode dcNode =
-    let result = case (dcNode, refNode) of
-            ( (_, Node position _ _), (_, Node idx _ _) ) ->
-                if | position > idx -> dcNode -- if the dcnode is ahead, we do not have to infer a node and apply the move, since both edges lead to the same child. returning as is is more efficient.
-                   | position == idx -> move_dc c s dcNode
-                   | position < idx -> move_dc c s (catchupFn s c dcNode idx)
-            ( (_, Node{}), (_, Leaf _) ) = undefined -- there are no moves applicable on refnode=leaf, throw an error in such a case?
-            ( (_, Node{}), (_, EndClassNode{}) ) = undefined -- dc needs to be caught up until an endclassnode is reached
-            ( (_, EndClassNode{}), (_, EndClassNode{}) ) -> move_dc c s dcNode -- only endclassnode move is valid, apply it
-            ( _, (_, Unknown) ) -> dcNode -- if a dcnode is unknown, we can leave it be (it will be resolved to a more outer layer)
-            ( (_, Unknown), _ ) -> undefined -- it should not be possible to receive an unknown as refnode (should be resolved before calling dc_traversal)
-            ( (_, ClassNode position _ _ _), (_, ClassNode idx _ _ _) ) ->
-                if | position > idx -> dcNode -- if the dcnode is ahead, we do not have to infer a node and apply the move, since both edges lead to the same child. returning as is is more efficient.
-                   | position == idx -> move_dc c s dcNode
-                   | position < idx -> undefined
-            ( (_, Leaf _), (_, EndClassNode{}) ) -> undefined -- infer an endclass node for dc, and then pass through it: keeps dcnode the same.
-            ( (_, ClassNode _ dc _ _), (_, EndClassNode{}) ) -> undefined -- catch dcnode up until endclass node... so this would require inference of class node for the refnode side inside catchup. do not fix this one case yet, in a later step we will design a solution.
-    in result
+    (c -> Node -> Int -> Node)  -- ^ catchup function (from DdF3 instance)
+    -> String                   -- ^ inference type name ("Dc", "Pos", "Neg")
+    -> String                   -- ^ move string ("pos child", "neg child", "class dc", etc.)
+    -> c -> Node -> Node -> Node
+traverse_dc_generic catchupFn infType s c refNode dcNode =
+    -- Guard rail: validate move string vs refNode type
+    let validMove = case (snd refNode, s) of
+            (Node{},         "pos child") -> True
+            (Node{},         "neg child") -> True
+            (ClassNode{},    "class dc")  -> True
+            (ClassNode{},    "class neg") -> True
+            (ClassNode{},    "class pos") -> True
+            (EndClassNode{}, "endclass")  -> True
+            _                             -> False
+    in if not validMove
+        then error $ "traverse_dc_generic: invalid move '" ++ s ++ "' for refNode type " ++ show_node c refNode
+        else case (dcNode, refNode) of
+            -- Case 5: dcNode is Unknown — pass-through
+            ((_, Unknown), _) -> dcNode
+
+            -- Case 1: (Node, Node) — both are variable nodes
+            ((_, Node position _ _), (_, Node idx _ _))
+                | position > idx  -> dcNode
+                | position == idx -> move_dc c s dcNode
+                | otherwise       -> move_dc c s (catchupFn c dcNode idx)
+
+            -- Case 3: (Node, EndClassNode) — dc is behind, catch up to terminal then move
+            ((_, Node{}), (_, EndClassNode{})) ->
+                move_dc c s (catchupFn c dcNode (-1))
+
+            -- Case 4: (EndClassNode, EndClassNode) — both exiting class
+            ((_, EndClassNode{}), (_, EndClassNode{})) -> move_dc c s dcNode
+
+            -- Case 7: (ClassNode, ClassNode) — both are class nodes
+            ((_, ClassNode position _ _ _), (_, ClassNode idx _ _ _))
+                | position > idx  -> dcNode
+                | position == idx -> move_dc c s dcNode
+                | otherwise       -> error "traverse_dc_generic: ClassNode catchup not yet implemented (dcNode class pos < refNode class pos)"
+
+            -- Case 8: (Leaf, EndClassNode) — dc terminated at Leaf, ref exiting class
+            ((_, Leaf{}), (_, EndClassNode{})) -> dcNode
+
+            -- Case 9: (ClassNode, EndClassNode) — dc has ClassNode, ref exiting (deferred)
+            ((_, ClassNode{}), (_, EndClassNode{})) ->
+                error "traverse_dc_generic: ClassNode vs EndClassNode catchup not yet implemented"
+
+            -- Case 10: (Leaf, Node) or (Leaf, ClassNode) — dc terminated
+            ((_, Leaf{}), (_, Node{})) -> dcNode
+            ((_, Leaf{}), (_, ClassNode{})) -> dcNode
+
+            -- Case 11: (EndClassNode, Node) — dc exited class, ref still inside
+            ((_, EndClassNode{}), (_, Node{})) -> dcNode
+
+            -- Case 13: (EndClassNode, ClassNode) — dc exited, ref at ClassNode
+            -- Infer a ClassNode for dc (content on @a's branch), then apply move.
+            -- Result is dcNode when infType's branch matches s, Unknown otherwise.
+            ((_, EndClassNode{}), (_, ClassNode{})) ->
+                let contentBranch = case infType of
+                        "Dc"  -> "class dc"
+                        "Pos" -> "class pos"
+                        "Neg" -> "class neg"
+                        _     -> error $ "traverse_dc_generic: unknown infType '" ++ infType ++ "'"
+                in if s == contentBranch
+                    then dcNode
+                    else ((0,0), Unknown)
+
+            -- Case 12: (Node, ClassNode) or (ClassNode, Node) — structural mismatch
+            ((_, Node{}), (_, ClassNode{})) ->
+                error "traverse_dc_generic: Node vs ClassNode structural mismatch"
+            ((_, ClassNode{}), (_, Node{})) ->
+                error "traverse_dc_generic: ClassNode vs Node structural mismatch"
+
+            -- Case 2/6: refNode is Leaf or Unknown — caught by guard rail above,
+            -- but handle Unknown dcNode + any refNode via Case 5 above.
+            _ -> error $ "traverse_dc_generic: unhandled case (dcNode=" ++ show_node c dcNode
+                      ++ ", refNode=" ++ show_node c refNode ++ ")"
 
 traverse_dcA_endclass :: BiOpContext -> NodeId -> BiOpContext
 traverse_dcA_endclass ctx refA =
     let (dcAs, dcBs, dcRs) = bin_dc_stack ctx
         refNode = getNode ctx refA
-        moveDc dc = traverse_dc_generic (\_ _ n _ -> n) "endclass" ctx refNode dc
+        moveDc dc = traverse_dc_generic (\_ n _ -> n) "Dc" "endclass" ctx refNode dc
         new_dcAs = map moveDc dcAs
     in ctx { bin_dc_stack = (new_dcAs, dcBs, dcRs) }
 
@@ -166,6 +224,6 @@ traverse_dcB_endclass :: BiOpContext -> NodeId -> BiOpContext
 traverse_dcB_endclass ctx refB =
     let (dcAs, dcBs, dcRs) = bin_dc_stack ctx
         refNode = getNode ctx refB
-        moveDc dc = traverse_dc_generic (\_ _ n _ -> n) "endclass" ctx refNode dc
+        moveDc dc = traverse_dc_generic (\_ n _ -> n) "Dc" "endclass" ctx refNode dc
         new_dcBs = map moveDc dcBs
     in ctx { bin_dc_stack = (dcAs, new_dcBs, dcRs) }
