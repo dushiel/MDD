@@ -46,9 +46,9 @@ pop_dcB'' ctx@BCxt{bin_dc_stack = (dcA, dcB : fs, dcR), bin_current_level = (lvA
 pop_dcB'' _ = error "requested dcB from empty stack"
 
 add_to_stack :: (Int, Inf) -> (Node, Node, Node) -> BiOpContext -> BiOpContext
-add_to_stack inf (dcA, dcB, dcR) ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs)} =
+add_to_stack class (dcA, dcB, dcR) ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs)} =
     let (lvsA, lvsB) = bin_current_level ctx in
-    ctx{bin_dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), bin_current_level = (inf : lvsA, inf : lvsB)}
+    ctx{bin_dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), bin_current_level = (class : lvsA, class : lvsB)}
 
 pop_stack' :: BiOpContext -> (BiOpContext, (Inf, Inf))
 pop_stack' ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs), bin_current_level = (lAs, lBs)}
@@ -76,14 +76,14 @@ reset_stack_bin :: BiOpContext -> BiOpContext -> BiOpContext
 reset_stack_bin new old = new { bin_dc_stack = bin_dc_stack old, bin_current_level = bin_current_level old }
 
 add_to_stack_ :: (Int, Inf) -> (Node, Node) -> UnOpContext -> UnOpContext
-add_to_stack_ inf (dc, dcR) ctx@UCxt{un_dc_stack = dcRs} =
+add_to_stack_ class (dc, dcR) ctx@UCxt{un_dc_stack = dcRs} =
     let lvs = un_current_level ctx in
-    ctx{un_dc_stack = dcR : dcRs, un_current_level = (inf : lvs)}
+    ctx{un_dc_stack = dcR : dcRs, un_current_level = (class : lvs)}
 
 add_to_level_ :: (Int, Inf) -> UnOpContext -> UnOpContext
-add_to_level_ inf ctx =
+add_to_level_ class ctx =
     let lvs = un_current_level ctx in
-    ctx{un_current_level = inf : lvs}
+    ctx{un_current_level = class : lvs}
 
 pop_stack_ :: UnOpContext -> (UnOpContext, Inf)
 pop_stack_ ctx@UCxt{un_dc_stack = dcRs, un_current_level = lvs} =
@@ -116,13 +116,13 @@ move_dc c m node =
 
         (_, EndClassNode child) ->
             if m == "endclass" then getNode c child
-            else (if m `elem` ["pos child", "neg child", "inf pos", "inf neg", "inf dc"] then node
+            else (if m `elem` ["pos child", "neg child", "class pos", "class neg", "class dc"] then node
             else error $ "processStackElement: undefined move '" ++ m ++ "' for EndClassNode pattern: " ++ show_node c node)
 
         (_, ClassNode position dc p n) ->
-            if m == "inf pos" then getNode c p
-            else if m == "inf neg" then getNode c n
-            else if m == "inf dc" then getNode c dc
+            if m == "class pos" then getNode c p
+            else if m == "class neg" then getNode c n
+            else if m == "class dc" then getNode c dc
             else error $ "processStackElement: undefined move '" ++ m ++ "' for ClassNode pattern: " ++ show_node c node
 
         (_, Leaf _) ->
@@ -138,25 +138,20 @@ traverse_dc_generic :: (HasNodeLookup c) =>
 traverse_dc_generic catchupFn s c refNode dcNode =
     let result = case (dcNode, refNode) of
             ( (_, Node position _ _), (_, Node idx _ _) ) ->
-                if | position > idx -> dcNode
+                if | position > idx -> dcNode -- if the dcnode is ahead, we do not have to infer a node and apply the move, since both edges lead to the same child. returning as is is more efficient.
                    | position == idx -> move_dc c s dcNode
                    | position < idx -> move_dc c s (catchupFn s c dcNode idx)
-            ( (_, Node{}), (_, Leaf _) )
-                | s == "endclass" -> dcNode
-                | otherwise       -> move_dc c s (catchupFn s c dcNode (-1))
-            ( (_, Node{}), (_, EndClassNode{}) )
-                | s == "endclass" -> dcNode
-                | otherwise       -> move_dc c s (catchupFn s c dcNode (-1))
-            ( (_, EndClassNode{}), (_, EndClassNode{}) ) -> move_dc c s dcNode
-            ( _, (_, Unknown) ) -> dcNode
-            ( (_, Unknown), _ ) -> dcNode
+            ( (_, Node{}), (_, Leaf _) ) = undefined -- there are no moves applicable on refnode=leaf, throw an error in such a case?
+            ( (_, Node{}), (_, EndClassNode{}) ) = undefined -- dc needs to be caught up until an endclassnode is reached
+            ( (_, EndClassNode{}), (_, EndClassNode{}) ) -> move_dc c s dcNode -- only endclassnode move is valid, apply it
+            ( _, (_, Unknown) ) -> dcNode -- if a dcnode is unknown, we can leave it be (it will be resolved to a more outer layer)
+            ( (_, Unknown), _ ) -> undefined -- it should not be possible to receive an unknown as refnode (should be resolved before calling dc_traversal)
             ( (_, ClassNode position _ _ _), (_, ClassNode idx _ _ _) ) ->
-                if | position > idx -> dcNode
+                if | position > idx -> dcNode -- if the dcnode is ahead, we do not have to infer a node and apply the move, since both edges lead to the same child. returning as is is more efficient.
                    | position == idx -> move_dc c s dcNode
-                   | position < idx -> dcNode
-            ( (_, Leaf _), (_, EndClassNode{}) ) -> dcNode
-            ( (_, ClassNode _ dc _ _), (_, EndClassNode{}) ) -> getNode c dc
-            _ -> dcNode
+                   | position < idx -> undefined
+            ( (_, Leaf _), (_, EndClassNode{}) ) -> undefined -- infer an endclass node for dc, and then pass through it: keeps dcnode the same.
+            ( (_, ClassNode _ dc _ _), (_, EndClassNode{}) ) -> undefined -- catch dcnode up until endclass node... so this would require inference of class node for the refnode side inside catchup. do not fix this one case yet, in a later step we will design a solution.
     in result
 
 traverse_dcA_endclass :: BiOpContext -> NodeId -> BiOpContext
