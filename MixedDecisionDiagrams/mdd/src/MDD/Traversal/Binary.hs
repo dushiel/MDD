@@ -391,33 +391,28 @@ applyClass' :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (B
 applyClass' c s a@(a_id, ClassNode positionA dcA pA nA) b@(b_id, ClassNode positionB dcB pB nB)
     | positionA == positionB =
         let
-            c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc @a "inf dc" c dcA dcB)
+            c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc @a "class dc" c dcA dcB)
             (c1, dcR) = apply @Dc c_ s dcA dcB
+            (c1', dcR') = absorb_dc @Dc c1 positionA dcR
 
-            c2_ = add_to_stack (positionA, Neg) (getNode c1 dcA, getNode c1 dcB, dcR) (traverse_dc @a "inf neg" (reset_stack_bin c1 c) nA nB)
+            c2_ = add_to_stack (positionA, Neg) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a "class neg" (reset_stack_bin c1' c) nA nB)
             (c2, nR) = apply @Neg c2_ s nA nB
+            (c2', nR') = absorb @Neg c2 positionA dcR' nR
 
-            c3_ = add_to_stack (positionA, Pos) (getNode c1 dcA, getNode c1 dcB, dcR) (traverse_dc @a "inf pos" (reset_stack_bin c2 c) pA pB)
+            c3_ = add_to_stack (positionA, Pos) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a "class pos" (reset_stack_bin c2' c) pA pB)
             (c3, pR) = apply @Pos c3_ s pA pB
+            (c3', pR') = absorb @Pos c3 positionA dcR' pR
 
-            c4 = reset_stack_bin c3 c
+            c4 = reset_stack_bin c3' c
 
-            (_, _, outerDcRs) = bin_dc_stack c4
-            unCtx0 = (binaryToUnaryContext c4) { un_dc_stack = dcR : outerDcRs }
-            (unCtx1, nR') = naiveAbsorb @Neg unCtx0 dcR nR
-            (unCtx2, pR') = naiveAbsorb @Pos unCtx1 dcR pR
-            (unCtx3, dcR') = case outerDcRs of
-                (outerDcR : _) -> naiveAbsorb @Dc unCtx2 outerDcR dcR
-                []             -> (unCtx2, dcR)
-            c5 = unaryToBinaryContext unCtx3 c4
-        in applyElimRule @a c5 $ ClassNode positionA (fst dcR') (fst pR') (fst nR')
+        in applyElimRule @a c4 $ ClassNode positionA (fst dcR') (fst pR') (fst nR')
     | positionA > positionB = applyClassA @a c s a b  -- A's class comes after, wrap A
     | positionA < positionB = applyClassB @a c s a b  -- B's class comes after, wrap B
 applyClass' c s a@(_, ClassNode {}) b@(_, Leaf _) = applyClassB @a c s a b  -- Wrap Leaf in ClassNode's class
 applyClass' c s a@(_, ClassNode{}) b@(_, EndClassNode _) = applyClassB @a c s a b
 applyClass' c s a@(_, Leaf _) b@(_, ClassNode{}) = applyClassA @a c s a b  -- Wrap Leaf in ClassNode's class
 applyClass' c s a@(_, EndClassNode _) b@(_, ClassNode{}) = applyClassA @a c s a b
-applyClass' _ s _ _ = error ("apply inf error: " ++ s)
+applyClass' _ s _ _ = error ("apply class error: " ++ s)
 
 
 applyClassA :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)

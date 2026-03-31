@@ -141,8 +141,12 @@ traverse_dc_generic catchupFn s c refNode dcNode =
                 if | position > idx -> dcNode
                    | position == idx -> move_dc c s dcNode
                    | position < idx -> move_dc c s (catchupFn s c dcNode idx)
-            ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchupFn s c dcNode (-1))
-            ( (_, Node{}), (_, EndClassNode{}) ) -> move_dc c s (catchupFn s c dcNode (-1))
+            ( (_, Node{}), (_, Leaf _) )
+                | s == "endclass" -> dcNode
+                | otherwise       -> move_dc c s (catchupFn s c dcNode (-1))
+            ( (_, Node{}), (_, EndClassNode{}) )
+                | s == "endclass" -> dcNode
+                | otherwise       -> move_dc c s (catchupFn s c dcNode (-1))
             ( (_, EndClassNode{}), (_, EndClassNode{}) ) -> move_dc c s dcNode
             ( _, (_, Unknown) ) -> dcNode
             ( (_, Unknown), _ ) -> dcNode

@@ -77,10 +77,21 @@ library
     , tagged
   default-language: Haskell2010
 
+executable repro
+  main-is:             Repro.hs
+  hs-source-dirs:      src/test
+  other-modules:
+      MDD.Test.Fixtures
+  build-depends:
+      base >=4.7 && <5
+    , mdd
+  ghc-options:         -Wall -Wcompat
+  default-language:    Haskell2010
+
 test-suite mdd-tests
   type:                exitcode-stdio-1.0
   main-is:             Main.hs
-  hs-source-dirs:      test
+  hs-source-dirs:      src/test
   other-modules:
       MDD.Test.Fixtures
       MDD.Test.Construction
@@ -94,6 +105,21 @@ test-suite mdd-tests
   build-depends:
       base >=4.7 && <5
     , mdd
+    , ansi-terminal
+    , bimap
+    , containers
+    , deepseq
+    , directory
+    , filepath
+    , fmt
+    , graphviz
+    , hashable
+    , mtl
+    , process
+    , temporary
+    , text
+    , time
+    , unordered-containers
     , tasty
     , tasty-hunit
     , tasty-expected-failure
