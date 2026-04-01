@@ -201,11 +201,28 @@ traverse_dc_generic catchupFn infType s c refNode dcNode =
                     then dcNode
                     else ((0,0), Unknown)
 
-            -- Case 12: (Node, ClassNode) or (ClassNode, Node) — structural mismatch
-            ((_, Node{}), (_, ClassNode{})) ->
-                error "traverse_dc_generic: Node vs ClassNode structural mismatch"
-            ((_, ClassNode{}), (_, Node{})) ->
-                error "traverse_dc_generic: ClassNode vs Node structural mismatch"
+            -- Case 12a: (Node, ClassNode) — dcNode is an eliminated ClassNode (only had dc content).
+            -- The Node IS the dc branch content; neg/pos branches were empty.
+            -- Same logic as Case 13 (EndClassNode vs ClassNode).
+            ((_, Node position _ _), (_, ClassNode idx _ _ _))
+                | position == idx ->
+                    let contentBranch = case infType of
+                            "Dc"  -> "class dc"
+                            "Pos" -> "class pos"
+                            "Neg" -> "class neg"
+                            _     -> error $ "traverse_dc_generic: unknown infType '" ++ infType ++ "'"
+                    in if s == contentBranch
+                        then dcNode
+                        else ((0,0), Unknown)
+                | position > idx -> dcNode
+                | otherwise -> move_dc c s (catchupFn c dcNode idx)
+
+            -- Case 12b: (ClassNode, Node) — dcNode is a ClassNode but ref is a Node (eliminated ClassNode).
+            -- Follow the dc branch of the ClassNode to get to the content level matching the Node.
+            ((_, ClassNode position dc _ _), (_, Node idx _ _))
+                | position == idx -> traverse_dc_generic catchupFn infType s c refNode (getNode c dc)
+                | position > idx  -> dcNode
+                | otherwise       -> traverse_dc_generic catchupFn infType s c refNode (getNode c dc)
 
             -- Case 2/6: refNode is Leaf or Unknown — caught by guard rail above,
             -- but handle Unknown dcNode + any refNode via Case 5 above.

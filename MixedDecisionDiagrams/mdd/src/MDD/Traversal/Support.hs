@@ -139,7 +139,7 @@ naiveAbsorb c dcR@(_, Node dcPos dcP dcN) branch@(_, Node pos p n)
             (c'', r2) = naiveAbsorb @a c' (getNode c dcN) (getNode c n)
             absorbed = applyElimRule @a c'' $ Node pos (fst r1) (fst r2)
         in if snd absorbed == dcR then (fst absorbed, ((0,0), Unknown)) else absorbed
-    | dcPos > pos =
+    | dcPos < pos =
         case to_str @a of
             "Neg" -> naiveAbsorb @a c (getNode c dcN) branch
             "Pos" -> naiveAbsorb @a c (getNode c dcP) branch
@@ -147,7 +147,7 @@ naiveAbsorb c dcR@(_, Node dcPos dcP dcN) branch@(_, Node pos p n)
                          (c'', r2) = naiveAbsorb @a c' (getNode c dcN) branch
                          absorbed = applyElimRule @a c'' $ Node dcPos (fst r1) (fst r2)
                      in if snd absorbed == dcR then (fst absorbed, ((0,0), Unknown)) else absorbed
-    | otherwise =
+    | dcPos > pos =
         let (c',  r1) = naiveAbsorb @a c  dcR (getNode c p)
             (c'', r2) = naiveAbsorb @a c' dcR (getNode c n)
             absorbed = applyElimRule @a c'' $ Node pos (fst r1) (fst r2)
@@ -261,14 +261,14 @@ naiveTraverse depth c dcR@(_, Node dcPos dcP dcN) branch@(_, Node pos p n)
         let (c',  r1) = naiveTraverse @a depth c  (getNode c dcP) (getNode c p)
             (c'', r2) = naiveTraverse @a depth c' (getNode c dcN) (getNode c n)
         in applyElimRule @a c'' $ Node pos (fst r1) (fst r2)
-    | dcPos > pos =
+    | dcPos < pos =
         case to_str @a of
             "Neg" -> naiveTraverse @a depth c (getNode c dcN) branch
             "Pos" -> naiveTraverse @a depth c (getNode c dcP) branch
             _     -> let (c',  r1) = naiveTraverse @a depth c  (getNode c dcP) branch
                          (c'', r2) = naiveTraverse @a depth c' (getNode c dcN) branch
                      in applyElimRule @a c'' $ Node dcPos (fst r1) (fst r2)
-    | otherwise =
+    | dcPos > pos =
         let (c',  r1) = naiveTraverse @a depth c  dcR (getNode c p)
             (c'', r2) = naiveTraverse @a depth c' dcR (getNode c n)
         in applyElimRule @a c'' $ Node pos (fst r1) (fst r2)

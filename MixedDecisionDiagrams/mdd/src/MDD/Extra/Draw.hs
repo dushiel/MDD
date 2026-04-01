@@ -56,7 +56,7 @@ settings = ShowSetting {
             ,   display_end_classs = True
             ,   display_dc_traversal = True
             -- Traversal trace: keep False for cabal test; True only while debugging (see .cursor/skills/debug-mdd-test).
-            ,   debug_on = True
+            ,   debug_on = False
 
             ,   debug_open = True
             ,   debug_close = True
