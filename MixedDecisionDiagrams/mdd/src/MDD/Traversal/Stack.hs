@@ -18,9 +18,6 @@ module MDD.Traversal.Stack
   , pop_dc
   , pop_dc'
   , move_dc
-  , traverse_dc_generic
-  , traverse_dcA_endclass
-  , traverse_dcB_endclass
   ) where
 
 import MDD.Types
@@ -118,8 +115,9 @@ move_dc c m node =
 
         (_, EndClassNode child) ->
             if m == "endclass" then getNode c child
-            else (if m `elem` ["pos child", "neg child", "class pos", "class neg", "class dc"] then node
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndClassNode pattern: " ++ show_node c node)
+            else (if m `elem` ["pos child", "neg child"] then node
+            else (if m `elem` ["class pos", "class neg", "class dc"] then error "class inference should be handled by catchup mechanism"
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndClassNode pattern: " ++ show_node c node))
 
         (_, ClassNode position dc p n) ->
             if m == "class pos" then getNode c p
@@ -127,120 +125,10 @@ move_dc c m node =
             else if m == "class dc" then getNode c dc
             else error $ "processStackElement: undefined move '" ++ m ++ "' for ClassNode pattern: " ++ show_node c node
 
-        (_, Leaf _) ->
-            node
+        (_, Leaf _) -> if m `elem` ["class pos", "class neg", "class dc"] then error "class inference should be handled by catchup mechanism"
+            else node
         (_, Unknown) ->
             node
         _ -> error $ "processStackElement: Unhandled Node pattern"
 
 
-traverse_dc_generic :: (HasNodeLookup c) =>
-    (c -> Node -> Int -> Node)  -- ^ catchup function (from DdF3 instance)
-    -> String                   -- ^ inference type name ("Dc", "Pos", "Neg")
-    -> String                   -- ^ move string ("pos child", "neg child", "class dc", etc.)
-    -> c -> Node -> Node -> Node
-traverse_dc_generic catchupFn infType s c refNode dcNode =
-    -- Guard rail: validate move string vs refNode type
-    let validMove = case (snd refNode, s) of
-            (Node{},         "pos child") -> True
-            (Node{},         "neg child") -> True
-            (ClassNode{},    "class dc")  -> True
-            (ClassNode{},    "class neg") -> True
-            (ClassNode{},    "class pos") -> True
-            (EndClassNode{}, "endclass")  -> True
-            _                             -> False
-    in if not validMove
-        then error $ "traverse_dc_generic: invalid move '" ++ s ++ "' for refNode type " ++ show_node c refNode
-        else case (dcNode, refNode) of
-            -- Case 5: dcNode is Unknown — pass-through
-            ((_, Unknown), _) -> dcNode
-
-            -- Case 1: (Node, Node) — both are variable nodes
-            ((_, Node position _ _), (_, Node idx _ _))
-                | position > idx  -> dcNode
-                | position == idx -> move_dc c s dcNode
-                | otherwise       -> move_dc c s (catchupFn c dcNode idx)
-
-            -- Case 3: (Node, EndClassNode) — dc is behind, catch up to terminal then move
-            ((_, Node{}), (_, EndClassNode{})) ->
-                move_dc c s (catchupFn c dcNode (-1))
-
-            -- Case 4: (EndClassNode, EndClassNode) — both exiting class
-            ((_, EndClassNode{}), (_, EndClassNode{})) -> move_dc c s dcNode
-
-            -- Case 7: (ClassNode, ClassNode) — both are class nodes
-            ((_, ClassNode position _ _ _), (_, ClassNode idx _ _ _))
-                | position > idx  -> dcNode
-                | position == idx -> move_dc c s dcNode
-                | otherwise       -> error "traverse_dc_generic: ClassNode catchup not yet implemented (dcNode class pos < refNode class pos)"
-
-            -- Case 8: (Leaf, EndClassNode) — dc terminated at Leaf, ref exiting class
-            ((_, Leaf{}), (_, EndClassNode{})) -> dcNode
-
-            -- Case 9: (ClassNode, EndClassNode) — dc has ClassNode, ref exiting (deferred)
-            ((_, ClassNode{}), (_, EndClassNode{})) ->
-                error "traverse_dc_generic: ClassNode vs EndClassNode catchup not yet implemented"
-
-            -- Case 10: (Leaf, Node) or (Leaf, ClassNode) — dc terminated
-            ((_, Leaf{}), (_, Node{})) -> dcNode
-            ((_, Leaf{}), (_, ClassNode{})) -> dcNode
-
-            -- Case 11: (EndClassNode, Node) — dc exited class, ref still inside
-            ((_, EndClassNode{}), (_, Node{})) -> dcNode
-
-            -- Case 13: (EndClassNode, ClassNode) — dc exited, ref at ClassNode
-            -- Infer a ClassNode for dc (content on @a's branch), then apply move.
-            -- Result is dcNode when infType's branch matches s, Unknown otherwise.
-            ((_, EndClassNode{}), (_, ClassNode{})) ->
-                let contentBranch = case infType of
-                        "Dc"  -> "class dc"
-                        "Pos" -> "class pos"
-                        "Neg" -> "class neg"
-                        _     -> error $ "traverse_dc_generic: unknown infType '" ++ infType ++ "'"
-                in if s == contentBranch
-                    then dcNode
-                    else ((0,0), Unknown)
-
-            -- Case 12a: (Node, ClassNode) — dcNode is an eliminated ClassNode (only had dc content).
-            -- The Node IS the dc branch content; neg/pos branches were empty.
-            -- Same logic as Case 13 (EndClassNode vs ClassNode).
-            ((_, Node position _ _), (_, ClassNode idx _ _ _))
-                | position == idx ->
-                    let contentBranch = case infType of
-                            "Dc"  -> "class dc"
-                            "Pos" -> "class pos"
-                            "Neg" -> "class neg"
-                            _     -> error $ "traverse_dc_generic: unknown infType '" ++ infType ++ "'"
-                    in if s == contentBranch
-                        then dcNode
-                        else ((0,0), Unknown)
-                | position > idx -> dcNode
-                | otherwise -> move_dc c s (catchupFn c dcNode idx)
-
-            -- Case 12b: (ClassNode, Node) — dcNode is a ClassNode but ref is a Node (eliminated ClassNode).
-            -- Follow the dc branch of the ClassNode to get to the content level matching the Node.
-            ((_, ClassNode position dc _ _), (_, Node idx _ _))
-                | position == idx -> traverse_dc_generic catchupFn infType s c refNode (getNode c dc)
-                | position > idx  -> dcNode
-                | otherwise       -> traverse_dc_generic catchupFn infType s c refNode (getNode c dc)
-
-            -- Case 2/6: refNode is Leaf or Unknown — caught by guard rail above,
-            -- but handle Unknown dcNode + any refNode via Case 5 above.
-            _ -> error $ "traverse_dc_generic: unhandled case (dcNode=" ++ show_node c dcNode
-                      ++ ", refNode=" ++ show_node c refNode ++ ")"
-
-traverse_dcA_endclass :: BiOpContext -> NodeId -> BiOpContext
-traverse_dcA_endclass ctx refA =
-    let (dcAs, dcBs, dcRs) = bin_dc_stack ctx
-        refNode = getNode ctx refA
-        moveDc dc = traverse_dc_generic (\_ n _ -> n) "Dc" "endclass" ctx refNode dc
-        new_dcAs = map moveDc dcAs
-    in ctx { bin_dc_stack = (new_dcAs, dcBs, dcRs) }
-
-traverse_dcB_endclass :: BiOpContext -> NodeId -> BiOpContext
-traverse_dcB_endclass ctx refB =
-    let (dcAs, dcBs, dcRs) = bin_dc_stack ctx
-        refNode = getNode ctx refB
-        moveDc dc = traverse_dc_generic (\_ n _ -> n) "Dc" "endclass" ctx refNode dc
-        new_dcBs = map moveDc dcBs
-    in ctx { bin_dc_stack = (dcAs, new_dcBs, dcRs) }

@@ -196,40 +196,55 @@ cs_dc_sub3 = add_path cs_neg_bound123
 
 -- ============================================================
 -- 4-level deep nesting: Dc -> Dc -> Dc -> Dc (homogeneous)
+-- Class positions 1->2->3->4, variable position 6 (or 7)
 -- ============================================================
 
 dddd2  = add_path cs_dc_sub3
-    (P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P'' [2])])])])])
+    (P' [(1, Dc1, P' [(2, Dc1, P' [(3, Dc1, P' [(4, Dc1, P'' [6])])])])])
 dddd3  = add_path dddd2
-    (P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P'' [3])])])])])
+    (P' [(1, Dc1, P' [(2, Dc1, P' [(3, Dc1, P' [(4, Dc1, P'' [7])])])])])
 dddd'2 = add_path dddd3
-    (P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P'' [-2])])])])])
+    (P' [(1, Dc1, P' [(2, Dc1, P' [(3, Dc1, P' [(4, Dc1, P'' [-6])])])])])
 
 -- ============================================================
 -- 4-level deep nesting: Dc -> Neg -> Pos -> Dc (mixed at every level)
+-- Class positions 1->2->3->4, variable position 6 (or 7)
 -- ============================================================
 
 dnpd2  = add_path dddd'2
-    (P' [(1, Dc1, P' [(1, Neg1, P' [(1, Pos1, P' [(1, Dc1, P'' [2])])])])])
+    (P' [(1, Dc1, P' [(2, Neg1, P' [(3, Pos1, P' [(4, Dc1, P'' [6])])])])])
 dnpd3  = add_path dnpd2
-    (P' [(1, Dc1, P' [(1, Neg1, P' [(1, Pos1, P' [(1, Dc1, P'' [3])])])])])
+    (P' [(1, Dc1, P' [(2, Neg1, P' [(3, Pos1, P' [(4, Dc1, P'' [7])])])])])
 dnpd'2 = add_path dnpd3
-    (P' [(1, Dc1, P' [(1, Neg1, P' [(1, Pos1, P' [(1, Dc1, P'' [-2])])])])])
+    (P' [(1, Dc1, P' [(2, Neg1, P' [(3, Pos1, P' [(4, Dc1, P'' [-6])])])])])
 
 -- ============================================================
 -- 4-level deep nesting: Neg -> Dc -> Neg -> Dc (alternating)
+-- Class positions 1->2->3->4, variable position 6 (or 7)
 -- ============================================================
 
 ndnd2  = add_path dnpd'2
-    (P' [(1, Neg1, P' [(1, Dc1, P' [(1, Neg1, P' [(1, Dc1, P'' [2])])])])])
+    (P' [(1, Neg1, P' [(2, Dc1, P' [(3, Neg1, P' [(4, Dc1, P'' [6])])])])])
 ndnd3  = add_path ndnd2
-    (P' [(1, Neg1, P' [(1, Dc1, P' [(1, Neg1, P' [(1, Dc1, P'' [3])])])])])
+    (P' [(1, Neg1, P' [(2, Dc1, P' [(3, Neg1, P' [(4, Dc1, P'' [7])])])])])
+
+-- ============================================================
+-- 4-level deep nesting (alternative): all class positions = 1, variable position 2/3
+-- Same nesting patterns as above but with shared class positions (harder to read in traces)
+-- ============================================================
+
+dddd2_alt  = add_path ndnd3
+    (P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P' [(1, Dc1, P'' [2])])])])])
+dnpd2_alt  = add_path dddd2_alt
+    (P' [(1, Dc1, P' [(1, Neg1, P' [(1, Pos1, P' [(1, Dc1, P'' [2])])])])])
+ndnd2_alt  = add_path dnpd2_alt
+    (P' [(1, Neg1, P' [(1, Dc1, P' [(1, Neg1, P' [(1, Dc1, P'' [2])])])])])
 
 -- ============================================================
 -- The shared test context (NodeLookup) containing all variables
 -- ============================================================
 
-(t_c, _) = unMDD ndnd3
+(t_c, _) = unMDD ndnd2_alt
 
 -- ============================================================
 -- Advanced operations context

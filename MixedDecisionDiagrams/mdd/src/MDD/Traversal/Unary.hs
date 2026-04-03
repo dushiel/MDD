@@ -96,7 +96,7 @@ instance (DdF3 a) => DdUnary a where
                                                       ++ " refNode=" ++ show_node c ref
                                                       ++ " dcNode=" ++ show_node c dc
                                                       ++ " level=" ++ show lv)
-                                                  $ traverse_dc_generic (catchup @a) (to_str @a) s c ref dc) dcRs
+                                                  $ traverse_dc_generic @a s c ref dc) dcRs
                            in c{un_dc_stack = new_dcRs, un_current_level=lv}
 
 
