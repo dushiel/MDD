@@ -119,9 +119,13 @@ move_dc c m node =
             else (if m `elem` ["class pos", "class neg", "class dc"] then error "class inference should be handled by catchup mechanism"
             else error $ "processStackElement: undefined move '" ++ m ++ "' for EndClassNode pattern: " ++ show_node c node))
 
+        -- todo!: current limitation of the system
+        -- we should keep track for each dc stack node what context it is in due to being able to traverse to the class neg and class pos nodes of a class it contains
+        -- for now we keep the ugly patch to check at least for bare Unknown nodes in the pos / neg branches and then map those back at this level to the dcR.
+        -- we do this to be able to test the other parts of the libarary before starting the large change to the code when fixing this.
         (_, ClassNode position dc p n) ->
-            if m == "class pos" then getNode c p
-            else if m == "class neg" then getNode c n
+            if m == "class pos" then (if p == (0,0) then getNode c dc else getNode c p)
+            else if m == "class neg" then (if n == (0,0) then getNode c dc else getNode c n)
             else if m == "class dc" then getNode c dc
             else error $ "processStackElement: undefined move '" ++ m ++ "' for ClassNode pattern: " ++ show_node c node
 
@@ -130,5 +134,3 @@ move_dc c m node =
         (_, Unknown) ->
             node
         _ -> error $ "processStackElement: Unhandled Node pattern"
-
-

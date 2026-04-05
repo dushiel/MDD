@@ -54,13 +54,13 @@ settings = ShowSetting {
             ,   display_context = False
             ,   display_leaf_cases = True
             ,   display_end_classs = True
-            ,   display_dc_traversal = False
+            ,   display_dc_traversal = True
 
             ,   debug_on = False
 
             ,   debug_open = True
             ,   debug_close = True
-            ,   debug_shorten_close = False
+            ,   debug_shorten_close = True
 
             ,   debug_dc_stack = True
             ,   display_level = False

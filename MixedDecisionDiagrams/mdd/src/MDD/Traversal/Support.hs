@@ -451,19 +451,15 @@ naiveTraverse' depth c absingB@(_, ClassNode dcPos dcD dcP dcN) branch@(_, EndCl
 
 
 instance DdF3 Dc where
-    inferNodeA f c s a (_, Node positionB pos_childB neg_childB) =
-        let (c', (pos_result, _)) = f c s a (getNode c pos_childB)
-            (c'', (neg_result, _)) = f c' s a (getNode c neg_childB)
-        in (c'', Node positionB pos_result neg_result)
+    inferNodeA f c s a@(a_id, _) b@(b_id, Node positionB _ _) =
+        let (c', r) = insert c (Node positionB a_id a_id)
+            (c'', (r_node_id, _)) = f c' s r (getNode c' b_id)
+        in (c'', getDd c'' r_node_id)
 
-    inferNodeB f c s (_, Node positionA pos_childA neg_childA) b =
-        -- trace ("inferB at : " ++ show positionA
-        --     ++ " \n posA: " ++ show_node c (getNode c pos_childA)
-        --     ++ " \n neg: " ++ show_node c (getNode c neg_childA)) (
-            let
-                (c', (pos_result, _)) = f c s (getNode c pos_childA) b
-                (c'', (neg_result, _)) = f c' s (getNode c neg_childA) b
-            in (c'', Node positionA pos_result neg_result)
+    inferNodeB f c s a@(a_id, Node positionA _ _) b@(b_id, _) =
+        let (c', r) = insert c (Node positionA b_id b_id)
+            (c'', (r_node_id, _)) = f c' s (getNode c' a_id) r
+        in (c'', getDd c'' r_node_id)
 
 
     applyElimRule c d@(Node _ p n) = if p == n then (c, getNode c p) else insert c d

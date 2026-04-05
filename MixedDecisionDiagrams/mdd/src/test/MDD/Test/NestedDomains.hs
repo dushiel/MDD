@@ -6,7 +6,6 @@ module MDD.Test.NestedDomains where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.ExpectedFailure (expectFailBecause)
 
 import MDD.Extra.Interface
 import SMCDEL.Symbolic.Bool
@@ -1055,14 +1054,12 @@ fourLevelNesting = testGroup "Four-level nesting"
             b = ddOf t_c (Var dnpd3)
         in (a .*. b) @?= (b .*. a)
 
-    , expectFailBecause "library bug: absorption fails for 4-level mixed Dc-Neg-Pos-Dc nesting" $
-      testCase "Absorption: dnpd2 AND (dnpd2 OR dnpd3) == dnpd2" $
+    , testCase "Absorption: dnpd2 AND (dnpd2 OR dnpd3) == dnpd2" $
         let a = ddOf t_c (Var dnpd2)
             b = ddOf t_c (Var dnpd3)
         in (a .*. (a .+. b)) @?= a
 
-    , expectFailBecause "library bug: absorption fails for 4-level mixed Dc-Neg-Pos-Dc nesting" $
-      testCase "Absorption: dnpd2 OR (dnpd2 AND dnpd3) == dnpd2" $
+    , testCase "Absorption: dnpd2 OR (dnpd2 AND dnpd3) == dnpd2" $
         let a = ddOf t_c (Var dnpd2)
             b = ddOf t_c (Var dnpd3)
         in (a .+. (a .*. b)) @?= a
@@ -1112,8 +1109,7 @@ fourLevelNesting = testGroup "Four-level nesting"
             b = ddOf t_c (Var ndnd3)
         in (a .*. b) @?= (b .*. a)
 
-    , expectFailBecause "library bug: absorption fails for 4-level alternating Neg-Dc nesting" $
-      testCase "Absorption: ndnd2 AND (ndnd2 OR ndnd3) == ndnd2" $
+    , testCase "Absorption: ndnd2 AND (ndnd2 OR ndnd3) == ndnd2" $
         let a = ddOf t_c (Var ndnd2)
             b = ddOf t_c (Var ndnd3)
         in (a .*. (a .+. b)) @?= a
@@ -1142,22 +1138,19 @@ fourLevelNesting = testGroup "Four-level nesting"
             c = ddOf t_c (Var ndnd2)
         in ((a .+. b) .+. c) @?= (a .+. (b .+. c))
 
-    , expectFailBecause "library bug: distributivity fails for cross 4-level mixed nesting (absorb at wrong level)" $
-      testCase "Distributivity: dddd2 AND (dnpd2 OR ndnd2) == (dddd2 AND dnpd2) OR (dddd2 AND ndnd2)" $
+    , testCase "Distributivity: dddd2 AND (dnpd2 OR ndnd2) == (dddd2 AND dnpd2) OR (dddd2 AND ndnd2)" $
         let a = ddOf t_c (Var dddd2)
             b = ddOf t_c (Var dnpd2)
             c = ddOf t_c (Var ndnd2)
         in (a .*. (b .+. c)) @?= ((a .*. b) .+. (a .*. c))
 
-    , expectFailBecause "library bug: distributivity fails for cross 4-level mixed nesting" $
-      testCase "Distributivity: dddd2 OR (dnpd2 AND ndnd2) == (dddd2 OR dnpd2) AND (dddd2 OR ndnd2)" $
+    , testCase "Distributivity: dddd2 OR (dnpd2 AND ndnd2) == (dddd2 OR dnpd2) AND (dddd2 OR ndnd2)" $
         let a = ddOf t_c (Var dddd2)
             b = ddOf t_c (Var dnpd2)
             c = ddOf t_c (Var ndnd2)
         in (a .+. (b .*. c)) @?= ((a .+. b) .*. (a .+. c))
 
-    , expectFailBecause "library bug: absorption fails for cross 4-level mixed nesting" $
-      testCase "Absorption: dddd2 AND (dddd2 OR dnpd2) == dddd2" $
+    , testCase "Absorption: dddd2 AND (dddd2 OR dnpd2) == dddd2" $
         let a = ddOf t_c (Var dddd2)
             b = ddOf t_c (Var dnpd2)
         in (a .*. (a .+. b)) @?= a

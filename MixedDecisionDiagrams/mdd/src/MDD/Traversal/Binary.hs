@@ -16,7 +16,7 @@ import MDD.Traversal.Context
 import MDD.NodeLookup
 import MDD.Traversal.Stack
 import MDD.Traversal.Support
-import MDD.Extra.Draw (debug_manipulation, debug_manipulation_inf)
+import MDD.Extra.Draw (Show_setting (..), debug_manipulation, debug_manipulation_inf, debug, show_dd, show_node, settings)
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Kind (Constraint)
@@ -144,6 +144,7 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     --   -> Need to infer what the EndClassNode's argument should be at the Node's position
     apply' c s a@(a_id, EndClassNode _) b@(b_id, Node idx _ _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeA' @a (apply' @a) c s a b)
     apply' c s a@(a_id, Node{}) b@(b_id, EndClassNode _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB' @a (apply' @a) c s a b)
+
     apply' c s a@(_, EndClassNode _) b@(_, ClassNode{}) = withCache c (a, b, s) $
         applyClassA @a c s a b
     apply' c s a@(_, ClassNode{}) b@(_, EndClassNode _) = withCache c (a, b, s) $
@@ -287,8 +288,8 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     applyDcA' c s a b@(_, Unknown) = dcA_leaf_cases @a c s a b
 
     -- Cases 5-6: EndClassNode vs Node (note: A uses @Dc@ inference when inferring)
-    applyDcA' c s a@(a_id, EndClassNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeA' @Dc (applyDcA' @a) c s a b)  -- A is Dc
-    applyDcA' c s a@(a_id, Node{}) b@(b_id, EndClassNode _) = withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeB' @a (applyDcA' @a) c s a b)
+    applyDcA' c s a@(a_id, EndClassNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeA' @Dc (applyDcA' @a) c s a b)   -- A is Dc
+    applyDcA' c s a@(a_id, Node{}) b@(b_id, EndClassNode _) = (withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeB' @a (applyDcA' @a) c s a b))
     applyDcA' c s a@(a_id, EndClassNode ac) b@(b_id, EndClassNode bc) = withCache c (a, b, (s ++ "Dc")) $
         endclass_case @a c s a_id b_id ac bc
 
