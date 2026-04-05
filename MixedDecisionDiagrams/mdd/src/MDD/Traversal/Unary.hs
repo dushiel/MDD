@@ -20,7 +20,7 @@ import MDD.Traversal.Context
 import MDD.NodeLookup
 import MDD.Traversal.Stack
 import MDD.Traversal.Support
-import MDD.Extra.Draw (debug_manipulation_unary, show_node)
+import MDD.Extra.Draw (debug_manipulation_unary, show_node, debug_dc_traverse_unary)
 
 import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
@@ -91,13 +91,9 @@ instance (DdF3 a) => DdUnary a where
             let ref = getNode c d
             in case snd ref of
                 Leaf{} -> c
-                _      -> let new_dcRs = map (\dc -> trace ("  [traverse_dc_unary] move=" ++ show s
-                                                      ++ " infType=" ++ to_str @a
-                                                      ++ " refNode=" ++ show_node c ref
-                                                      ++ " dcNode=" ++ show_node c dc
-                                                      ++ " level=" ++ show lv)
-                                                  $ traverse_dc_generic @a s c ref dc) dcRs
-                           in c{un_dc_stack = new_dcRs, un_current_level=lv}
+                _      -> let new_dcRs = map (traverse_dc_generic @a s c ref) dcRs
+                              new_c = c{un_dc_stack = new_dcRs, un_current_level=lv}
+                          in debug_dc_traverse_unary s (to_str @a) c d new_c
 
 
     restrict_node_set c (na : nas) b d@(node_id, Node position pos_child neg_child)  =

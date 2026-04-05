@@ -54,16 +54,16 @@ settings = ShowSetting {
             ,   display_context = False
             ,   display_leaf_cases = True
             ,   display_end_classs = True
-            ,   display_dc_traversal = True
-            -- Traversal trace: keep False for cabal test; True only while debugging (see .cursor/skills/debug-mdd-test).
-            ,   debug_on = True
+            ,   display_dc_traversal = False
+
+            ,   debug_on = False
 
             ,   debug_open = True
             ,   debug_close = True
             ,   debug_shorten_close = False
 
             ,   debug_dc_stack = True
-            ,   display_level = True
+            ,   display_level = False
             ,   display_dcAs = False
             ,   display_dcBs = False
             ,   display_dcRs = True
@@ -321,7 +321,7 @@ debug_manipulation_inf :: (BiOpContext, Node) -> String -> String -> BiOpContext
 debug_manipulation_inf result_pair f_key f_name old_c@BCxt{bin_cache = nc, bin_dc_stack=dcs} a@(a_id, a_d) b@(b_id, b_d)
     | getDd old_c a_id == a_d && getDd old_c b_id == b_d =
     let
-        leaf_msg = format_debug_open_binary f_name " (INF)" old_c a b
+        leaf_msg = format_debug_open_binary f_name " (Class)" old_c a b
         stack_msg = if debug_dc_stack settings then display_func_stack old_c else ""
         (c,r) = if debug_on settings && debug_open settings && check_skip_display a_id b_id
                 then myTrace (leaf_msg ++ stack_msg) result_pair
@@ -334,8 +334,8 @@ debug_manipulation_inf result_pair f_key f_name old_c@BCxt{bin_cache = nc, bin_d
         then if should_skip
             then if not $ display_leaf_cases settings
                 then (c{bin_dc_stack=dcs}, r)
-                else myTrace (format_debug_close_binary f_name " (INF)" c a b r) (c, r)
-            else myTrace (format_cache_result_binary f_name " (INF)" c a b r mCached ++ close_stack) (c{bin_dc_stack=dcs}, r)
+                else myTrace (format_debug_close_binary f_name " (Class)" c a b r) (c, r)
+            else myTrace (format_cache_result_binary f_name " (Class)" c a b r mCached ++ close_stack) (c{bin_dc_stack=dcs}, r)
         else (c{bin_dc_stack=dcs}, r)
     | otherwise = error ("id and dd are not equal, \n a_id: " ++ show (getDd old_c a_id) ++ "\n a: " ++ show a ++ "\n b_id: " ++ show (getDd old_c b_id) ++ " \n b: " ++ show b )
 
@@ -423,28 +423,54 @@ display_func_stack c@BCxt{bin_dc_stack = dcs} = let
             showStack label nodes = label ++ "[" ++ intercalate " | " (zipWith (\i n -> show i ++ ":" ++ show_dd settings c n) [(0::Int)..] nodes) ++ "]"
         in
             (if display_level settings then col' "dark" ("  L=" ++ show (bin_current_level c)) else "") ++
-            (if display_dcAs settings then "\n  " ++ col' "dark" (showStack "dcA" dcAs) else "") ++
-            (if display_dcBs settings then "\n  " ++ col' "dark" (showStack "dcB" dcBs) else "") ++
-            (if display_dcRs settings then "\n  " ++ col' "dark" (showStack "dcR" dcRs) else "") ++ "\n"
+            (if display_dcAs settings then "\n  " ++ col' "dark" (showStack "dcA_stack" dcAs) else "") ++
+            (if display_dcBs settings then "\n  " ++ col' "dark" (showStack "dcB_stack" dcBs) else "") ++
+            (if display_dcRs settings then "\n  " ++ col' "dark" (showStack "dcR_stack" dcRs) else "") ++ "\n"
+
+
+debug_dc_traverse_unary :: String -> String -> UnOpContext -> NodeId -> UnOpContext -> UnOpContext
+debug_dc_traverse_unary s infType c a f =
+    let ref = getNode c a
+        skip = not (display_leaf_cases settings) && (case snd ref of { Leaf _ -> True; Unknown -> True; _ -> False })
+    in if display_dc_traversal settings && debug_on settings && not skip
+    then myTrace (col' "purple" "dc_traverse_unary" ++ " [" ++ infType ++ "], move=" ++ s ++ " refNode: " ++ show_dd settings c ref)
+        (myTrace (display_func_stack_unary' c f ++ "\n\n") f)
+    else f
+
+display_func_stack_unary' :: UnOpContext -> UnOpContext -> String
+display_func_stack_unary' old_c@UCxt{un_dc_stack = dcs} new_c@UCxt{un_dc_stack = new_dcs} = let
+            old_dcRs = intercalate separator1 $ map (show_dd settings old_c) dcs
+            new_dcRs = intercalate separator1 $ map (show_dd settings new_c) new_dcs
+            separator1 = " , \n  "
+        in
+            (if display_level settings then col' "purple" "func stack : " ++ show (un_current_level old_c) ++ col' "blue" "func stack : " ++ show (un_current_level new_c) else "") ++
+            (if display_dcRs settings then col' "orange" "\n- DcR old : \n  " ++ old_dcRs ++ col' "green" "\n  DcR new : \n  " ++ new_dcRs else "")
 
 -- ** naiveAbsorb Debug
 
 debug_naiveAbsorb_open :: String -> UnOpContext -> Node -> Node -> String
 debug_naiveAbsorb_open label c dcR branch =
-    if display_naiveAbsorb settings && debug_on settings && debug_open settings
-    then col' "red" (">> absorb " ++ label ++ " :") ++
+    let skip = not (display_leaf_cases settings) && (case snd branch of { Leaf _ -> True; Unknown -> True; _ -> False })
+    in if display_naiveAbsorb settings && debug_on settings && debug_open settings && not skip
+    then col' "red" (">> " ++ label ++ " :") ++
          "\n  dcR    = " ++ show_dd settings c dcR ++
          "\n  branch = " ++ show_dd settings c branch ++
-         (let dcs = un_dc_stack c
-              showStack lbl nodes = lbl ++ "[" ++ intercalate " | " (zipWith (\i n -> show i ++ ":" ++ show_dd settings c n) [(0::Int)..] nodes) ++ "]"
-          in "\n  " ++ col' "dark" (showStack "outerDcRs" dcs)) ++
+         (if debug_dc_stack settings
+          then let dcs = un_dc_stack c
+                   showStack lbl nodes = lbl ++ "[" ++ intercalate " | " (zipWith (\i n -> show i ++ ":" ++ show_dd settings c n) [(0::Int)..] nodes) ++ "]"
+               in "\n  " ++ col' "dark" (showStack "outerDcRs" dcs)
+          else "") ++
+         (if display_level settings
+          then "\n  " ++ col' "dark" ("L=" ++ show (un_current_level c))
+          else "") ++
          "\n"
     else ""
 
 debug_naiveAbsorb_close :: String -> UnOpContext -> Node -> Node -> Node -> String
 debug_naiveAbsorb_close label c dcR branch result =
-    if display_naiveAbsorb settings && debug_on settings && debug_close settings
-    then col' "soft red" ("absorb " ++ label ++ " :") ++
+    let skip = not (display_leaf_cases settings) && (case snd branch of { Leaf _ -> True; Unknown -> True; _ -> False })
+    in if display_naiveAbsorb settings && debug_on settings && debug_close settings && not skip
+    then col' "soft red" (label ++ " :") ++
          "\n  dcR    = " ++ show_dd settings c dcR ++
          "\n  branch = " ++ show_dd settings c branch ++
          "\n  =>  " ++ show_dd settings c result ++ "\n"
