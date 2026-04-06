@@ -239,15 +239,12 @@ validViaMdd bls@(BlS _ lawmdd _) f =
 
 evalViaMdd :: BelScene -> Form -> Bool
 evalViaMdd (bls@(BlS _ lawmdd _), s) f =
-    let (nl, node) = unMDD s
-        traceMsg = "" -- "\n \n   evaluating state s : " ++ show_dd settings nl node ++ "\n   on formula : " ++ show f
-    in
-    trace traceMsg (let
+    let
         f_node = mddOf bls f
         check_node = s .->. f_node
     in
-        check_node == top)
-
+        check_node == top
+-- traceMsg = "\n \n   evaluating state s : " ++ show_dd settings nl node ++ "\n   on formula : " ++ show f
 instance Semantics BelStruct where
   isTrue = validViaMdd
 

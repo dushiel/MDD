@@ -472,7 +472,6 @@ instance DdF3 Dc where
     applyElimRule c d@(EndClassNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)
         Unknown -> (c, getNode c r)
-        EndClassNode _ -> (c, getNode c r)
         _ -> insert c d
     applyElimRule c d = insert c d
 
@@ -508,7 +507,6 @@ instance DdF3 Pos where
     applyElimRule c d@(EndClassNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)
         Unknown -> (c, getNode c r)
-        EndClassNode _ -> (c, getNode c r)
         _ -> insert c d
     applyElimRule c d = insert c d
 
@@ -548,7 +546,6 @@ instance DdF3 Neg where
     applyElimRule c d@(EndClassNode r) = case getDd c r of
         Leaf _ -> (c, getNode c r)
         Unknown -> (c, getNode c r)
-        EndClassNode _ -> (c, getNode c r)
         _ -> insert c d
     applyElimRule c d = insert c d
 

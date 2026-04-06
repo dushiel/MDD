@@ -8,6 +8,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import MDD.Extra.Interface
+import MDD.Extra.Draw (show_mdd)
 import SMCDEL.Symbolic.Bool
 import MDD.Test.Fixtures
 
@@ -26,6 +27,7 @@ tests = testGroup "Nested Domains"
   , absorbPositionCatchup
   , fourLevelNesting
   , crossContextNested
+  , explicitDepthGapTests
   ]
 
 -- ============================================================
@@ -1328,3 +1330,34 @@ crossContextNested = testGroup "Cross-context nested"
         in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
     ]
   ]
+
+
+-- Check some other time whether the following are good tests:
+-- -- ############################################################
+-- -- Explicit Depth-Gap Tests
+-- -- ############################################################
+
+-- explicitDepthGapTests :: TestTree
+-- explicitDepthGapTests = testGroup "Explicit Depth-Gap Tests"
+--   [ testGroup "Hidden Variable Semantic Tests"
+--     [ testCase "Depth-2 to Depth-1 level preservation" $
+--         let deep_var  = ddOf t_c (Var nn2)   -- class 1, subclass 1, var 2
+--             high_var1 = ddOf t_c (Var n__2)  -- class 3, var 2
+--             high_var2 = ddOf t_c (Var n__3)  -- class 3, var 3
+
+--             combined = deep_var .+. high_var1
+--             result   = combined .*. high_var2
+--             expected = deep_var .*. high_var2
+--         in result @?= expected
+
+--     , testCase "Depth-4 to Depth-1 level preservation" $
+--         let deep_var  = ddOf t_c (Var dddd2) -- class 1, subclass 2, subclass 3, subclass 4, var 6
+--             high_var1 = ddOf t_c (Var n__2)  -- class 3, var 2
+--             high_var2 = ddOf t_c (Var n__3)  -- class 3, var 3
+
+--             combined = deep_var .+. high_var1
+--             result   = combined .*. high_var2
+--             expected = deep_var .*. high_var2
+--         in result @?= expected
+--     ]
+--   ]

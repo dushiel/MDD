@@ -54,20 +54,20 @@ settings = ShowSetting {
             ,   display_context = False
             ,   display_leaf_cases = True
             ,   display_end_classs = True
-            ,   display_dc_traversal = True
+            ,   display_dc_traversal = False
 
             ,   debug_on = False
 
-            ,   debug_open = True
+            ,   debug_open = False
             ,   debug_close = True
-            ,   debug_shorten_close = True
+            ,   debug_shorten_close = False
 
-            ,   debug_dc_stack = True
+            ,   debug_dc_stack = False
             ,   display_level = False
             ,   display_dcAs = False
             ,   display_dcBs = False
-            ,   display_dcRs = True
-            ,   display_naiveAbsorb = True
+            ,   display_dcRs = False
+            ,   display_naiveAbsorb = False
 }
 
 -- * Color Utilities
@@ -480,6 +480,7 @@ debug_naiveAbsorb_close label c dcR branch result =
 
 -- | Trace function that ensures message is evaluated
 myTrace :: String -> a -> a
+myTrace "" x = x
 myTrace msg x = unsafePerformIO $ do
     msg `deepseq` return (trace msg x)
 
