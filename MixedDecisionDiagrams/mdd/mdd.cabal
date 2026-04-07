@@ -1,0 +1,114 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.35.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           mdd
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/mdd#readme>
+homepage:       https://github.com/githubuser/mdd#readme
+bug-reports:    https://github.com/githubuser/mdd/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2023 Author name here
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+    src/Internal/Language.hs
+    src/AliceLanguage/Language1.hs
+    src/AliceLanguage/Language2.hs
+    src/Lib.hs
+    src/MDDmanipulation.hs
+    src/DotMDD.hs
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/mdd
+
+library
+  exposed-modules:
+      AliceLanguage.Language1
+      AliceLanguage.Language2
+      DotMDD
+      DrawMDD
+      Example
+      Internal.Language
+      Lib
+      Main
+      MDD
+      MDDi
+      MDDmanipulation
+      ReadMDD
+      Symbolic
+  other-modules:
+      Paths_mdd
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      ansi-terminal
+    , base >=4.7 && <5
+    , bimap
+    , containers
+    , fmt
+    , graphviz
+    , hashable
+    , text
+    , unordered-containers
+  default-language: Haskell2010
+
+executable mdd-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_mdd
+  hs-source-dirs:
+      app
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      ansi-terminal
+    , base >=4.7 && <5
+    , bimap
+    , containers
+    , fmt
+    , graphviz
+    , hashable
+    , mdd
+    , text
+    , unordered-containers
+  default-language: Haskell2010
+
+executable my-other-main
+  main-is: memo_proto.hs
+  other-modules:
+      AliceLanguage.Language1
+      AliceLanguage.Language2
+      DotMDD
+      DrawMDD
+      Example
+      Internal.Language
+      Lib
+      Main
+      MDD
+      MDDi
+      MDDmanipulation
+      ReadMDD
+      Symbolic
+      Paths_mdd
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      ansi-terminal
+    , base >=4.7 && <5
+    , bimap
+    , containers
+    , fmt
+    , graphviz
+    , hashable
+    , text
+    , unordered-containers
+  default-language: Haskell2010
