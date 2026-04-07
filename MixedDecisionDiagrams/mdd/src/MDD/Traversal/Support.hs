@@ -100,6 +100,32 @@ traverse_dc_unary s c d =
 
 -- * Traversal Helpers
 
+-- | Wrap a traversal result in EndClassNode, applying the elimination rule @a.
+wrapEndClass :: forall a. (DdF3 a) => (UnOpContext, Node) -> (UnOpContext, Node)
+wrapEndClass (c', r) = applyElimRule @a c' $ EndClassNode (fst r)
+
+-- | Exit the current class: sync dc_stack, pop the level, return (c_end, inf, c_after_pop).
+exitClass :: UnOpContext -> NodeId -> (UnOpContext, Inf, UnOpContext)
+exitClass c absingBId =
+    let c_end       = traverse_dc_unary @Dc ExitClass c absingBId
+        (c_, inf)   = pop_level_ c_end
+    in (c_end, inf, c_)
+
+-- | Infer a ClassNode wrapper for `branch` using rule @a, then call cont with absingB fixed.
+inferClassBranch :: forall a r. (DdF3 a)
+    => UnOpContext -> Int -> Node -> Node
+    -> (UnOpContext -> Node -> Node -> r) -> r
+inferClassBranch c pos absingB branch cont =
+    let (c', b') = inferClassNode @a c pos branch
+    in cont c' absingB b'
+
+-- | Infer a ClassNode wrapper for `absingB` using @Dc, then call cont with branch fixed.
+inferClassAbsing :: forall r. UnOpContext -> Int -> Node -> Node
+    -> (UnOpContext -> Node -> Node -> r) -> r
+inferClassAbsing c pos absingB branch cont =
+    let (c', a') = inferClassNode @Dc c pos absingB
+    in cont c' a' branch
+
 -- | Traverse an absorbing Node's children according to the inference context, applying f.
 travNodeAbs :: forall a. (DdF3 a)
     => UnOpContext
@@ -150,6 +176,32 @@ travNodeBoth :: forall a. (DdF3 a)
 travNodeBoth c absingB@(absingBId, Node _ dcP dcN) branch = travNodeStep @Dc @a c absingBId (getNode c dcP) (getNode c dcN) branch
 travNodeBoth _ _ _ = error "travNodeBoth: absingB must be a Node constructor"
 
+-- | Traverse matching ClassNodes at the same position; absingB uses @Dc, branch uses @a.
+-- Takes three callbacks — one per branch type — because each must be called with a different
+-- type-level inference parameter (@Dc, @Pos, @Neg) that cannot be abstracted as a value.
+travClassBoth :: forall a. (DdF3 a)
+    => UnOpContext
+    -> Node  -- absingB (must be a ClassNode)
+    -> Node  -- branch  (must be a ClassNode, same position)
+    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))  -- fDc:  recurse on dc  branch
+    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))  -- fPos: recurse on pos branch
+    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))  -- fNeg: recurse on neg branch
+    -> (UnOpContext, Node)
+travClassBoth c absingB@(absingBId, ClassNode _ dcD dcP dcN) branch@(_, ClassNode pos d p n) fDc fPos fNeg =
+    let c_dc = traverse_dc_unary @Dc MvClassDc c absingBId
+        c_   = add_to_stack_ (pos, Dc)  (getNode c_dc dcD, ((0,0), Unknown)) c_dc
+        (c1, rD) = fDc c_ (getNode c_dc dcD) (getNode c_dc d)
+        c1'  = reset_stack_un c1 c
+        c_p  = traverse_dc_unary @Dc MvClassPos c1' absingBId
+        c2_  = add_to_stack_ (pos, Pos) (getNode c_p dcD, rD) c_p
+        (c2, rP) = fPos c2_ (getNode c_p dcP) (getNode c_p p)
+        c2'  = reset_stack_un c2 c
+        c_n  = traverse_dc_unary @Dc MvClassNeg c2' absingBId
+        c3_  = add_to_stack_ (pos, Neg) (getNode c_n dcD, rD) c_n
+        (c3, rN) = fNeg c3_ (getNode c_n dcN) (getNode c_n n)
+    in applyElimRule @a (reset_stack_un c3 c) $ ClassNode pos (fst rD) (fst rP) (fst rN)
+travClassBoth _ _ _ _ _ _ = error "travClassBoth: both arguments must be ClassNode constructors"
+
 -- * Naive Absorb Implementation
 -- Naive absorb minimizes the pos / neg branches of a class with respect to the class' resulting dc branch - Or a dc branch with respect to the outer dc branch.
 -- simultaneous traversal for 2 branches. Recurses depth-first; at EndClassNode boundaries of the local class, an equality check determines absorption.
@@ -184,14 +236,10 @@ naiveAbsorb' c (_, Unknown) branch = -- todo double check the logic here
         _                  -> (c, branch)
 
 -- Node one, Leaf in other: the Leaf implicitly has the Node's variable resolved through the inference rule. Infer to reach the Leaf's level.
--- todo!: whats this eq check??
-naiveAbsorb' c absingB@(_, Node _ _ _) branch@(_, Leaf _) =
-    let result = travNodeAbs @a c absingB branch (naiveAbsorb @a)
-    in if isDc @a && snd result == absingB then (fst result, ((0,0), Unknown)) else result
+naiveAbsorb' c absingB@(_, Node _ _ _) branch@(_, Leaf _) = travNodeAbs @a c absingB branch (naiveAbsorb @a)
 naiveAbsorb' c absingB@(_, Leaf _) branch@(_, Node{}) =
-    -- because absorbingBranch has dc rule we do not have to explicitly infer nodes for it
-    let result = travNodeBranch @a c absingB branch (naiveAbsorb @a)
-    in if snd result == absingB then (fst result, ((0,0), Unknown)) else result
+    -- because absorbingBranch has dc rule we do not have to explicitly infer nodes for it and can traverse on tested branch node directly
+    travNodeBranch @a c absingB branch (naiveAbsorb @a)
 
 -- Leaf implicitly has EndClassNodes for all outer classes
 naiveAbsorb' c absingB@(_, EndClassNode dcChild) branch@(_, Leaf _) =
@@ -201,73 +249,44 @@ naiveAbsorb' c absingB@(_, Leaf _) branch@(_, EndClassNode branchChild) =
     let (c', absingBWrapped) = insert c (EndClassNode (fst absingB))
     in naiveAbsorb @a c' absingBWrapped branch
 naiveAbsorb' c absingB@(_, Leaf _) branch@(_, ClassNode pos d p n) =
-    let (c', absingBInferred) = inferClassNode @Dc c pos absingB
-    in naiveAbsorb @a c' absingBInferred branch
+    inferClassAbsing c pos absingB branch (naiveAbsorb @a)
 naiveAbsorb' c absingB@(_, ClassNode dcPos _ _ _) branch@(_, Leaf _) =
-    let (c', branchInferred) = inferClassNode @a c dcPos branch
-    in naiveAbsorb @a c' absingB branchInferred
+    inferClassBranch @a c dcPos absingB branch (naiveAbsorb @a)
 
 
 -- === Node vs Node ===: simultaneous traversal of matching variable positions
 naiveAbsorb' c absingB@(absingBId, Node dcPos dcP dcN) branch@(branchId, Node pos p n)
     | branch == absingB = (c, ((0,0), Unknown))
-    | dcPos == pos =
-        let result = travNodeBoth @a c absingB branch (naiveAbsorb @a)
-        in if snd result == absingB then (fst result, ((0,0), Unknown)) else result
-    | dcPos < pos =
-        let result = travNodeAbs @a c absingB branch (naiveAbsorb @a)
-        in if isDc @a && snd result == absingB then (fst result, ((0,0), Unknown)) else result
-    | dcPos > pos =
-        let result = travNodeBranch @a c absingB branch (naiveAbsorb @a)
-        in if snd result == absingB then (fst result, ((0,0), Unknown)) else result
+    | dcPos == pos = travNodeBoth @a c absingB branch (naiveAbsorb @a)
+    | dcPos < pos = travNodeAbs @a c absingB branch (naiveAbsorb @a)
+    | dcPos > pos = travNodeBranch @a c absingB branch (naiveAbsorb @a)
 
 -- === Node vs EndClassNode ===
-naiveAbsorb' c absingB@(absingBId, Node dcPos dcP dcN) branch@(_, EndClassNode _) =
-    let result = travNodeAbs @a c absingB branch (naiveAbsorb @a)
-    in if isDc @a && snd result == absingB then (fst result, ((0,0), Unknown)) else result
+naiveAbsorb' c absingB@(absingBId, Node dcPos dcP dcN) branch@(_, EndClassNode _) = travNodeAbs @a c absingB branch (naiveAbsorb @a)
 -- because absorbingBranch has dc rule we do not have to explicitly infer nodes for it
-naiveAbsorb' c absingB@(_, EndClassNode _) branch@(_, Node{}) =
-    let result = travNodeBranch @a c absingB branch (naiveAbsorb @a)
-    in if snd result == absingB then (fst result, ((0,0), Unknown)) else result
+naiveAbsorb' c absingB@(_, EndClassNode _) branch@(_, Node{}) = travNodeBranch @a c absingB branch (naiveAbsorb @a)
 
 -- === ClassNode in branch and absorbingBranch ===
 -- Switch to non-absorbing simultaneous traversal (with elimination rules)
 -- until the same class level is reached again, then absorption continues.
 --
-naiveAbsorb' c absingB@(absingBId, ClassNode dcPos dcD dcP dcN) branch@(_, ClassNode pos d p n)
+naiveAbsorb' c absingB@(_, ClassNode dcPos _ _ _) branch@(_, ClassNode pos _ _ _)
     | branch == absingB = (c, ((0,0), Unknown))
-    | dcPos == pos =
-        let c_dc = traverse_dc_unary @Dc MvClassDc c absingBId
-            c_ = add_to_stack_ (pos, Dc) (getNode c_dc dcD, ((0,0), Unknown)) c_dc
-            (c1, rD) = naiveTraverse @Dc  1 c_ (getNode c_dc dcD) (getNode c_dc d)
-            c1' = reset_stack_un c1 c
-            c_p = traverse_dc_unary @Dc MvClassPos c1' absingBId
-            c2_ = add_to_stack_ (pos, Pos) (getNode c_p dcD, rD) c_p
-            (c2, rP) = naiveTraverse @Pos 1 c2_ (getNode c_p dcP) (getNode c_p p)
-            c2' = reset_stack_un c2 c
-            c_n = traverse_dc_unary @Dc MvClassNeg c2' absingBId
-            c3_ = add_to_stack_ (pos, Neg) (getNode c_n dcD, rD) c_n
-            (c3, rN) = naiveTraverse @Neg 1 c3_ (getNode c_n dcN) (getNode c_n n)
-            absorbed = applyElimRule @a (reset_stack_un c3 c) $ ClassNode pos (fst rD) (fst rP) (fst rN)
-        in if snd absorbed == absingB then (fst absorbed, ((0,0), Unknown)) else absorbed
-    | dcPos < pos =
-        let (c', branchInferred) = inferClassNode @a c dcPos branch
-        in naiveAbsorb @a c' absingB branchInferred
-    | dcPos > pos =
-        let (c', absingBInferred) = inferClassNode @Dc c pos absingB
-        in naiveAbsorb @a c' absingBInferred branch
+    | dcPos == pos = travClassBoth @a c absingB branch
+            (naiveTraverse @Dc 1) (naiveTraverse @Pos 1) (naiveTraverse @Neg 1)
+    | dcPos < pos = inferClassBranch @a c dcPos absingB branch (naiveAbsorb @a)
+    | dcPos > pos = inferClassAbsing c pos absingB branch (naiveAbsorb @a)
 
 naiveAbsorb' c absingB@(_, ClassNode dcPos _ _ _) branch@(_, EndClassNode _) =
-    let (c', branchInferred) = inferClassNode @a c dcPos branch
-    in naiveAbsorb @a c' absingB branchInferred
+    inferClassBranch @a c dcPos absingB branch (naiveAbsorb @a)
 naiveAbsorb' c absingB@(_, EndClassNode _) branch@(_, ClassNode pos _ _ _) =
-    let (c', absingBInferred) = inferClassNode @Dc c pos absingB
-    in naiveAbsorb @a c' absingBInferred branch
+    inferClassAbsing c pos absingB branch (naiveAbsorb @a)
 
 -- === Node in absorbingBranch, ClassNode in branch ===
-naiveAbsorb' c absingB@(_, Node _ _ _) branch@(_, ClassNode _ _ _ _) = error "should not happen: node vs class node in absorb"
-naiveAbsorb' c absingB@(_, ClassNode dcPos _ _ _) branch@(_, Node _ _ _) =
+naiveAbsorb' _ (_, Node _ _ _) (_, ClassNode _ _ _ _) = error "should not happen: node vs class node in absorb"
+naiveAbsorb' _ (_, ClassNode _ _ _ _) (_, Node _ _ _) =
     error "naiveAbsorb: ClassNode absingB vs Node branch should not happen"
+
 
 -- | Simultaneous traversal without absorption for nested classes.
 -- Walks absorbingBranch and branch in lockstep, creating new nodes with elimination rules applied, but never replacing nodes with Unknown.
@@ -288,135 +307,74 @@ naiveTraverse' depth c (_, Unknown) branch = -- todo double check the logic here
         (_ : outer : rest) -> naiveTraverse @a depth (c { un_dc_stack = outer : rest }) outer branch
         _                  -> (c, branch)
 
-naiveTraverse' depth c absingB@(absingBId, EndClassNode dcChild) branch@(_, Leaf _)
-    | depth == 1 =
-        let c_end = traverse_dc_unary @Dc ExitClass c absingBId
-            (c_, inf) = pop_level_ c_end
-        in case inf of
-            Dc  -> naiveAbsorb @Dc  c_ (getNode c_end dcChild) branch
-            Neg -> naiveAbsorb @Neg c_ (getNode c_end dcChild) branch
-            Pos -> naiveAbsorb @Pos c_ (getNode c_end dcChild) branch
-    | otherwise =
-        let c_end = traverse_dc_unary @Dc ExitClass c absingBId
-            (c_, inf) = pop_level_ c_end
-        in case inf of
-            Dc  -> naiveTraverse @Dc  (depth - 1) c_ (getNode c_end dcChild) branch
-            Neg -> naiveTraverse @Neg (depth - 1) c_ (getNode c_end dcChild) branch
-            Pos -> naiveTraverse @Pos (depth - 1) c_ (getNode c_end dcChild) branch
-naiveTraverse' depth c absingB@(absingBId, Node dcPos dcP dcN) branch@(_, Leaf _) =
+naiveTraverse' depth c absingB@(absingBId, EndClassNode dcChild) branch@(_, Leaf _) =
+    let (c_end, inf, c_) = exitClass c absingBId
+        go f = f c_ (getNode c_end dcChild) branch
+    in case inf of
+        Dc  -> go $ if depth == 1 then naiveAbsorb @Dc  else naiveTraverse @Dc  (depth - 1)
+        Neg -> go $ if depth == 1 then naiveAbsorb @Neg else naiveTraverse @Neg (depth - 1)
+        Pos -> go $ if depth == 1 then naiveAbsorb @Pos else naiveTraverse @Pos (depth - 1)
+naiveTraverse' depth c absingB@(_, Node _ _ _) branch@(_, Leaf _) =
     travNodeAbs @a c absingB branch (naiveTraverse @a depth)
 
 -- === EndClassNode: exiting a class ===
 -- depth == 1: about to go back at the absorbing class level — hand to naiveAbsorb
 -- depth > 1: still inside a deeper nested class — stay in naiveTraverse
-naiveTraverse' depth c absingB@(absingBId, EndClassNode dcChild) branch@(_, EndClassNode branchChild)
-    | depth == 1 =
-        let c_end = traverse_dc_unary @Dc ExitClass c absingBId
-            (c_, inf) = pop_level_ c_end
-        in case inf of
-            Dc  -> let (c', r) = naiveAbsorb @Dc  c_ (getNode c_end dcChild) (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-            Neg -> let (c', r) = naiveAbsorb @Neg c_ (getNode c_end dcChild) (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-            Pos -> let (c', r) = naiveAbsorb @Pos c_ (getNode c_end dcChild) (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-    | otherwise =
-        let c_end = traverse_dc_unary @Dc ExitClass c absingBId
-            (c_, inf) = pop_level_ c_end
-        in case inf of
-            Dc  -> let (c', r) = naiveTraverse @Dc  (depth - 1) c_ (getNode c_end dcChild) (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-            Neg -> let (c', r) = naiveTraverse @Neg (depth - 1) c_ (getNode c_end dcChild) (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-            Pos -> let (c', r) = naiveTraverse @Pos (depth - 1) c_ (getNode c_end dcChild) (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-naiveTraverse' depth c absingB@(absingBId, Leaf _) branch@(_, EndClassNode branchChild)
-    | depth == 1 =
-        let c_end = traverse_dc_unary @Dc ExitClass c absingBId
-            (c_, inf) = pop_level_ c_end
-        in case inf of
-            Dc  -> let (c', r) = naiveAbsorb @Dc  c_ absingB (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-            Neg -> let (c', r) = naiveAbsorb @Neg c_ absingB (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-            Pos -> let (c', r) = naiveAbsorb @Pos c_ absingB (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-    | otherwise =
-        let c_end = traverse_dc_unary @Dc ExitClass c absingBId
-            (c_, inf) = pop_level_ c_end
-        in case inf of
-            Dc  -> let (c', r) = naiveTraverse @Dc  (depth - 1) c_ absingB (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-            Neg -> let (c', r) = naiveTraverse @Neg (depth - 1) c_ absingB (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-            Pos -> let (c', r) = naiveTraverse @Pos (depth - 1) c_ absingB (getNode c_end branchChild)
-                   in applyElimRule @a c' $ EndClassNode (fst r)
-naiveTraverse' depth c absingB@(absingBId, Leaf _) branch@(_, Leaf _)
-    | depth == 1 =
-        let c_end = traverse_dc_unary @Dc ExitClass c absingBId
-            (c_, inf) = pop_level_ c_end
-        in case inf of
-            Dc  -> naiveAbsorb @Dc  c_ absingB branch
-            Neg -> naiveAbsorb @Neg c_ absingB branch
-            Pos -> naiveAbsorb @Pos c_ absingB branch
-    | otherwise =
-        let c_end = traverse_dc_unary @Dc ExitClass c absingBId
-            (c_, inf) = pop_level_ c_end
-        in case inf of
-            Dc  -> naiveTraverse @Dc  (depth - 1) c_ absingB branch
-            Neg -> naiveTraverse @Neg (depth - 1) c_ absingB branch
-            Pos -> naiveTraverse @Pos (depth - 1) c_ absingB branch
+naiveTraverse' depth c absingB@(absingBId, EndClassNode dcChild) branch@(_, EndClassNode branchChild) =
+    let (c_end, inf, c_) = exitClass c absingBId
+        go f = wrapEndClass @a (f c_ (getNode c_end dcChild) (getNode c_end branchChild))
+    in case inf of
+        Dc  -> go $ if depth == 1 then naiveAbsorb @Dc  else naiveTraverse @Dc  (depth - 1)
+        Neg -> go $ if depth == 1 then naiveAbsorb @Neg else naiveTraverse @Neg (depth - 1)
+        Pos -> go $ if depth == 1 then naiveAbsorb @Pos else naiveTraverse @Pos (depth - 1)
+naiveTraverse' depth c absingB@(absingBId, Leaf _) branch@(_, EndClassNode branchChild) =
+    let (c_end, inf, c_) = exitClass c absingBId
+        go f = wrapEndClass @a (f c_ absingB (getNode c_end branchChild))
+    in case inf of
+        Dc  -> go $ if depth == 1 then naiveAbsorb @Dc  else naiveTraverse @Dc  (depth - 1)
+        Neg -> go $ if depth == 1 then naiveAbsorb @Neg else naiveTraverse @Neg (depth - 1)
+        Pos -> go $ if depth == 1 then naiveAbsorb @Pos else naiveTraverse @Pos (depth - 1)
+naiveTraverse' depth c absingB@(absingBId, Leaf _) branch@(_, Leaf _) =
+    let (_, inf, c_) = exitClass c absingBId
+        go f = f c_ absingB branch
+    in case inf of
+        Dc  -> go $ if depth == 1 then naiveAbsorb @Dc  else naiveTraverse @Dc  (depth - 1)
+        Neg -> go $ if depth == 1 then naiveAbsorb @Neg else naiveTraverse @Neg (depth - 1)
+        Pos -> go $ if depth == 1 then naiveAbsorb @Pos else naiveTraverse @Pos (depth - 1)
 
-naiveTraverse' depth c absingB@(absingBId, Node dcPos dcP dcN) branch@(_, EndClassNode branchChild) =
+naiveTraverse' depth c absingB@(_, Node _ _ _) branch@(_, EndClassNode _) =
     travNodeAbs @a c absingB branch (naiveTraverse @a depth)
-
-
 naiveTraverse' depth c absingB@(_, EndClassNode _) branch@(_, Node{}) =
     travNodeBranch @a c absingB branch (naiveTraverse @a depth)
 
 -- === Node vs Node: simultaneous traversal (same class level) ===
 naiveTraverse' depth c absingB@(_, Node dcPos _ _) branch@(_, Node pos _ _)
-    | dcPos == pos =
-        travNodeBoth @a c absingB branch (naiveTraverse @a depth)
-    | dcPos < pos =
-        travNodeAbs @a c absingB branch (naiveTraverse @a depth)
-    | dcPos > pos = travNodeBranch @a c absingB branch (naiveTraverse @a depth)
+    | dcPos == pos = travNodeBoth @a c absingB branch (naiveTraverse @a depth)
+    | dcPos < pos  = travNodeAbs @a c absingB branch (naiveTraverse @a depth)
+    | otherwise    = travNodeBranch @a c absingB branch (naiveTraverse @a depth)
 
 naiveTraverse' depth c absingB@(_, Leaf _) branch@(_, Node{}) =
     travNodeBranch @a c absingB branch (naiveTraverse @a depth)
+
+naiveTraverse' depth c absingB@(_, ClassNode dcPos _ _ _) branch@(_, Leaf _) =
+    inferClassBranch @a c dcPos absingB branch (naiveTraverse @a depth)
+
 -- === ClassNode: entering a deeper nested class (depth + 1) ===
-naiveTraverse' depth c absingB@(absingBId, ClassNode dcPos dcD dcP dcN) branch@(_, ClassNode pos d p n)
+naiveTraverse' depth c absingB@(_, ClassNode dcPos _ _ _) branch@(_, ClassNode pos _ _ _)
     | dcPos == pos =
-        let c_dc = traverse_dc_unary @Dc MvClassDc c absingBId
-            c_ = add_to_stack_ (pos, Dc) (getNode c_dc dcD, ((0,0), Unknown)) c_dc
-            (c1, rD) = naiveTraverse @Dc  (depth + 1) c_ (getNode c_dc dcD) (getNode c_dc d)
-            c1' = reset_stack_un c1 c
-            c_p = traverse_dc_unary @Dc MvClassPos c1' absingBId
-            c2_ = add_to_stack_ (pos, Pos) (getNode c_p dcD, rD) c_p
-            (c2, rP) = naiveTraverse @Pos (depth + 1) c2_ (getNode c_p dcP) (getNode c_p p)
-            c2' = reset_stack_un c2 c
-            c_n = traverse_dc_unary @Dc MvClassNeg c2' absingBId
-            c3_ = add_to_stack_ (pos, Neg) (getNode c_n dcD, rD) c_n
-            (c3, rN) = naiveTraverse @Neg (depth + 1) c3_ (getNode c_n dcN) (getNode c_n n)
-        in applyElimRule @a (reset_stack_un c3 c) $ ClassNode pos (fst rD) (fst rP) (fst rN)
-    | dcPos < pos =
-        let (c', branchInferred) = inferClassNode @a c dcPos branch
-        in naiveTraverse @a depth c' absingB branchInferred
-    | dcPos > pos =
-        let (c', absingBInferred) = inferClassNode @Dc c pos absingB
-        in naiveTraverse @a depth c' absingBInferred branch
+        travClassBoth @a c absingB branch
+            (naiveTraverse @Dc (depth + 1)) (naiveTraverse @Pos (depth + 1)) (naiveTraverse @Neg (depth + 1))
+    | dcPos < pos  = inferClassBranch @a c dcPos absingB branch (naiveTraverse @a depth)
+    | otherwise    = inferClassAbsing c pos absingB branch (naiveTraverse @a depth)
 
 naiveTraverse' _ _ (_, Node _ _ _) (_, ClassNode _ _ _ _) = error "should not happen: node vs class node in naiveTraverse"
 naiveTraverse' depth c absingB@(_, EndClassNode _) branch@(_, ClassNode pos _ _ _) =
-    let (c', absingBInferred) = inferClassNode @Dc c pos absingB
-    in naiveTraverse @a depth c' absingBInferred branch
+    inferClassAbsing c pos absingB branch (naiveTraverse @a depth)
 naiveTraverse' depth c absingB@(_, Leaf _) branch@(_, ClassNode pos _ _ _) =
-    let (c', absingBInferred) = inferClassNode @Dc c pos absingB
-    in naiveTraverse @a depth c' absingBInferred branch
+    inferClassAbsing c pos absingB branch (naiveTraverse @a depth)
 naiveTraverse' _ _ (_, ClassNode _ _ _ _) (_, Node _ _ _) = error "should not happen: class node vs node in naiveTraverse"
 naiveTraverse' depth c absingB@(_, ClassNode dcPos _ _ _) branch@(_, EndClassNode _) =
-    let (c', branchInferred) = inferClassNode @a c dcPos branch
-    in naiveTraverse @a depth c' absingB branchInferred
+    inferClassBranch @a c dcPos absingB branch (naiveTraverse @a depth)
 
 
 instance DdF3 Dc where
