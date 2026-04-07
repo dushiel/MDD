@@ -18,6 +18,13 @@ packages:
       size: 470
   original:
     hackage: bimap-0.5.0
+- completed:
+    hackage: deepseq-1.4.4.0@sha256:76902b99ee97fc059311ddb0df9488c54969adf0a212efa39705981761f06b55,2918
+    pantry-tree:
+      sha256: edf7ecb1e7195bf2c1b595f462343b8a237351acf73e4d0e66e005fc5baa62f4
+      size: 385
+  original:
+    hackage: deepseq-1.4.4.0
 snapshots:
 - completed:
     sha256: 88b4f81e162ba3adc230a9fcccc4d19ac116377656bab56c7382ca88598b257a

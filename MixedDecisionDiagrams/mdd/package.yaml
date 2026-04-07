@@ -38,6 +38,7 @@ dependencies:
 - hashable
 - unordered-containers
 - fmt
+- deepseq >= 1.4.4.0
 
 ghc-options:
 - -Wall
