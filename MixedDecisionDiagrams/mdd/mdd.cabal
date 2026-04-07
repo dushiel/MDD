@@ -22,13 +22,41 @@ source-repository head
 
 library
   exposed-modules:
-      DrawMDD
-      MDD
-      MDDi
-      SODDmanipulation
-      DotDD
-      Example
-      SupportMDD
+      MDD.Types
+      MDD.Manager
+      MDD.Context
+
+      MDD.Stack
+      MDD.Traversal
+      MDD.Ops.Unary
+      MDD.Ops.Binary
+
+      MDD.Static
+      MDD.Construction
+      MDD.Draw
+      MDD.Interface
+
+      MDD.Bool
+      MDD.Test
+      MDD.Dot
+
+      MDD.Example
+      -- DrawMDD
+      -- MDD
+      -- MDDi
+      -- SODDmanipulation
+      -- SupportMDD
+      -- DotDD
+      -- Example
+      -- TestMDD
+      -- SMCDEL.Internal.Help
+      -- SMCDEL.Internal.TexDisplay
+      Internal.Language
+      -- Bool_MDD
+      SMCDEL.Symbolic.S5_MDD
+      SMCDEL.Symbolic.K_MDD
+      SMCDEL.Examples.MuddyChildren
+      SMCDEL.Examples.SallyAnne
   other-modules:
   -- Correctly indented section
   hs-source-dirs:
@@ -51,4 +79,8 @@ library
     , process >= 1.6.18.0
     , filepath >= 1.4.2.2
     , directory >= 1.3.7.1
+    , time
+    , temporary
+    , QuickCheck
+    , tagged
   default-language: Haskell2010

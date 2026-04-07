@@ -27,13 +27,14 @@ module SODDmanipulation where
 -- future : explore {-# UNPACK #-} !Int
 --SPECIALIZE pragma
 import MDD
+import MDD (Dd)
 import SupportMDD
 import Data.Kind
 
 
 import DrawMDD (debug_manipulation, debug_dc_traverse)
 import Data.Bimap ()
-import MDD (Context(current_level, dc_stack))
+import Debug.Trace (trace)
 
 type DdManipulation = Context -> Node -> Node -> (Context, Node)
 type DdManipulation' = Context -> String -> Node -> Node -> (Context, Node)
@@ -44,18 +45,18 @@ negation = negation'
 
 negation' :: Context -> Node -> (Context, Node)
 negation' c d@(node_id, Node position pos_child neg_child)  = withCache_ c d $ let
-    (c1, (posR, _)) = negation' c (pos_child, getDd c pos_child)  --`debug` ("negation' pos child: " ++ show_dd settings c pos_child ++ " , " ++ " -> " ++ show (getDd c pos_child) )
-    (c2, (negR, _)) = negation' c1 (neg_child, getDd c1 neg_child)  --`debug` ("negation' neg child: " ++ show_dd settings c neg_child ++ " , " ++ "-> " ++ show (getDd c' neg_child))
-    in insert c2 $ Node position posR negR -- `debug` (" inserted: " ++ show (insert c'' $ Node position posR negR))
+    (c1, (posR, _)) = negation' c (pos_child, getDd c pos_child)
+    (c2, (negR, _)) = negation' c1 (neg_child, getDd c1 neg_child)
+    in insert c2 $ Node position posR negR
 negation' c d@(node_id, InfNodes position dc p n) = withCache_ c d $ let
     (c1, (r_dc, _)) = negation' c (dc, getDd c dc)
     (c2, (r_n, _)) = negation' c1 (n, getDd c n)
     (c3, (r_p, _)) = negation' c2 (p, getDd c p)
         in insert c3 $ InfNodes position r_dc r_p r_n
 negation' c d@(node_id, EndInfNode a) = withCache_ c  d $ let
-    (c1, (result, _)) = negation' c (a, getDd c a) --`debug` ("negation' endinf child: " ++ show_dd settings c a )
+    (c1, (result, _)) = negation' c (a, getDd c a)
     in insert c1 $ EndInfNode result
-negation' c (_, Leaf b) = (c, leaf $ not b) --`debug` ("returning : " ++ show (c, leaf $ not b))
+negation' c (_, Leaf b) = (c, leaf $ not b)
 negation' c u@(_, Unknown) = (c, u)
 
 
@@ -146,10 +147,10 @@ instance (DdF3 a) => Dd1 a where
     leaf_cases c s a@(_, Unknown) b@(_, Unknown) = (c , a)
     leaf_cases c s a@(_, Unknown) b = -- resolve Unknown to see if it is a True or False or a dd, then do the above or continue with the dd
         -- todo! if b is a node (or infnode o.O') perform dc : pos union
-        let (c', dcA) = pop_dcA' c `debug` "dca dc"
+        let (c', dcA) = pop_dcA' c -- `debug` "dca dc"
         in applyDcA'' @a c' s dcA b   -- `debug` ("using dcA to replace Unknown : " ++ show dcA)
     leaf_cases c s a b@(_, Unknown) =
-        let (c', dcB) = pop_dcB' c `debug` "dcb dc"
+        let (c', dcB) = pop_dcB' c -- `debug` "dcb dc"
         in applyDcB'' @a c' s a dcB  -- `debug` ("using dcB to replace Unknown : " ++ show dcB)
     --  Unknown is stronger than True in finite + union context
     leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
@@ -230,7 +231,7 @@ instance (DdF3 a) => Dd1 a where
     --  Unknown is stronger than True in finite + intersectionDc context
     dcB_leaf_cases c s a@(_, Unknown) b = (c, a) -- when having to replace a Unknown when already in a Dc traversal we will be comparing a DcA branch with a DcB branch.. which has already been calculated in dcR, therefor we known for sure it will be absorbed by dcR
     dcB_leaf_cases c s a b@(_, Unknown) =
-        let (c', dcB) = pop_dcB'' c `debug` "dcb pop"
+        let (c', dcB) = pop_dcB'' c --`debug` "dcb pop"
         in applyDcB'' @a c' s a dcB -- unknown on dc side means that it should be replaced with a dc from an outer level
     -- if the result is
     dcB_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb (c, a) else absorb (c, b) -- True might be absorbed, then return Unknown
@@ -308,7 +309,7 @@ instance (DdF3 a) => Dd1 a where
 
     --  Unknown is stronger than True in finite + intersectionDcA context
     dcA_leaf_cases c s a@(_, Unknown) b =
-        let (c', dcA) = pop_dcA'' c `debug` "dca pop"
+        let (c', dcA) = pop_dcA'' c --`debug` "dca pop"
         in applyDcA'' @a c' s dcA b -- unknown on dc side means that it should be replaced with a dc from an outer level
     dcA_leaf_cases c s a b@(_, Unknown) = (c, b)
     -- if the result is
@@ -318,7 +319,7 @@ instance (DdF3 a) => Dd1 a where
         (c_, (infA, infB)) = pop_stack' c
         c' = traverse_dc @a "endinf" c_ a_id b_id -- `debug` (show $ dc_stack c_)
         (c'', (r, _)) = case (infA, infB) of
-            (Dc, Dc) -> apply @Dc c' s ac bc `debug` ("dc ")
+            (Dc, Dc) -> apply @Dc c' s ac bc --`debug` ("dc ")
             (Neg, Neg) -> apply @Neg c' s ac bc `debug` ("neg ")
             (Pos, Pos) -> apply @Pos c' s ac bc `debug` ("pos ")
             (Neg, Dc) -> applyDcB @Neg c' s ac bc `debug` ("neg dc")
@@ -328,14 +329,7 @@ instance (DdF3 a) => Dd1 a where
             r'@(_, _) -> error ("weird combination after pop stack: " ++ show r')
         in absorb $ applyElimRule' @a $ (reset_stack c'' c, EndInfNode r) -- todo remove reset stack by removing stack in leaf cases on other places
 
-    -- infnodes_case c s a_id b_id ac bc = let
-    --     (c_, (inf, dcs)) = pop_stack c
-    --     c' = traverse_dc @a "endinf" c_ a_id b_id -- `debug` (show $ dc_stack c_)
-    --     (c'', (r, _)) = case inf of
-    --         Dc -> apply @Dc c' s ac bc --`debug` "dc"
-    --         Neg -> apply @Neg c' s ac bc --`debug` "neg"
-    --         Pos -> apply @Pos c' s ac bc --`debug` "pos"
-    --     in absorb $ applyElimRule' @a $ (reset_stack c'' c, EndInfNode r) -- todo remove reset stack by removing stack in leaf cases on other places
+
 
 
 type DdF3 :: Inf -> Constraint
@@ -351,9 +345,10 @@ class DdF3 a where
     applyInfA :: Context -> String -> Node -> Node -> (Context, Node)
     applyInfB :: Context -> String -> Node -> Node -> (Context, Node)
     to_str :: String
-    -- interLeaf :: Context -> Node -> Node -> (Context, Node)
-    -- unionLeaf :: Context -> Node -> Node -> (Context, Node)
     catchup :: String -> Context -> Node -> Int -> Node
+
+    inferNode :: Context -> Int -> Node -> (Context, Node)
+    inferInfNode :: Context -> Int -> Node -> (Context, Node)
 
 
 instance DdF3 Dc where
@@ -399,6 +394,8 @@ instance DdF3 Dc where
             (c'', r') = insert c' $ InfNodes positionA r_id (0,0) (0,0)
         in applyInf @Dc c'' s a r'
 
+    inferNode c position (n_id, n) = insert c (Node position n_id n_id)
+    inferInfNode c position (n_id, n) = insert c $ InfNodes position n_id (0,0) (0,0)
     -- i think we can implement a "do nothing" version of catchup for Dc
     catchup s c n _ = n
 
@@ -445,6 +442,8 @@ instance DdF3 Pos where
             (c'', r') = insert c' $ InfNodes positionA (0,0) r_id (0,0)
         in applyInf @Pos c'' s a r'
 
+    inferNode c position (n_id, n) = insert c (Node position n_id (0,0))
+    inferInfNode c position (n_id, n) = insert c $ InfNodes position (0,0) n_id (0,0)
 
     catchup s c n@(_, Node positionA pos_child _) idx
         -- special case to go until the end
@@ -501,6 +500,9 @@ instance DdF3 Neg where
 
     applyElimRule' (c, d@(Node _ (0, 0) negC)) = (c, (negC, getDd c negC))
     applyElimRule' (c, d) = applyElimRule'_general (c, d)
+
+    inferNode c position (n_id, n) = insert c (Node position (0,0) n_id)
+    inferInfNode c position (n_id, n) = insert c $ InfNodes position (0,0) (0,0) n_id
 
     catchup s c n@(_, Node positionA pos_child _) idx
         -- special case to go until the end
@@ -566,6 +568,7 @@ data Component = CompA | CompB | CompR
 
 class Dd1_helper a where
     traverse_dc :: String -> Context -> NodeId -> NodeId -> Context
+    traverse_dc_ :: String -> Context -> NodeId -> Context
     getComponentFuncs :: Dd1 a => Component -> ( (Inf, (Node, Node, Node)) -> Node -- getter
                                            , Context -> String -> Context -- mover
                                            , Context -> Int -> Context -- catchuper
@@ -669,3 +672,144 @@ instance (DdF3 a) => Dd1_helper a where
 
                 -- Error case for unhandled patterns
                 ( t, r ) -> error $ "traverse_dc_generic unhandled. dcNode=" ++ show t ++ " refNode=" ++ show r ++ " c=" ++ show (dc_stack c) ++ " s=" ++ s
+
+    traverse_dc_ s c@Context{dc_stack_ = dcs@(dcs', dcRs'), current_level_ = lv} d =  -- debug_dc_traverse s c d
+        if to_str @a == "Dc" then c
+            else let
+                -- lv' = if s == "endinf" then init lv else lv
+                -- (dcAs, dcBs, dcRs) = if s == "endinf" then (init dcAs', init dcBs', init dcRs') else dcs
+                new_dcs' = map (traverse_dc_generic @a s c (getNode c d)) dcs'
+                new_dcRs = map (traverse_dc_generic @a s c (getNode c d)) dcRs'
+                new_dcs = (new_dcs', new_dcRs)
+            in c{dc_stack_ = new_dcs, current_level_=lv}
+
+
+
+type DdUnary :: Inf -> Constraint
+
+class DdUnary a where
+    --todo add speedup: function cache
+    swap_node_set :: Context -> [Position] -> Node -> (Context, Node)
+    swap_node_set' :: Context -> [Position] -> Node -> (Context, Node)
+    restrict_node_set :: Context -> [Position] -> Bool -> Node -> (Context, Node)
+    restrict_node_set' :: Context -> [Position] -> Bool -> Node -> (Context, Node)
+
+
+
+instance (DdF3 a) => DdUnary a where
+    swap_node_set c (na : nas) d@(node_id, Node position pos_child neg_child)  = let
+        (b, nas') = if (reverse $ map fst $ current_level_ c) ++ [position] == na
+            then (True, nas)
+            else (False, na : nas)
+
+        (c1, posR) = if nas' /= []
+            then (fst traverse_pos, fst $ snd traverse_pos)
+            else (c, pos_child) -- terinal case, all vars have been replaced
+        traverse_pos = swap_node_set @a c_ nas' (pos_child, getDd c pos_child)
+        c_ = traverse_dc_ @a "pos child" c pos_child
+
+
+        (c2, negR) = if nas' /= []
+            then (fst traverse_neg, fst $ snd traverse_neg)
+            else (c, neg_child) -- terinal case, all vars have been replaced
+        traverse_neg = swap_node_set @a c1_ nas' (neg_child, getDd c1 neg_child)
+        c1_ = traverse_dc_ @a "neg child" (reset_stack c1 c) neg_child
+
+        in if b
+            then applyElimRule @a c2 $ Node position negR posR
+            else applyElimRule @a c2 $ Node position posR negR
+
+
+    swap_node_set c nas d@(node_id, InfNodes position dc p n) =  let
+        c_ = add_to_stack_ (position, Dc) ((u, Unknown), (u, Unknown)) c
+        (c1, dcR) = swap_node_set @Dc (traverse_dc_ @a "inf dc" c_ dc) nas (dc, getDd c dc)
+        c2_ = add_to_stack_ (position, Neg) (getNode c1 dc, dcR) (reset_stack c1 c)
+        (c2, nR) = swap_node_set @Neg (traverse_dc_ @a "inf neg" c2_ n) nas (n, getDd c n)
+        c3_ = add_to_stack_ (position, Pos) (getNode c2 dc, dcR) (reset_stack c2 c)
+        (c3, pR) = swap_node_set @Pos (traverse_dc_ @a "inf pos" c3_ p) nas (p, getDd c p)
+
+        in absorb $ applyElimRule @a (reset_stack c3 c) $ InfNodes position (fst dcR) (fst pR) (fst nR)
+
+
+    swap_node_set c nas d@(node_id, EndInfNode child) =  let
+        (c_, inf) = pop_stack_ c
+        c' = traverse_dc_ @a "endinf" c_ node_id
+        (c'', (r, _)) = case inf of
+             Dc -> swap_node_set @Dc c' nas (child, getDd c child)
+             Pos -> swap_node_set @Pos c' nas (child, getDd c child)
+             Neg -> swap_node_set @Neg c' nas (child, getDd c child)
+        in absorb $ applyElimRule' @a $ (reset_stack c'' c, EndInfNode r)
+
+    swap_node_set c nas b@(_, Leaf _) = absorb (c, b)
+    swap_node_set c nas u@(_, Unknown) = (c, u)
+
+    -- do inference whenever the node which should be swapped is eliminated
+    swap_node_set' c (na : nas) d@(node_id, Node position pos_child neg_child) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
+        then let (c', d') = inferNode @a c (last na) d
+            in swap_node_set @a c' (na : nas) d'
+        else swap_node_set @a c (na : nas) d
+    swap_node_set' c (na : nas) d@(node_id, InfNodes position dc p n) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
+        -- todo! infer the infnode which is needed to reach the flip node
+        then let (c', d') = inferInfNode @a c (last na) d
+            in swap_node_set @a c' (na : nas) d'
+        else swap_node_set @a c (na : nas) d
+    swap_node_set' c (na : nas) d = swap_node_set @a c (na : nas) d
+
+    restrict_node_set c (na : nas) b d@(node_id, Node position pos_child neg_child)  = let
+        (b', nas') = if (reverse $ map fst $ current_level_ c) ++ [position] == na -- check whether the current traversal depth plus current node together are equal to the target position na
+            then (True, nas)
+            else (False, na : nas)
+
+        (c1, posR) = if nas' /= []
+            then (fst traverse_pos, fst $ snd traverse_pos)
+            else (c, pos_child) -- terminal case, all vars have been replaced
+        traverse_pos = restrict_node_set @a c_ nas' b (pos_child, getDd c pos_child)
+        c_ = traverse_dc_ @a "pos child" c pos_child
+
+        (c2, negR) = if nas' /= []
+            then (fst traverse_neg, fst $ snd traverse_neg)
+            else (c, neg_child) -- terminal case, all vars have been replaced
+        traverse_neg = restrict_node_set @a c1_ nas' b (neg_child, getDd c1 neg_child)
+        c1_ = traverse_dc_ @a "neg child" (reset_stack c1 c) neg_child
+
+        in if b' -- hit, so remove na from nas and
+            then if b -- depending on b, take positive or negative evaluation
+                then applyElimRule @a c2 $ Node position posR posR
+                else applyElimRule @a c2 $ Node position negR negR
+            else applyElimRule @a c2 $ Node position posR negR -- otherwise continue with original nas and no quantification
+
+    restrict_node_set c nas b d@(node_id, InfNodes position dc p n) = -- trace ("infnodes in  restrict set : " ++ show node_id ++ ", " ++ show position ++ "\n current level = " ++ (show $ current_level_ c))
+        let
+        c_ = add_to_stack_ (position, Dc) ((u, Unknown), (u, Unknown)) c
+        (c1, dcR) = restrict_node_set @Dc (traverse_dc_ @a "inf dc" c_ dc) nas b (dc, getDd c dc)
+        c2_ = add_to_stack_ (position, Neg) (getNode c1 dc, dcR) (reset_stack c1 c)
+        (c2, nR) = restrict_node_set @Neg (traverse_dc_ @a "inf neg" c2_ n) nas b (n, getDd c n)
+        c3_ = add_to_stack_ (position, Pos) (getNode c2 dc, dcR) (reset_stack c2 c)
+        (c3, pR) = restrict_node_set @Pos (traverse_dc_ @a "inf pos" c3_ p) nas b (p, getDd c p)
+
+        in absorb $ applyElimRule @a (reset_stack c3 c) $ InfNodes position (fst dcR) (fst pR) (fst nR)
+
+    restrict_node_set c nas b d@(node_id, EndInfNode child) =  let
+        (c_, inf) = pop_stack_ c
+        c' = traverse_dc_ @a "endinf" c_ node_id
+        (c'', (r, _)) = case inf of
+             Dc -> restrict_node_set @Dc c' nas b (child, getDd c child)
+             Pos -> restrict_node_set @Pos c' nas b (child, getDd c child)
+             Neg -> restrict_node_set @Neg c' nas b (child, getDd c child)
+        in absorb $ applyElimRule' @a $ (reset_stack c'' c, EndInfNode r)
+
+    restrict_node_set c nas _ b@(_, Leaf _) = absorb (c, b)
+    restrict_node_set c nas _ u@(_, Unknown) = (c, u)
+
+    restrict_node_set c n a b = error ("nonexhaustive " ++ "\n c: \n" ++ show c ++ "\n n: \n" ++ show n ++ "\n a: \n" ++ show a ++ "\n b: \n" ++ show b)
+    -- do inference whenever the node which should be restricted is eliminated
+    restrict_node_set' c (na : nas) b d@(node_id, Node position pos_child neg_child) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
+        then let (c', d') = inferNode @a c (last na) d
+            in restrict_node_set @a c' (na : nas) b d'
+        else restrict_node_set @a c (na : nas) b d
+    restrict_node_set' c (na : nas) b d@(node_id, InfNodes position dc p n) = if (reverse $ map fst $ current_level_ c) ++ [position] > na
+        -- todo! infer the infnode which is needed to reach the flip node
+        then let (c', d') = inferInfNode @a c (last na) d
+            in restrict_node_set @a c' (na : nas) b d'
+        else restrict_node_set @a c (na : nas) b d
+    restrict_node_set' c (na : nas) b d = restrict_node_set @a c (na : nas) b d

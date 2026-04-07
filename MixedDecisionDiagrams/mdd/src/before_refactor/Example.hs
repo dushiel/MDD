@@ -9,6 +9,7 @@ import MDDi
 import MDD
 -- import Internal.Language
 import DrawMDD
+import Bool_MDD
 import qualified Data.HashMap.Lazy as HashMap
 
 
@@ -34,15 +35,15 @@ symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVW
 
 word :: [Char] -> Form
 word sl = Var . path c $ word_label $ P' [
-        if s == '*' then (s_pos, Dc1, P [0])
-        else (s_pos, Neg1, P [symbols Map.! s])
+        if s == '*' then (s_pos, Dc1, P'' [0])
+        else (s_pos, Neg1, P'' [symbols Map.! s])
      | (s_pos, s) <- zip [1.. ] sl]
 
 word_label :: Path -> Path
 word_label c = P' [(2, Neg1, c)]
 
 end_of_word :: Int -> Form
-end_of_word i = Var . path c $ P' [(2, Neg1, P' [(j, Dc1, P [0]) | j <- [1..i]])]
+end_of_word i = Var . path c $ P' [(2, Neg1, P' [(j, Dc1, P'' [0]) | j <- [1..i]])]
 
 vocabulary :: Form
 vocabulary = foldl1 Or (map word ["dani", "daniel", "run"]) --, "Malvin", "what?", "What a nice day!", ":)", ":-)","what else?", "what even.."])
@@ -54,7 +55,7 @@ shapes :: Map.Map String Int
 shapes = Map.fromList $ zip ["rectangular", "round", "line", "face-like", "bear-like", "big", "small"] [1..]
 
 shape :: [String] -> Form
-shape sl = Var . path c $ shape_label $ P [shapes Map.! s | s <- sl]
+shape sl = Var . path c $ shape_label $ P'' [shapes Map.! s | s <- sl]
 
 
 color_label :: Path -> Path
@@ -65,7 +66,7 @@ colors :: Map.Map String Int
 colors = Map.fromList $ zip ["red", "orange", "yellow", "green", "blue", "purple", "white", "grey", "black"] [1..]
 
 color :: [String] -> Form
-color sl = Var . path c $ color_label $ P [colors Map.! s | s <- sl]
+color sl = Var . path c $ color_label $ P'' [colors Map.! s | s <- sl]
 
 
 feeling_label :: Path -> Path
@@ -76,7 +77,7 @@ feelings :: Map.Map String Int
 feelings = Map.fromList $ zip ["danger", "safety", "interesse", "boredom", "friendship", "distance", "admiration", "disdain",  "love", "hate",  "in-control", "lost", "hot", "cold"] [1..]
 
 feeling :: [String] -> Form
-feeling sl = Var . path c $ feeling_label $ P [feelings Map.! s | s <- sl]
+feeling sl = Var . path c $ feeling_label $ P'' [feelings Map.! s | s <- sl]
 
 bear_fear :: Form
 bear_fear = Impl (shape ["bear-like"]) (And (feeling ["danger"]) (word "run")) --
@@ -184,10 +185,10 @@ word_collection_label :: Path -> Path
 word_collection_label c = P' [(2, Dc1, c)]
 
 words_with_prefix :: [Char] -> Form
-words_with_prefix sl = Var . path c $ word_label $ P' [(s_pos, Dc1, P [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl]
+words_with_prefix sl = Var . path c $ word_label $ P' [(s_pos, Dc1, P'' [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl]
 
 test_word :: [Char] -> Form
-test_word sl = (Var . path c $ word_label $ P' [(s_pos, Neg1, P [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl]) `And` (end_of_word $ length sl)
+test_word sl = (Var . path c $ word_label $ P' [(s_pos, Neg1, P'' [symbols Map.! s]) | (s_pos, s) <- zip [1.. ] sl]) `And` (end_of_word $ length sl)
 
 
 test_example :: IO ()

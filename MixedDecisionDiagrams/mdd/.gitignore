@@ -1,2 +1,6 @@
 .stack-work/
+dist-newstyle/
+graph.svg
+graph.dot
+debug.log
 *~

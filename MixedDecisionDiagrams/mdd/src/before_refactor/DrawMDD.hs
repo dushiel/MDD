@@ -107,6 +107,8 @@ showTree :: Context -> Node -> String
 showTree c d = "\n" ++ unlines (showTree'' c show d)
 showTree2 :: Context -> Node -> String
 showTree2 c = unlines . showTree'' c show
+showTree3 :: (Context, Node) -> String
+showTree3 (c, d) = unlines (showTree'' c show d)
 
 
 drawTree2 :: Context -> Node -> IO ()
@@ -332,7 +334,7 @@ debug5 f s = if save_logs settings
 
 myTrace :: String -> a -> a
 myTrace msg x = unsafePerformIO $ do
-    msg `deepseq` return (trace msg x)
+    msg `deepseq` return x
 
 myDebugLog :: String -> a -> a
 myDebugLog msg x = unsafePerformIO $ do
@@ -344,13 +346,14 @@ emptyFile :: IO ()
 emptyFile = writeFile "debug.log" "["
 
 
+
 settings :: Show_setting
 settings = ShowSetting {
                 color = True -- colorize
-            ,   display_node_id's = False -- show node_id's
             ,   draw_tree = False
+            ,   display_node_id's = False -- show node_id's
             ,   display_context = False
-            ,   display_leaf_cases = True
+            ,   display_leaf_cases = False
             ,   display_end_infs = True
             ,   display_dc_traversal = False
 
@@ -359,11 +362,11 @@ settings = ShowSetting {
 
             ,   debug_open = True
             ,   debug_close = True
-            ,   debug_shorten_close = False
+            ,   debug_shorten_close = True
 
-            ,   debug_dc_stack = True
-            ,   display_level = True
-            ,   display_dcAs = True
-            ,   display_dcBs = True
-            ,   display_dcRs = True
+            ,   debug_dc_stack = False
+            ,   display_level = False
+            ,   display_dcAs = False
+            ,   display_dcBs = False
+            ,   display_dcRs = False
 }

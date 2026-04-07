@@ -1,0 +1,3 @@
+-- This file specifies the GHC version for your project.
+packages: .
+with-compiler: ghc-9.8.4

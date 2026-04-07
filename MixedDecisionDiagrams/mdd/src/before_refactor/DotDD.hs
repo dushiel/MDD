@@ -17,7 +17,7 @@ import System.Directory (getCurrentDirectory)
 import Control.Monad (when, guard)
 import Debug.Trace (trace, traceShow)
 
-generatePositionMap :: [[Int]] -> ([Int] -> Int)
+generatePositionMap :: [Position] -> ([Int] -> Int)
 generatePositionMap xss =
   let positionMap = Map.fromList $ zip (nub (sort xss)) [1..]
   in (positionMap Map.!)

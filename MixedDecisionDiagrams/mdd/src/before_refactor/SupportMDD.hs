@@ -26,9 +26,6 @@
 module SupportMDD where
 import MDD
 import Data.Kind
-
-
-import DrawMDD (debug_manipulation, debug_dc_traverse)
 import Data.Bimap ()
 
 
@@ -78,41 +75,50 @@ pop_dcR :: Context -> (Context, Node)
 pop_dcR c@Context{dc_stack = (dcA, dcB, dcR : fs)} = (c{dc_stack = (dcA, dcB, fs)}, dcR)
 pop_dcR c@Context{dc_stack = (dcA, dcB, [])} = error "requeated dcR from empty stack"
 
-add_to_stack' :: [(Int, Inf)] -> ([Node], [Node], [Node]) -> Context -> Context
-add_to_stack' infs (dcA, dcB, dcR) c@Context{dc_stack = (dcAs, dcBs, dcRs)} =
-    let (lvsA, lvsB) = current_level c in
-    c{dc_stack = (dcA ++ dcAs, dcB ++ dcBs, dcR ++ dcRs), current_level = (infs ++ lvsA, infs ++ lvsB) }
+-- add_to_stack' :: [(Int, Inf)] -> ([Node], [Node], [Node]) -> Context -> Context
+-- add_to_stack' infs (dcA, dcB, dcR) c@Context{dc_stack = (dcAs, dcBs, dcRs)} =
+--     let (lvsA, lvsB) = current_level c in
+--     c{dc_stack = (dcA ++ dcAs, dcB ++ dcBs, dcR ++ dcRs), current_level = (infs ++ lvsA, infs ++ lvsB) }
 
 add_to_stack :: (Int, Inf) -> (Node, Node, Node) -> Context -> Context
 add_to_stack inf (dcA, dcB, dcR) c@Context{dc_stack = (dcAs, dcBs, dcRs)} =
     let (lvsA, lvsB) = current_level c in
     c{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = (inf : lvsA, inf : lvsB)}
 
+add_to_stack_ :: (Int, Inf) -> (Node, Node) -> Context -> Context
+add_to_stack_ inf (dc, dcR) c@Context{dc_stack_ = (dcs, dcRs)} =
+    let lvs = current_level_ c in
+    c{dc_stack_ = (dc : dcs, dcR : dcRs), current_level_ = (inf : lvs)}
+
 add_to_level :: (Int, Inf) -> Context -> Context
 add_to_level inf c =
     let (lvsA, lvsB) = current_level c in
     c{current_level = (inf : lvsA, inf : lvsB)}
 
+add_to_level_ :: (Int, Inf) -> Context -> Context
+add_to_level_ inf c =
+    let (lvs) = current_level_ c in
+    c{current_level_ = inf : lvs}
 
 replace_on_stack :: (Int, Inf) -> (Node, Node, Node) -> Context -> Context
 replace_on_stack inf (dcA, dcB, dcR) c@Context{dc_stack = (_ : dcAs, _ : dcBs, _ : dcRs), current_level = (lvA : lvsA, lvB : lvsB)} =
     c{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = (inf : lvsA, inf : lvsB)}
 
-pop_stack1 :: Context -> (Context, ((Inf, Inf), (Node, Node, Node)))
-pop_stack1 c@Context{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = (lvA@(_, infA) : lvsA, lvB@(_, infB) : lvsB)} =
-    (c{dc_stack = (dcAs, dcBs, dcRs), current_level=(lvsA, lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
+-- pop_stack1 :: Context -> (Context, ((Inf, Inf), (Node, Node, Node)))
+-- pop_stack1 c@Context{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_level = (lvA@(_, infA) : lvsA, lvB@(_, infB) : lvsB)} =
+--     (c{dc_stack = (dcAs, dcBs, dcRs), current_level=(lvsA, lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
 
 -- removes the current level and returns information about the previous level
--- todo: popping the dcs is naive currently
-pop_stack :: Context -> (Context, ((Inf, Inf), (Node, Node, Node)))
-pop_stack c@Context{dc_stack = (current_A : dcA : dcAs, current_B : dcB : dcBs, current_R : dcR : dcRs), current_level = (lAs, lBs)}
-    | length lAs == length lBs = let (_ : lvA@(_, infA) : lvsA, _: lvB@(_, infB) : lvsB) = current_level c in
-        (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= (lvA : lvsA, lvB : lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
-    | length lAs > length lBs = let (_ : lvA@(_, infA) : lvsA, lvB@(_, infB) : lvsB) = current_level c in
-        (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= (lvA : lvsA, lvB : lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
-    | length lAs < length lBs = let (lvA@(_, infA) : lvsA, _ : lvB@(_, infB) : lvsB) = current_level c in
-        (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= (lvA : lvsA, lvB : lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
-        where n = (max (length $ lAs) (length $ lBs)) -1 `debug` ("n = " ++ (show $ (max (length $ lAs) (length $ lBs)) -1) ++ ", " ++ (show $ length lAs)  ++ ", " ++ (show $ length lBs))
+-- -- todo: popping the dcs is naive currently
+-- pop_stack :: Context -> (Context, ((Inf, Inf), (Node, Node, Node)))
+-- pop_stack c@Context{dc_stack = (current_A : dcA : dcAs, current_B : dcB : dcBs, current_R : dcR : dcRs), current_level = (lAs, lBs)}
+--     | length lAs == length lBs = let (_ : lvA@(_, infA) : lvsA, _: lvB@(_, infB) : lvsB) = current_level c in
+--         (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= (lvA : lvsA, lvB : lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
+--     | length lAs > length lBs = let (_ : lvA@(_, infA) : lvsA, lvB@(_, infB) : lvsB) = current_level c in
+--         (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= (lvA : lvsA, lvB : lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
+--     | length lAs < length lBs = let (lvA@(_, infA) : lvsA, _ : lvB@(_, infB) : lvsB) = current_level c in
+--         (c{dc_stack = (trimListToSize n (current_A: dcA : dcAs), trimListToSize n (current_B : dcB : dcBs), trimListToSize n (current_R : dcR : dcRs)), current_level= (lvA : lvsA, lvB : lvsB)}, ((infA, infB), (dcA, dcB, dcR)))
+--         where n = (max (length $ lAs) (length $ lBs)) -1 `debug` ("n = " ++ (show $ (max (length $ lAs) (length $ lBs)) -1) ++ ", " ++ (show $ length lAs)  ++ ", " ++ (show $ length lBs))
 
 
 
@@ -126,10 +132,16 @@ pop_stack' c@Context{dc_stack = (dcAs, dcBs, dcRs), current_level = (lAs, lBs)}
         (c{dc_stack = (trimListToSize n dcAs, trimListToSize n dcBs , trimListToSize n dcRs ), current_level= (lvA : lvsA, lvB : lvsB)}, (infA, infB))
     | length lAs < length lBs = let (lvA@(_, infA) : lvsA, _ : lvB@(_, infB) : lvsB) = current_level c in
         (c{dc_stack = (trimListToSize n dcAs, trimListToSize n dcBs , trimListToSize n dcRs ), current_level= (lvA : lvsA, lvB : lvsB)}, (infA, infB))
-        where n = (max (length $ lAs) (length $ lBs)) -1 `debug` ("n' = " ++ (show $ (max (length $ lAs) (length $ lBs)) -1) ++ ", " ++ (show $ length lAs)  ++ ", " ++ (show $ length lBs))
+        where n = (max (length $ lAs) (length $ lBs)) -1 -- `debug` ("n' = " ++ (show $ (max (length $ lAs) (length $ lBs)) -1) ++ ", " ++ (show $ length lAs)  ++ ", " ++ (show $ length lBs))
 
 
-
+-- removes the current level and returns information about the previous level
+pop_stack_ :: Context -> (Context, Inf)
+pop_stack_ c@Context{dc_stack_ = (dcs, dcRs), current_level_ = lvs} =
+    let (_ : lv@(_, inf) : lvs) = current_level_ c
+    in
+        (c{dc_stack_ = (trimListToSize n dcs, trimListToSize n dcRs ), current_level_= lv : lvs}, inf)
+        where n = (length $ lvs) -1  -- `debug` ("n' = " ++ (show $ ((length $ lvs)) -1))
 
 
 
@@ -150,11 +162,7 @@ func_tail c@Context{dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), current_lev
 
 reset_stack :: Context -> Context -> Context
 reset_stack new_c old_c =
-    new_c{dc_stack = dc_stack old_c, current_level = current_level old_c}
-
-    -- update_dc_stack :: String -> Int -> Context -> Context
--- update_dc_stack s idx c@Context{dc_stack = fl} = traverse_dcB s idx (traverse_dcA s idx c)
--- todo map over full dc_stack
+    new_c{dc_stack = dc_stack old_c, current_level = current_level old_c, dc_stack_ = dc_stack_ old_c, current_level_ = current_level_ old_c}
 
 
 class All a where
@@ -205,22 +213,24 @@ move_dc c m node =
         _ -> error $ "processStackElement: Unhandled Node pattern: " ++ show node ++ ", move: " ++ m
 
 
+get_static_lv :: Context -> [Int]
+get_static_lv c = reverse (map fst (current_level_ c))
 
 to_static_form':: Context -> Node -> (Context, NodeStatic)
 to_static_form' c d@(node_id, Node position pos_child neg_child)  = let
     (c1, (posR, _)) = to_static_form' c (pos_child, getDd c pos_child)
     (c2, (negR, _)) = to_static_form' c1 (neg_child, getDd c1 neg_child)
-    in insert_static c2 $ Node' (get_static_lv c ++ [position]) posR negR `debug` ("node: " ++ (show $  get_static_lv c ++ [position]) )
+    in insert_static c2 $ Node' (get_static_lv c ++ [position]) posR negR
 to_static_form' c d@(node_id, InfNodes position dc p n) =  let
-    c_ = add_to_level (position, Dc) c
+    c_ = add_to_level_ (position, Dc) c
     (c1, (r_dc, _)) = to_static_form' c_ (dc, getDd c dc)
-    c2_ = add_to_level (position, Neg) (reset_stack c1 c)
+    c2_ = add_to_level_ (position, Neg) (reset_stack c1 c)
     (c2, (r_n, _)) = to_static_form' c2_ (n, getDd c n)
-    c3_ = add_to_level (position, Neg) (reset_stack c2 c)
+    c3_ = add_to_level_ (position, Pos) (reset_stack c2 c)
     (c3, (r_p, _)) = to_static_form' c3_ (p, getDd c p)
-        in insert_static (reset_stack c3 c) $ InfNodes' (get_static_lv c ++ [position]) r_dc r_p r_n `debug` ("infnodes: " ++ (show $  get_static_lv c ++ [position]))
+        in insert_static (reset_stack c3 c) $ InfNodes' (get_static_lv c ++ [position]) r_dc r_p r_n
 to_static_form' c d@(node_id, EndInfNode a) =  let
-    c' = pop_current_level c
+    c' = pop_current_level_ c
     (c1, (result, _)) = to_static_form' c' (a, getDd c a)
     in insert_static c1 $ EndInfNode' result
 to_static_form' c (_, Leaf b) = insert_static c (Leaf' b)
@@ -229,3 +239,21 @@ to_static_form' c (_, Unknown) = insert_static c Unknown'
 
 pop_current_level :: Context -> Context
 pop_current_level c@Context{current_level = ( _ : lvsA, lvsB)} = c{current_level = (lvsA, lvsB)}
+
+pop_current_level_ :: Context -> Context
+pop_current_level_ c@Context{current_level_ = (_ : lvs) } = c{current_level_ = lvs}
+
+
+allVars :: (Context, Node) -> [Position]
+allVars (c, d@(node_id, Node position pos_child neg_child))  =
+  [get_static_lv c ++ [position]] ++
+   allVars (c, (pos_child, getDd c pos_child)) ++ allVars (c, (neg_child, getDd c neg_child))
+allVars (c, d@(node_id, InfNodes position dc p n)) =  let
+    c_ = add_to_level_ (position, Dc) c
+    c2_ = add_to_level_ (position, Neg) c
+    c3_ = add_to_level_ (position, Pos) c
+    in [get_static_lv c ++ [position]] ++
+        allVars (c_, (dc, getDd c dc)) ++ allVars (c2_, (n, getDd c n)) ++ allVars (c3_, (p, getDd c p))
+allVars (c, d@(node_id, EndInfNode a)) = allVars ((pop_current_level_ c), (a, getDd c a))
+allVars (c, (_, Leaf b)) = []
+allVars (c, (_, Unknown)) = []

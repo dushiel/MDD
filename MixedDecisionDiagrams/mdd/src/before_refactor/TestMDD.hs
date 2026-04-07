@@ -7,10 +7,11 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# HLINT ignore "Use camelCase" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
-{-# LANGUAGE TupleSections #-}
 {-# HLINT ignore "Eta reduce" #-}
-module MDDi where
+module TestMDD where
 import MDD
+import MDDi
+import Bool_MDD
 import SODDmanipulation
 import DrawMDD
 import SupportMDD
@@ -19,125 +20,6 @@ import qualified Data.Map as Map
 import Text.ParserCombinators.ReadPrec (reset)
 
 
-
--- |======================================== Dd Manipulation operators ==============================================
-
-infixl 4 -.
-(-.) :: Context -> Node -> (Context, Node)
-(-.) c' a = negation (reset_stack c' c) a
-
--- infix 2 .*.   -- F1 Conjunction / product | F0 Disjunction / sum
-(.*.) :: Context -> Node -> Node -> (Context, Node)
-(.*.) c'' a b =
-    let (c', (_, r)) = debug_func "INTER" $ apply' @Dc (reset_stack c'' c) "inter" a b
-    in applyElimRule @Dc c' r
-
--- infixl 3 .+.
-(.+.) :: Context -> Node -> Node -> (Context, Node)
-(.+.) c'' a b =
-    let (c', (_, r)) = debug_func "UNION" $ apply' @Dc (reset_stack c'' c) "union" a b
-    in applyElimRule @Dc c' r
-
--- ite :: Context -> Node -> Node -> Node -> (Context, Node)
--- ite c x y z = (x .+. y) .*. ((-.) x .+. z)
-
-
--- infixl 1 .->.
--- (.->.) :: Context -> Node -> Node -> (Context, Node)
--- (.->.) c a b = (-.) a .+. b
-
--- infixl 1 .<-.
--- (.<-.) :: Context -> Node -> Node -> (Context, Node)
--- (.<-.) c a b = a .+. (-.) b
-
--- infixl 1 .<->.
--- (.<->.) :: Context -> Node -> Node -> (Context, Node)
--- (.<->.) c a b = (a .*. b) .+. ((-.) a .*. (-.) b)
-
--- todo future:  write a parser :: String -> Form
--- "[dc:5, n1:3, 4]" -> Pr L [(5, Dc), (3, Neg1)] 4
--- "([dc:1, 2] + [p0:2, 1]) * Top" ->  And (Or (Pr L [(1, Dc) 2) (Pr L [(2, Pos0)] 1)) Top
-
--- {-}
--- dc = (path (Order [0]) [2] Dc) .*. (path (Order [1]) [2] Dc)
--- b = path (Order [1]) [2] Neg1
-
--- (dc .*. a) .+. dc == dc
--- (dc .+. a) .*. dc == dc
-
--- (dc .*. a) .+. a == a
--- (dc .+. a) .*. a == a
--- -}
-
-
--- |======================================== Setup for constructing DD's from a given input ==============================================
-
--- base context
-c = Context{
-    nodelookup = defaultNodeMap,
-    nodelookup_static = defaultNodeMapStatic,
-    cache = Map.fromList (map (, HashMap.empty :: HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId) ["union", "intersection", "inter", "interDc", "unionDc", "absorb", "traverse_and_return", "remove_outercomplement"]) :: Map.Map String (HashMap.HashMap (NodeId, NodeId, ([Node], [Node], [Node])) NodeId),
-    cache_ = HashMap.empty :: HashMap.HashMap NodeId NodeId,
-    dc_stack = ([((0,0), Unknown)], [((0,0), Unknown)], [((0,0), Unknown)]),
-    current_level = ([(0, Dc)], [(0, Dc)]),
-    cache' = HashMap.empty
-    }
-
-data Form
-    = Top
-    | Bot
-    | Negate Form
-    | And Form Form
-    | Or Form Form
-    | PrpF LevelL
-    | Var (Context, Node)
-    | Impl Form Form
-    | ImplR Form Form
-    -- | F Form
-
-ddOf :: Context -> Form -> (Context, Node)
-ddOf c Top = (c, ((1,0), Leaf True))
-ddOf c Bot = (c, ((2,0), Leaf False))
-ddOf c (Negate a) =
-                let
-                    (c1, r1) = ddOf c a
-                in (-.) c1 r1
-ddOf c (And a b) =
-                let
-                    (c1, r1) = ddOf c a
-                    (c2, r2) = ddOf c1 b
-                in (.*.) c2 r1 r2
-ddOf c (Or a b) =
-                let
-                    (c1, r1) = ddOf c a
-                    (c2, r2) = ddOf c1 b
-                in (.+.) c2 r1 r2
-ddOf c (Impl a b) = ddOf c $ Or (Negate a) b
-ddOf c (ImplR a b) = ddOf c $ Or a (Negate b)
-ddOf c (PrpF l) = makeNode c l
-ddOf c (Var (_, d)) = (c, d)
-
-ddOf' :: Form -> (Context, Node)
-ddOf' Top = (c, ((1,0), Leaf True))
-ddOf' Bot = (c, ((2,0), Leaf False))
-ddOf' (Negate a) =
-                let
-                    (c1, r1) = ddOf' a
-                in (-.) c1 r1
-ddOf' (And a b) =
-                let
-                    (c1, r1) = ddOf' a
-                    (c2, r2) = ddOf' b
-                in (.*.) (unionContext c1 c2) r1 r2
-ddOf' (Or a b) =
-                let
-                    (c1, r1) = ddOf' a
-                    (c2, r2) = ddOf' b
-                in (.+.) (unionContext c1 c2) r1 r2
-ddOf' (Impl a b) = ddOf' $ Or (Negate a) b
-ddOf' (ImplR a b) = ddOf' $ Or a (Negate b)
-ddOf' (PrpF l) = makeNode c l
-ddOf' (Var (c, d)) = (c, d)
 
 
 -- |======================================== Constructing base test DD's ==============================================
@@ -160,193 +42,102 @@ ddOf' (Var (c, d)) = (c, d)
 -- it would be nice to not have to
 
 
-dc = path (c)               (P' [(1, Dc1, P [0])])
-dc' = path (fst dc)         (P' [(1, Dc0, P [0])])
-n = path (fst dc')          (P' [(1, Neg1, P [0])])
-n' = path (fst n)           (P' [(1, Neg0, P [0])])
-p = path (fst n')           (P' [(1, Pos1, P [0])])
-p' = path (fst p)           (P' [(1, Pos0, P [0])])
+dc = path (c)               (P' [(1, Dc1, P'' [0])])
+dc' = path (fst dc)         (P' [(1, Dc0, P'' [0])])
+n = path (fst dc')          (P' [(1, Neg1, P'' [0])])
+n' = path (fst n)           (P' [(1, Neg0, P'' [0])])
+p = path (fst n')           (P' [(1, Pos1, P'' [0])])
+p' = path (fst p)           (P' [(1, Pos0, P'' [0])])
 
+dc1 = path (fst p')         (P' [(1, Dc1, P'' [1])])
+dc2 = path (fst dc1)        (P' [(1, Dc1, P'' [2])])
+dc23 = path (fst dc2)       (P' [(1, Dc1, P'' [2, 3])])
+dc'2 = path (fst dc23)      (P' [(1, Dc1, P'' [-2])])
+dc3 = path (fst dc'2)       (P' [(1, Dc1, P'' [3])])
+dc4 = path (fst dc3)        (P' [(1, Dc1, P'' [4])])
+dc_2 = path (fst dc4)       (P' [(2, Dc1, P'' [2])])
+dc_3 = path (fst dc_2)      (P' [(2, Dc1, P'' [3])])
+dc__2 = path (fst dc_3)     (P' [(3, Dc1, P'' [2])])
 
-dc2 = path (fst p')         (P' [(1, Dc1, P [2])])
-dc'2 = path (fst dc2)       (P' [(1, Dc1, P [-2])])
-dc3 = path (fst dc'2)       (P' [(1, Dc1, P [3])])
-dc_2 = path (fst dc3)       (P' [(2, Dc1, P [2])])
-dc__2 = path (fst dc_2)     (P' [(3, Dc1, P [2])])
+n2 = path (fst dc__2)       (P' [(1, Neg1, P'' [2])])
+n3 = path (fst n2)          (P' [(1, Neg1, P'' [3])])
+n23 = path (fst n3)         (P' [(1, Neg1, P'' [2,3])])
+n_2 = path (fst n23)        (P' [(2, Neg1, P'' [2])])
+n__2 = path (fst n_2)       (P' [(3, Neg1, P'' [2])])
+n__3 = path (fst n__2)      (P' [(3, Neg1, P'' [3])])
 
-n2 = path (fst dc__2)       (P' [(1, Neg1, P [2])])
-n3 = path (fst n2)          (P' [(1, Neg1, P [3])])
-n23 = path (fst n3)         (P' [(1, Neg1, P [2,3])])
-n_2 = path (fst n23)        (P' [(2, Neg1, P [2])])
-n__2 = path (fst n_2)       (P' [(3, Neg1, P [2])])
-n__3 = path (fst n__2)      (P' [(3, Neg1, P [3])])
-
-n'2 = path (fst n__3)       (P' [(1, Neg0, P [2])])
-n'3 = path (fst n'2)        (P' [(1, Neg0, P [3])])
-n'23 = path (fst n'3)       (P' [(1, Neg0, P [2,3])])
-n'_2 = path (fst n'23)      (P' [(2, Neg0, P [2])])
-n'_3 = path (fst n'_2)      (P' [(2, Neg0, P [3])])
-n'__2 = path (fst n'_3)     (P' [(3, Neg0, P [2])])
-n'__3 = path (fst n'__2)    (P' [(3, Neg0, P [3])])
+n'2 = path (fst n__3)       (P' [(1, Neg0, P'' [2])])
+n'3 = path (fst n'2)        (P' [(1, Neg0, P'' [3])])
+n'23 = path (fst n'3)       (P' [(1, Neg0, P'' [2,3])])
+n'_2 = path (fst n'23)      (P' [(2, Neg0, P'' [2])])
+n'_3 = path (fst n'_2)      (P' [(2, Neg0, P'' [3])])
+n'__2 = path (fst n'_3)     (P' [(3, Neg0, P'' [2])])
+n'__3 = path (fst n'__2)    (P' [(3, Neg0, P'' [3])])
 
 -- | ALL POS NODES HAVE THEIR NEGATIVE CHILD LEAD TO LEAF, AND POS TO UNKNOWN. OTHERWISE THEY GET ELIMINATED
-p2 = path (fst n'__3)       (P' [(1, Pos1, P [-2])])
-p3 = path (fst p2)          (P' [(1, Pos1, P [-3])])
-p23 = path (fst p3)         (P' [(1, Pos1, P [-2,-3])])
-p_2 = path (fst p23)        (P' [(2, Pos1, P [-2])])
-p__2 = path (fst p_2)       (P' [(3, Pos1, P [-2])])
+p2 = path (fst n'__3)       (P' [(1, Pos1, P'' [-2])])
+p3 = path (fst p2)          (P' [(1, Pos1, P'' [-3])])
+p23 = path (fst p3)         (P' [(1, Pos1, P'' [-2,-3])])
+p_2 = path (fst p23)        (P' [(2, Pos1, P'' [-2])])
+p__2 = path (fst p_2)       (P' [(3, Pos1, P'' [-2])])
 
-p'2 = path (fst p__2)       (P' [(1, Pos0, P [-2])])
-p'3 = path (fst p'2)        (P' [(1, Pos0, P [-3])])
-p'_2 = path (fst p'3)       (P' [(2, Pos0, P [-2])])
-p'__2 = path (fst p'_2)     (P' [(3, Pos0, P [-2])])
+p'2 = path (fst p__2)       (P' [(1, Pos0, P'' [-2])])
+p'3 = path (fst p'2)        (P' [(1, Pos0, P'' [-3])])
+p'_2 = path (fst p'3)       (P' [(2, Pos0, P'' [-2])])
+p'__2 = path (fst p'_2)     (P' [(3, Pos0, P'' [-2])])
 
 -- nested domains dc
-dcdc2 = path (fst p'__2)     (P' [(1, Dc1, P' [(1, Dc1, P [2])])])
-dcdc3 = path (fst dcdc2)     (P' [(1, Dc1, P' [(1, Dc1, P [3])])])
-dcdc'2 = path (fst dcdc3)     (P' [(1, Dc1, P' [(1, Dc1, P [-2])])])
-dcdc'3 = path (fst dcdc'2)     (P' [(1, Dc1, P' [(1, Dc1, P [-3])])])
+dcdc2 = path (fst p'__2)        (P' [(1, Dc1, P' [(1, Dc1, P'' [2])])])
+dcdc3 = path (fst dcdc2)        (P' [(1, Dc1, P' [(1, Dc1, P'' [3])])])
+dcdc'2 = path (fst dcdc3)       (P' [(1, Dc1, P' [(1, Dc1, P'' [-2])])])
+dcdc'3 = path (fst dcdc'2)      (P' [(1, Dc1, P' [(1, Dc1, P'' [-3])])])
 
 -- nested domains pos
-pp2 = path (fst dcdc'3)     (P' [(1, Pos1, P' [(1, Pos1, P [-2])])])
+pp2 = path (fst dcdc'3)         (P' [(1, Pos1, P' [(1, Pos1, P'' [-2])])])
 
-pp3 = path (fst pp2)     (P' [(1, Pos1, P' [(1, Pos1, P [-3])])])
-pp'2 = path (fst pp3)     (P' [(1, Pos1, P' [(1, Pos0, P [-2])])])
-pp'3 = path (fst pp'2)     (P' [(1, Pos1, P' [(1, Pos0, P [-3])])])
+pp3 = path (fst pp2)            (P' [(1, Pos1, P' [(1, Pos1, P'' [-3])])])
+pp'2 = path (fst pp3)           (P' [(1, Pos1, P' [(1, Pos0, P'' [-2])])])
+pp'3 = path (fst pp'2)          (P' [(1, Pos1, P' [(1, Pos0, P'' [-3])])])
 
 -- nested domains neg
-nn2 = path (fst pp'3)     (P' [(1, Neg1, P' [(1, Neg1, P [2])])])
-nn3 = path (fst nn2)     (P' [(1, Neg1, P' [(1, Neg1, P [3])])])
-nn'2 = path (fst nn3)     (P' [(1, Neg1, P' [(1, Neg0, P [2])])])
-nn'3 = path (fst nn'2)     (P' [(1, Neg1, P' [(1, Neg0, P [3])])])
+nn2 = path (fst pp'3)           (P' [(1, Neg1, P' [(1, Neg1, P'' [2])])])
+nn3 = path (fst nn2)            (P' [(1, Neg1, P' [(1, Neg1, P'' [3])])])
+nn'2 = path (fst nn3)           (P' [(1, Neg1, P' [(1, Neg0, P'' [2])])])
+nn'3 = path (fst nn'2)          (P' [(1, Neg1, P' [(1, Neg0, P'' [3])])])
 
 -- mixing different types of domains in the same path (nested domains)
-dcn1 = path (fst nn'3)     (P' [(1, Dc1, P' [(1, Neg1, P [1])])])
-dcn'1 = path (fst dcn1)     (P' [(1, Dc1, P' [(1, Neg0, P [1])])])
-dcn23 = path (fst dcn'1)     (P' [(1, Dc1, P' [(1, Neg1, P [2,3])])])
-dcn'23 = path (fst dcn23)     (P' [(1, Dc1, P' [(1, Neg0, P [2,3])])])
+dcn1 = path (fst nn'3)          (P' [(1, Dc1, P' [(1, Neg1, P'' [1])])])
+dcn'1 = path (fst dcn1)         (P' [(1, Dc1, P' [(1, Neg0, P'' [1])])])
+dcn23 = path (fst dcn'1)        (P' [(1, Dc1, P' [(1, Neg1, P'' [2,3])])])
+dcn'23 = path (fst dcn23)       (P' [(1, Dc1, P' [(1, Neg0, P'' [2,3])])])
 
-nn1 = path (fst dcn'23)      (P' [(1, Neg1, P' [(1, Neg1, P [1])])])
-n_n1 = path (fst nn1)       (P' [(1, Neg1, P' [(2, Neg1, P [1])])])
-n_n2 = path (fst n_n1)      (P' [(1, Neg1, P' [(2, Neg1, P [2])])])
-n'n'1 = path (fst n_n2)     (P' [(1, Neg0, P' [(1, Neg0, P [1])])])
-n'n1 = path (fst n'n'1)     (P' [(1, Neg0, P' [(1, Neg1, P [1])])])
-n'n2 = path (fst n'n1)      (P' [(1, Neg0, P' [(1, Neg1, P [2])])])
-n'_n1 = path (fst n'n2)     (P' [(1, Neg0, P' [(2, Neg1, P [1])])])
-n'_n2 = path (fst n'_n1)    (P' [(1, Neg0, P' [(2, Neg1, P [2])])])
-nn'1 = path (fst n'_n2)      (P' [(1, Neg1, P' [(1, Neg0, P [1])])])
-nn = path (fst dc')          (P' [(1, Neg1, P' [(1, Neg1, P [0])])])
-n'n = path (fst n)           (P' [(1, Neg0, P' [(1, Neg1, P [0])])])
-nn' = path (fst n)           (P' [(1, Neg1, P' [(1, Neg0, P [0])])])
+nn1 = path (fst dcn'23)         (P' [(1, Neg1, P' [(1, Neg1, P'' [1])])])
+n_n1 = path (fst nn1)           (P' [(1, Neg1, P' [(2, Neg1, P'' [1])])])
+n_n2 = path (fst n_n1)          (P' [(1, Neg1, P' [(2, Neg1, P'' [2])])])
+n'n'1 = path (fst n_n2)         (P' [(1, Neg0, P' [(1, Neg0, P'' [1])])])
+n'n1 = path (fst n'n'1)         (P' [(1, Neg0, P' [(1, Neg1, P'' [1])])])
+n'n2 = path (fst n'n1)          (P' [(1, Neg0, P' [(1, Neg1, P'' [2])])])
+n'_n1 = path (fst n'n2)         (P' [(1, Neg0, P' [(2, Neg1, P'' [1])])])
+n'_n2 = path (fst n'_n1)        (P' [(1, Neg0, P' [(2, Neg1, P'' [2])])])
+nn'1 = path (fst n'_n2)         (P' [(1, Neg1, P' [(1, Neg0, P'' [1])])])
+nn = path (fst dc')             (P' [(1, Neg1, P' [(1, Neg1, P'' [0])])])
+n'n = path (fst n)              (P' [(1, Neg0, P' [(1, Neg1, P'' [0])])])
+nn' = path (fst n)              (P' [(1, Neg1, P' [(1, Neg0, P'' [0])])])
 
-pp1 = path (fst nn'1)      (P' [(1, Pos1, P' [(1, Pos1, P [-1])])])
-p_p1 = path (fst pp1)       (P' [(1, Pos1, P' [(2, Pos1, P [-1])])])
-p_p2 = path (fst p_p1)      (P' [(1, Pos1, P' [(2, Pos1, P [-2])])])
-p'p'1 = path (fst p_p2)     (P' [(1, Pos0, P' [(1, Pos0, P [-1])])])
-p'p'2 = path (fst p'p'1)     (P' [(1, Pos0, P' [(1, Pos0, P [-2])])])
-p'p1 = path (fst p'p'2)     (P' [(1, Pos0, P' [(1, Pos1, P [-1])])])
-p'p2 = path (fst p'p1)      (P' [(1, Pos0, P' [(1, Pos1, P [-2])])])
-p'_p1 = path (fst p'p2)     (P' [(1, Pos0, P' [(2, Pos1, P [-1])])])
-p'_p2 = path (fst p'_p1)    (P' [(1, Pos0, P' [(2, Pos1, P [-2])])])
-pp'1 = path (fst p'_p2)      (P' [(1, Pos1, P' [(1, Pos0, P [-1])])])
-p'p'12 = path (fst p'_p2)      (P' [(1, Pos1, P' [(1, Pos0, P [-1, -2])])])
+pp1 = path (fst nn'1)           (P' [(1, Pos1, P' [(1, Pos1, P'' [-1])])])
+p_p1 = path (fst pp1)           (P' [(1, Pos1, P' [(2, Pos1, P'' [-1])])])
+p_p2 = path (fst p_p1)          (P' [(1, Pos1, P' [(2, Pos1, P'' [-2])])])
+p'p'1 = path (fst p_p2)         (P' [(1, Pos0, P' [(1, Pos0, P'' [-1])])])
+p'p'2 = path (fst p'p'1)        (P' [(1, Pos0, P' [(1, Pos0, P'' [-2])])])
+p'p1 = path (fst p'p'2)         (P' [(1, Pos0, P' [(1, Pos1, P'' [-1])])])
+p'p2 = path (fst p'p1)          (P' [(1, Pos0, P' [(1, Pos1, P'' [-2])])])
+p'_p1 = path (fst p'p2)         (P' [(1, Pos0, P' [(2, Pos1, P'' [-1])])])
+p'_p2 = path (fst p'_p1)        (P' [(1, Pos0, P' [(2, Pos1, P'' [-2])])])
+pp'1 = path (fst p'_p2)         (P' [(1, Pos1, P' [(1, Pos0, P'' [-1])])])
+p'p'12 = path (fst p'_p2)       (P' [(1, Pos1, P' [(1, Pos0, P'' [-1, -2])])])
 
-ndc = path (fst p'p'12)      (P' [(1, Neg1, P' [(1, Dc1, P [0])])])
-n'dc' = path (fst p'p'12)      (P' [(1, Neg0, P' [(1, Dc0, P [0])])])
-
--- dc = path (c)               [(1, Dc1)] [0]
--- dc' = path (fst dc)         [(1, Dc0)] [0]
--- n = path (fst dc')          [(1, Neg1)] [0]
--- n' = path (fst n)           [(1, Neg0)] [0]
--- p = path (fst n')           [(1, Pos1)] [0]
--- p' = path (fst p)           [(1, Pos0)] [0]
-
-
--- dc2 = path (fst p')         [(1, Dc1)] [2]
--- dc'2 = path (fst dc2)       [(1, Dc1)] [-2]
--- dc3 = path (fst dc'2)       [(1, Dc1)] [3]
--- dc_2 = path (fst dc3)       [(2, Dc1)] [2]
--- dc__2 = path (fst dc_2)     [(3, Dc1)] [2]
-
--- n2 = path (fst dc__2)       [(1, Neg1)] [2]
--- n3 = path (fst n2)          [(1, Neg1)] [3]
--- n23 = path (fst n3)         [(1, Neg1)] [2,3]
--- n_2 = path (fst n23)        [(2, Neg1)] [2]
--- n__2 = path (fst n_2)       [(3, Neg1)] [2]
--- n__3 = path (fst n__2)      [(3, Neg1)] [3]
-
--- n'2 = path (fst n__3)       [(1, Neg0)] [2]
--- n'3 = path (fst n'2)        [(1, Neg0)] [3]
--- n'23 = path (fst n'3)       [(1, Neg0)] [2,3]
--- n'_2 = path (fst n'23)      [(2, Neg0)] [2]
--- n'_3 = path (fst n'_2)      [(2, Neg0)] [3]
--- n'__2 = path (fst n'_3)     [(3, Neg0)] [2]
--- n'__3 = path (fst n'__2)    [(3, Neg0)] [3]
-
--- -- | ALL POS NODES HAVE THEIR NEGATIVE CHILD LEAD TO LEAF, AND POS TO UNKNOWN. OTHERWISE THEY GET ELIMINATED
--- p2 = path (fst n'__3)       [(1, Pos1)] [-2]
--- p3 = path (fst p2)          [(1, Pos1)] [-3]
--- p23 = path (fst p3)         [(1, Pos1)] [-2,-3]
--- p_2 = path (fst p23)        [(2, Pos1)] [-2]
--- p__2 = path (fst p_2)       [(3, Pos1)] [-2]
-
--- p'2 = path (fst p__2)       [(1, Pos0)] [-2]
--- p'3 = path (fst p'2)        [(1, Pos0)] [-3]
--- p'_2 = path (fst p'3)       [(2, Pos0)] [-2]
--- p'__2 = path (fst p'_2)     [(3, Pos0)] [-2]
-
--- -- nested domains dc
--- dcdc2 = path (fst p'__2)     [(1, Dc1), (1, Dc1)] [2]
--- dcdc3 = path (fst dcdc2)     [(1, Dc1), (1, Dc1)] [3]
--- dcdc'2 = path (fst dcdc3)     [(1, Dc1), (1, Dc1)] [-2]
--- dcdc'3 = path (fst dcdc'2)     [(1, Dc1), (1, Dc1)] [-3]
-
--- -- nested domains pos
--- pp2 = path (fst dcdc'3)     [(1, Pos1), (1, Pos1)] [-2]
-
--- pp3 = path (fst pp2)     [(1, Pos1), (1, Pos1)] [-3]
--- pp'2 = path (fst pp3)     [(1, Pos1), (1, Pos0)] [-2]
--- pp'3 = path (fst pp'2)     [(1, Pos1), (1, Pos0)] [-3]
-
--- -- nested domains neg
--- nn2 = path (fst pp'3)     [(1, Neg1), (1, Neg1)] [2]
--- nn3 = path (fst nn2)     [(1, Neg1), (1, Neg1)] [3]
--- nn'2 = path (fst nn3)     [(1, Neg1), (1, Neg0)] [2]
--- nn'3 = path (fst nn'2)     [(1, Neg1), (1, Neg0)] [3]
-
--- -- mixing different types of domains in the same path (nested domains)
--- dcn1 = path (fst nn'3)     [(1, Dc1), (1, Neg1)] [1]
--- dcn'1 = path (fst dcn1)     [(1, Dc1), (1, Neg0)] [1]
--- dcn23 = path (fst dcn'1)     [(1, Dc1), (1, Neg1)] [2,3]
--- dcn'23 = path (fst dcn23)     [(1, Dc1), (1, Neg0)] [2,3]
-
--- nn1 = path (fst dcn'23)      [(1, Neg1), (1, Neg1)] [1]
--- n_n1 = path (fst nn1)       [(1, Neg1), (2, Neg1)] [1]
--- n_n2 = path (fst n_n1)      [(1, Neg1), (2, Neg1)] [2]
--- n'n'1 = path (fst n_n2)     [(1, Neg0), (1, Neg0)] [1]
--- n'n1 = path (fst n'n'1)     [(1, Neg0), (1, Neg1)] [1]
--- n'n2 = path (fst n'n1)      [(1, Neg0), (1, Neg1)] [2]
--- n'_n1 = path (fst n'n2)     [(1, Neg0), (2, Neg1)] [1]
--- n'_n2 = path (fst n'_n1)    [(1, Neg0), (2, Neg1)] [2]
--- nn'1 = path (fst n'_n2)      [(1, Neg1), (1, Neg0)] [1]
--- nn = path (fst dc')          [(1, Neg1), (1, Neg1)] [0]
--- n'n = path (fst n)           [(1, Neg0), (1, Neg1)] [0]
--- nn' = path (fst n)           [(1, Neg1), (1, Neg0)] [0]
-
--- pp1 = path (fst nn'1)      [(1, Pos1), (1, Pos1)] [-1]
--- p_p1 = path (fst pp1)       [(1, Pos1), (2, Pos1)] [-1]
--- p_p2 = path (fst p_p1)      [(1, Pos1), (2, Pos1)] [-2]
--- p'p'1 = path (fst p_p2)     [(1, Pos0), (1, Pos0)] [-1]
--- p'p'2 = path (fst p'p'1)     [(1, Pos0), (1, Pos0)] [-2]
--- p'p1 = path (fst p'p'2)     [(1, Pos0), (1, Pos1)] [-1]
--- p'p2 = path (fst p'p1)      [(1, Pos0), (1, Pos1)] [-2]
--- p'_p1 = path (fst p'p2)     [(1, Pos0), (2, Pos1)] [-1]
--- p'_p2 = path (fst p'_p1)    [(1, Pos0), (2, Pos1)] [-2]
--- pp'1 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1]
--- p'p'12 = path (fst p'_p2)      [(1, Pos1), (1, Pos0)] [-1, -2]
-
--- ndc = path (fst p'p'12)      [(1, Neg1), (1, Dc1)] [0]
--- n'dc' = path (fst p'p'12)      [(1, Neg0), (1, Dc0)] [0]
+ndc = path (fst p'p'12)         (P' [(1, Neg1, P' [(1, Dc1, P'' [0])])])
+n'dc' = path (fst p'p'12)       (P' [(1, Neg0, P' [(1, Dc0, P'' [0])])])
 
 -- the actual test context, containing all the DD's of the above declarations
 (t_c, _) = p'p'12
@@ -500,7 +291,10 @@ test = do
             ,   (snd $ ddOf t_c $ Or (And (Var n2) (And (Var p'3) (Var dc3))) (And (Or (And (Var p__2) (Var p'__2)) (Var p3)) (Or (Var n__2) (Var p3)))) == (snd $ ddOf t_c $ Or (And (Var n2) (And (Var p'3) (Var dc3))) (Or (And (Var p__2) (Var n__2)) (Var p3)))  `debug5` "#### test 3 levels of inf domains"
 
 
--- ==========================================    combining DD's with nested / recursive inf domains ===================================================
+-- ============================================================
+-- * combining DD's with nested / recursive inf domains
+-- ============================================================
+
         -- dc simple
             -- (snd $ ddOf t_c $ (And (Var dcdc2) (Var dcdc3))) == (snd $ ddOf t_c Top)
 
@@ -565,4 +359,98 @@ test = do
             -- ,   (snd $ ddOf t_c $ (And (Var nn1) (Var n'n1))) == (snd $ ddOf t_c Bot)
             -- ,   (snd $ ddOf t_c $ (Or (Var nn1) (Var n'n1))) == (snd $ ddOf t_c Top)
 
+            ]
+
+
+-- |======================================== Advanced operations tests ==============================================
+
+
+-- Compound MDDs for testing
+(c_or , dc_or_23)  = (t_c, snd dc2) .+. (t_c, snd dc3) -- (2 OR 3)
+(c_34    , node_and_34) = (c_or, snd dc3) .*. (path c_or (P' [(1, Dc1, P'' [4])])) -- (3 AND 4) using a fresh var 4
+
+t_c_adv = c_34
+
+testAdvancedOps :: IO ()
+testAdvancedOps = do
+    putStrLn "Running Advanced Operations Tests..."
+    mapM_ print ([show $ snd x | x <- zip results [(0 :: Int) .. ], not $ fst x])
+    where
+
+
+        results = [
+
+        -- Relabeling (uses/tests ddswapvars)
+            -- Simple relabeling
+              (snd $ relabelWith [([1, 2], [1,3])] (t_c_adv, snd dc2)) == (snd dc3) `debug5` "relabelWith 2->3"
+            , (snd $ relabelWith [([1, 2], [2,2])] (t_c_adv, snd dc2)) == (snd dc_2) `debug5` "relabelWith from domain 1 to 2"
+            , (snd $ relabelWith [([1, 2], [2,3])] (t_c_adv, snd dc2)) == (snd dc_3) `debug5` "relabelWith from [1, 2] -> [2,3]"
+
+        --     Overlapping list Relabeling
+            , (snd $ relabelWith [([1, 2], [1,3]), ([1,3], [1,4])] (t_c_adv, snd dc23)) == node_and_34 `debug5` "relabelWith Shift (2->3, 3->4) in (2 AND 3)"
+            , (snd $ relabelWith [([1, 2], [1,3]), ([1,3], [1,4])] $
+                        ddOf t_c_adv (And (Impl (Var dc2) (Var dc1)) (Var dc3)))
+                        == (snd $ ddOf t_c_adv (And (Impl (Var dc3) (Var dc1)) (Var dc4)))
+                        `debug5` "relabelWith Shift (2->3, 3->4) in ((2 impl 1) AND 3)"
+
+            , (snd $ relabelWith [([1, 2], [1,3]), ([1,3], [1,2])] $
+                        ddOf t_c_adv (And (Impl (Var dc2) (Var dc1)) (Var dc3)))
+                        == (snd $ ddOf t_c_adv (And (Impl (Var dc3) (Var dc1)) (Var dc2)))
+                        `debug5` "relabelWith Shift (2->3, 3->2) in ((2 impl 1) AND 3)"
+
+            , (snd $ relabelWith [([2, 2], [1,3]), ([2,3], [1,2])] $
+                        ddOf t_c_adv (And (Var dc_2) (Var dc_3)))
+                        == (snd dc23)
+                        `debug5` "relabelWith domain change ([2, 2] -> [1,3]), ([2,3] -> [1,2]) in (2 AND 3)"
+
+            , (snd $ relabelWith [([1,1],[0,1]),([1,2],[0,2]),([2,1],[0,1]),([2,2],[0,2])] $
+                        ddOf t_c_adv (Var dc_2))
+                        == (snd dc2)
+                        `debug5` "relabel with large list between domains, testing unmvd for beliefstructures"
+
+
+        -- Substitutions
+            -- Simple Substitutions, dc
+        --     ,  (snd $ substitSimul [([1, 2], snd dc3)] (t_c_adv, snd dc2)) == (snd dc3) `debug5` "substitSimul 2->3"
+        --     , (snd $ substitSimul [([1, 2], top')] (t_c_adv, snd dc2)) == (snd $ ddOf t_c_adv Top) `debug5` "substitSimul 2->Top"
+
+            -- neg1, neg0, pos1, pos0 separatly
+            -- ....
+
+            -- all dc, neg1, neg0, pos1, pos0 mixed
+            -- ....
+
+            -- Simultaneous Substitution, dc
+        --     , (snd $ substitSimul [([1, 2], snd dc3), ([1,3], snd dc2)] (t_c_adv, snd dc23)) == (snd dc23) `debug5` "substitSimul Swap (2<->3) in (2 AND 3)"
+        --     , (snd $ substitSimul [([1, 2], snd dc3), ([1,3], snd dc2)] (t_c_adv, snd dc2)) == (snd dc3) `debug5` "substitSimul Swap (2<->3) in (2)"
+
+            -- neg1, neg0, pos1, pos0 separatly
+            -- ....
+
+            -- all dc, neg1, neg0, pos1, pos0 mixed
+            -- ....
+
+            -- Simple substitution over multiple domains, dc (e.g. [1,2] -> [3,1])
+            -- ....
+
+
+
+            -- 5. RestrictLaw
+            -- Identity: Restricting with Top
+        --     , (snd $ restrictLaw [[1, 2]] (t_c_adv, snd dc2) (t_c_adv, top')) == (snd dc2) `debug5` "restrictLaw Top"
+
+        --     -- Vacuous: Restricting with Bot -> Top
+        --     , (snd $ restrictLaw [[1, 2]] (t_c_adv, snd dc2) (t_c_adv, bot')) == (snd $ ddOf t_c_adv Top) `debug5` "restrictLaw Bot"
+
+        --     -- Implication: Restrict (2 AND 3) with Law (2=True). Result should be (3).
+        --     , (snd $ restrictLaw [[1, 2]] (c_23, node_and_23) (t_c_adv, snd dc2)) == (snd dc3) `debug5` "restrictLaw (2 AND 3) | 2=True -> 3"
+
+        --     -- Implication: Restrict (2 OR 3) with Law (2=True). Result should be (True).
+        --     , (snd $ restrictLaw [[1, 2]] (c_or, node_or_23) (t_c_adv, snd dc2)) == (snd $ ddOf t_c_adv Top) `debug5` "restrictLaw (2 OR 3) | 2=True -> True"
+
+        --     -- Implication: Restrict (2 OR 3) with Law (2=False). Result should be (3).
+        --     -- We assume restrictLaw handles negations correctly if we pass the negated atom as law,
+        --     -- or if we assume the law implies the valuation.
+        --     -- Here we use (Neg 2) as law.
+        --     , (snd $ restrictLaw [[1, 2]] (c_or, node_or_23) ((-.) (t_c_adv, snd dc2))) == (snd dc3) `debug5` "restrictLaw (2 OR 3) | 2=False -> 3"
             ]
