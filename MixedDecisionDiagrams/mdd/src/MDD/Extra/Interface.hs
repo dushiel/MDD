@@ -118,7 +118,35 @@ infixl 3 .+.  -- Disjunction
     in MDD (getLookup ctx', r)
 
 ite :: MDD -> MDD -> MDD -> MDD
-ite x y z = (x .*. y) .+. ((-.) x .*. z)
+ite f g h
+    | isTop f = g
+    | isBot f = h
+    | g == h = g
+    | isTop g && isBot h = f
+    | isBot g && isTop h = (-.) f
+    | isTop g = f .+. h
+    | isBot h = f .*. g
+    | isTop h = (-.) f .+. g
+    | isBot g = (-.) f .*. h
+    | otherwise = iteShared f g h
+  where
+    isTop (MDD (_, (_, Leaf True))) = True
+    isTop _ = False
+
+    isBot (MDD (_, (_, Leaf False))) = True
+    isBot _ = False
+
+iteShared :: MDD -> MDD -> MDD -> MDD
+iteShared (MDD (lf, (fid, fdd))) (MDD (lg, (gid, _))) (MDD (lh, (hid, _))) =
+    let mergedLookup = unionNodeLookup lf (unionNodeLookup lg lh)
+        uctx0 = init_unary_context mergedLookup
+        (uctx1, (negFid, _)) = negation uctx0 (fid, fdd)
+
+        ctx0 = init_binary_context (getLookup uctx1)
+        (ctx1, (xyId, _)) = apply @Dc ctx0 "inter" fid gid
+        (ctx2, (nfhId, _)) = apply @Dc ctx1 "inter" negFid hid
+        (ctx3, result) = apply @Dc ctx2 "union" xyId nfhId
+    in MDD (getLookup ctx3, result)
 
 xor :: MDD -> MDD -> MDD
 xor a b = (a .*. (-.) b) .+. ((-.) a .*. b)
