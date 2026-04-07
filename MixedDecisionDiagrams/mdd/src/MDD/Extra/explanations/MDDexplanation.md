@@ -95,6 +95,13 @@ The neg stands for the negative literal inference/elimination rule, which means 
 
 Pos and Neg inference are usually the default when describing item sets / objects. The class variable then represents all posible items and the positive evaluations are the items that are present. e.g. from all agents, take Alice and Bob (Neg inference for all other agents). Or take all agents except for Carrol (Pos inference for all agents except Carrol).
 
+## Value-Level Traversal Modes
+
+To manage the various combinations of inference rules, elimination rules, and how branches inherit these contexts across hierarchy boundaries, the project uses a value-level `TraversalMode` record. 
+
+Instead of statically hardcoding logic for every possible context or relying on rigid type-level constraints, a `TraversalMode` bundles the necessary strategies for a specific branch (e.g., how to infer missing nodes, when to eliminate redundant nodes, and how to handle `Unknown` resolution). 
+
+When traversing through complex hierarchical structures—where one branch might be in a `Neg` context and a child class domain might be in a `Dc` context—the traversal engine dynamically composes these `TraversalMode`s. This dynamic composition ensures that asymmetric behaviors, particularly how `Unknown` nodes correctly fall back to the continuous (`Dc`) background, are accurately preserved across arbitrary depths of nested domains.
 
 
 
@@ -189,7 +196,7 @@ The refactored codebase is organized into focused modules with clear responsibil
 **Traversal Operations** (`MDD.Traversal.Binary`, `MDD.Traversal.Unary`, `MDD.Traversal.Support`, `MDD.Traversal.Stack`)
 - Binary operations: `apply` (union, intersection, etc.) in `MDD.Traversal.Binary`
 - Unary operations: `negation`, `restrict_node_set` in `MDD.Traversal.Unary`. Unary traversal follows the same structural pattern as binary (dc_stack synchronization, inference rules, absorb) but operates on a single MDD with a simpler context (`UnOpContext`).
-- Support functions: Inference rules (`DdF3` typeclass), elimination rules, and `absorb` in `MDD.Traversal.Support`
+- Support functions: Inference rules (`TraversalMode` record), elimination rules, and `absorb` in `MDD.Traversal.Support`
 - Stack management: `MDD.Traversal.Stack` provides dc_stack manipulation functions, `move_dc` (shared helper to step into sub-branches), and `traverse_dc_generic` (shared dc traversal synchronization, used by both binary and unary modules)
 - Both operation modules use operation-specific contexts and caching
 
@@ -277,11 +284,6 @@ current position of a traversal in a MDD graph [dc 1, neg 3, neg 4]. If the next
 - fun parser
 - hashing with level
 - latexify s5/k
-
-
-- nasty bug:
-```dcA_leaf_cases c s a@(a_id, Leaf _) b@(b_id, ClassNode{}) = withCache c (a, b, s ++ "Dc") $
-        applyClassA @Dc c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc```
 
 - other potential bugs:
 - does dc stack traversal handle endClassNode (catchup) correctly? do they have their own stack?

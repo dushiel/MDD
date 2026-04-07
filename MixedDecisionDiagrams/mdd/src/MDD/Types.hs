@@ -27,6 +27,10 @@ module MDD.Types
   , l_1
   , l_0
   , l_u
+    -- * Node Position Helpers
+  , endClassPos
+  , leafPos
+  , nodePosition
     -- * Position Validation Helpers
   , isValidPosition
   , hasNonNegativeIndices
@@ -69,7 +73,15 @@ type NodeId = (HashedId, Int)
 
 
 -- | Inference types: Dc (don't-care), Pos (positive literal), Neg (negative literal).
+-- Compound constructors encode asymmetric traversal modes where one operand is in Dc role:
+--   XY means side A uses context X, side B uses context Y.
+--   NegDc: A=Neg, B=Dc  (replaces applyDcB' @Neg)
+--   DcNeg: A=Dc,  B=Neg (replaces applyDcA' @Neg)
+--   PosDc: A=Pos, B=Dc  (replaces applyDcB' @Pos)
+--   DcPos: A=Dc,  B=Pos (replaces applyDcA' @Pos)
 data Inf = Dc | Neg | Pos
+         | NegDc | DcNeg | PosDc | DcPos
+         | DcDcA | DcDcB
   deriving (Eq, Show, Generic, Hashable)
 
 -- | Decision diagram node types.
@@ -148,6 +160,22 @@ l_1, l_0, l_u :: NodeId
 l_1 = (1, 0)  -- Leaf True
 l_0 = (2, 0)  -- Leaf False
 l_u = (0, 0)  -- Unknown
+
+
+-- * Node Position Helpers
+
+endClassPos, leafPos :: Int
+endClassPos = maxBound - 1
+leafPos     = maxBound
+
+-- | Returns the conceptual integer position of a node.
+-- Structural boundaries get "infinite" values to reflect they are "deeper" than any local class content.
+nodePosition :: Dd -> Int
+nodePosition (Node pos _ _)        = pos
+nodePosition (ClassNode pos _ _ _) = pos
+nodePosition (EndClassNode _)      = endClassPos
+nodePosition (Leaf _)              = leafPos
+nodePosition Unknown               = error "Unknown must be substituted before positional comparison"
 
 
 -- * Position Validation Helpers
