@@ -58,7 +58,7 @@ withCache c@BCxt{bin_cache = nc, bin_dc_stack = dck} ((keyA, _), (keyB, _), keyF
 -- | The Dd1 typeclass defines binary operations (union, intersection) parameterized by
 -- | the inference type @a@ (any of Dc, Neg, Pos, NegDc, DcNeg, PosDc, DcPos).
 -- | Compound types encode asymmetric traversal where one operand is in Dc role.
--- | See DdF3 in MDD.Traversal.Support for per-mode method implementations.
+-- | See TraversalMode in MDD.Traversal.Support for per-mode method implementations.
 
 apply :: TraversalMode -> BiOpContext -> String -> NodeId -> NodeId -> (BiOpContext, Node)
 apply' :: TraversalMode -> BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
@@ -72,8 +72,8 @@ apply tm c s a b
 
     -- | Unified binary operation dispatcher for all seven Inf modes.
     -- | Compound modes (NegDc, DcNeg, PosDc, DcPos) behave identically to the simple
-    -- | modes structurally; the asymmetry is captured by DdF3 method dispatch
-    -- | (inferNodeA/B, applyElimRule, inferClassNodeForA/B).
+    -- | modes structurally; the asymmetry is captured by TraversalMode method dispatch
+    -- | (tmInferNodeA/B, tmApplyElimRule, tmInferClassNodeForA/B).
 
     -- Cases 1-4: At least one argument is a terminal (Leaf or Unknown)
 apply' tm c s a@(a_id, a_dd) b@(b_id, b_dd)
@@ -127,10 +127,10 @@ apply' tm c s a@(a_id, a_dd) b@(b_id, b_dd)
         matchAndInferB _ = error "apply': Unexpected node type for matchAndInferB"
 
     -- | Unified leaf/terminal handler for all seven Inf modes.
-    -- | Unknown resolution uses DdF3 methods (aUnknownReturn, bUnknownReturn, dcAMode, dcBMode,
-    -- | popADropLevel, popBDropLevel) so compound modes inherit the correct Dc-asymmetric behavior.
+    -- | Unknown resolution uses TraversalMode methods (tmAUnknownReturn, tmBUnknownReturn, tmDcAMode, tmDcBMode,
+    -- | tmPopADropLevel, tmPopBDropLevel) so compound modes inherit the correct Dc-asymmetric behavior.
     
-    -- Unknown resolution (unified across all Inf modes via DdF3 methods)
+    -- Unknown resolution (unified across all Inf modes via TraversalMode methods)
 leaf_cases tm c s a@(_, Unknown) b@(_, Unknown) = (c, a)
 leaf_cases tm c s a@(_, Unknown) b
         | tmAUnknownReturn tm = (c, a)
@@ -150,7 +150,7 @@ leaf_cases tm c "inter" a@(_, Leaf boolA) b@(_, Leaf _) = if boolA then (c, b) e
 leaf_cases tm c s a b = error ("leaf case: " ++ s)
 
     -- | Pops the level stack, maps (infA, infB) to the appropriate Inf mode,
-    -- | and re-dispatches via apply_with. Compound pairs produced by applyClass'
+    -- | and re-dispatches via apply. Compound pairs produced by applyClass'
     -- | (e.g. NegDc, NegDc) now round-trip correctly back into compound apply.
 endclass_case tm c s a_id b_id ac bc =
         let (c_, (infA, infB)) = pop_stack' c
@@ -166,10 +166,10 @@ endclass_case tm c s a_id b_id ac bc =
 -- |
 -- | Algorithm:
 -- |   1. Compute dcR via apply modeDc on the two dc children.
--- |   2. Compute nR via apply_with (tmNegClassInf tm) on the neg children.
+-- |   2. Compute nR via apply (tmNegClassInf tm) on the neg children.
 -- |      Under compound modes (e.g. NegDc) this stays in the compound mode,
 -- |      so the Dc-asymmetry is preserved across nested class boundaries.
--- |   3. Compute pR via apply_with (tmPosClassInf tm) on the pos children.
+-- |   3. Compute pR via apply (tmPosClassInf tm) on the pos children.
 -- |   4. Absorb nR and pR against dcR; combine into ClassNode.
 -- |
 -- | Level stack: negClassInf/posClassInf are pushed (not plain Neg/Pos) so that

@@ -22,7 +22,7 @@ import MDD.Extra.Draw (debug_dc_traverse, debug_dc_traverse_unary, debug_naiveAb
 
 -- *| Shared code for traversal functions (from Unary and Binary).
 
--- | Elimination and Inference rule typeclass (DdF3).
+-- | TraversalMode value-level record.
 -- |
 -- | This typeclass defines the inference and elimination rules for the three inference types: Dc, Neg, Pos
 -- | Each instance implements:
