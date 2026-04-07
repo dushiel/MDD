@@ -7,6 +7,7 @@ module MDD.Traversal.Stack
   , pop_dcB'
   , pop_dcA''
   , pop_dcB''
+  , pop_dc_stack
   , add_to_stack
   , pop_stack'
   , reset_stack_bin
@@ -17,6 +18,7 @@ module MDD.Traversal.Stack
   , DCBranch(..)
   , pop_dc
   , pop_dc'
+  , Move(..)
   , move_dc
   ) where
 
@@ -24,25 +26,43 @@ import MDD.Types
 import MDD.Traversal.Context
 import MDD.Extra.Draw (show_node)
 
+-- | Unified dc-stack pop for both A and B sides, with optional level-drop.
+-- DCBranch selects which dc list to pop from (DcA or DcB).
+-- dropLevel=False: keep current level entry, update its inference to Dc (prime variant).
+-- dropLevel=True:  drop the current level entry entirely, update parent's inference to Dc (double-prime variant).
+pop_dc_stack :: DCBranch -> Bool -> BiOpContext -> (BiOpContext, Node)
+pop_dc_stack DcA dropLevel ctx@BCxt{bin_dc_stack = (dcA : fs, dcB, dcR), bin_current_level = (lvsA, lvsB)} =
+    let newLvsA = if dropLevel
+                  then case lvsA of
+                           (_ : (i, _) : rest) -> (i, Dc) : rest
+                           _                   -> error "pop_dc_stack DcA: level stack too short for drop"
+                  else case lvsA of
+                           ((i, _) : rest)     -> (i, Dc) : rest
+                           _                   -> error "pop_dc_stack DcA: level stack empty"
+    in (ctx{bin_dc_stack = (fs, dcB, dcR), bin_current_level = (newLvsA, lvsB)}, dcA)
+pop_dc_stack DcA _ _ = error "requested dcA from empty stack"
+pop_dc_stack DcB dropLevel ctx@BCxt{bin_dc_stack = (dcA, dcB : fs, dcR), bin_current_level = (lvsA, lvsB)} =
+    let newLvsB = if dropLevel
+                  then case lvsB of
+                           (_ : (i, _) : rest) -> (i, Dc) : rest
+                           _                   -> error "pop_dc_stack DcB: level stack too short for drop"
+                  else case lvsB of
+                           ((i, _) : rest)     -> (i, Dc) : rest
+                           _                   -> error "pop_dc_stack DcB: level stack empty"
+    in (ctx{bin_dc_stack = (dcA, fs, dcR), bin_current_level = (lvsA, newLvsB)}, dcB)
+pop_dc_stack DcB _ _ = error "requested dcB from empty stack"
+
 pop_dcA' :: BiOpContext -> (BiOpContext, Node)
-pop_dcA' ctx@BCxt{bin_dc_stack = (dcA : fs, dcB, dcR), bin_current_level = ((i, _) : lvsA, lvB : lvsB)} =
-    (ctx{bin_dc_stack = (fs, dcB, dcR), bin_current_level = ((i, Dc) : lvsA, lvB : lvsB)}, dcA)
-pop_dcA' _ = error "requested dcA from empty stack"
+pop_dcA' = pop_dc_stack DcA False
 
 pop_dcB' :: BiOpContext -> (BiOpContext, Node)
-pop_dcB' ctx@BCxt{bin_dc_stack = (dcA, dcB : fs, dcR), bin_current_level = (lvA : lvsA, (i, _) : lvsB)} =
-    (ctx{bin_dc_stack = (dcA, fs, dcR), bin_current_level = (lvA : lvsA, (i, Dc) : lvsB)}, dcB)
-pop_dcB' _ = error "requested dcB from empty stack"
+pop_dcB' = pop_dc_stack DcB False
 
 pop_dcA'' :: BiOpContext -> (BiOpContext, Node)
-pop_dcA'' ctx@BCxt{bin_dc_stack = (dcA : fs, dcB, dcR), bin_current_level = (_ : (i, _) : lvsA, lvB : lvsB)} =
-    (ctx{bin_dc_stack = (fs, dcB, dcR), bin_current_level = ((i, Dc) : lvsA, lvB : lvsB)}, dcA)
-pop_dcA'' _ = error "requested dcA from empty stack"
+pop_dcA'' = pop_dc_stack DcA True
 
 pop_dcB'' :: BiOpContext -> (BiOpContext, Node)
-pop_dcB'' ctx@BCxt{bin_dc_stack = (dcA, dcB : fs, dcR), bin_current_level = (lvA : lvsA, _ : (i, _) : lvsB)} =
-    (ctx{bin_dc_stack = (dcA, fs, dcR), bin_current_level = (lvA : lvsA, (i, Dc) : lvsB)}, dcB)
-pop_dcB'' _ = error "requested dcB from empty stack"
+pop_dcB'' = pop_dc_stack DcB True
 
 add_to_stack :: (Int, Inf) -> (Node, Node, Node) -> BiOpContext -> BiOpContext
 add_to_stack cls (dcA, dcB, dcR) ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs)} =
@@ -97,40 +117,58 @@ reset_stack_un new old = new { un_dc_stack = un_dc_stack old, un_current_level =
 data DCBranch = DcA | DcB
   deriving (Eq, Show)
 
+-- | Which branch to follow when stepping a dc-stack element in sync with the main traversal.
+data Move = MvPos | MvNeg | MvClassDc | MvClassPos | MvClassNeg | ExitClass
+  deriving (Eq)
+
+instance Show Move where
+  show MvPos = "pos child"
+  show MvNeg = "neg child"
+  show MvClassDc = "class dc"
+  show MvClassPos = "class pos"
+  show MvClassNeg = "class neg"
+  show ExitClass = "endclass"
+
 pop_dc :: DCBranch -> BiOpContext -> (BiOpContext, Node)
-pop_dc DcA = pop_dcA'
-pop_dc DcB = pop_dcB'
+pop_dc b = pop_dc_stack b False
 
 pop_dc' :: DCBranch -> BiOpContext -> (BiOpContext, Node)
-pop_dc' DcA = pop_dcA''
-pop_dc' DcB = pop_dcB''
+pop_dc' b = pop_dc_stack b True
 
-move_dc :: (HasNodeLookup c) => c -> String -> Node -> Node
+move_dc :: (HasNodeLookup c) => c -> Move -> Node -> Node
 move_dc c m node =
     case node of
-        (_, Node position pos_child neg_child) ->
-            if m == "pos child" then getNode c pos_child
-            else if m == "neg child" then getNode c neg_child
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for Node pattern: " ++ show_node c node
+        (_, Node _ pos_child neg_child) ->
+            case m of
+                MvPos -> getNode c pos_child
+                MvNeg -> getNode c neg_child
+                _ -> error $ "processStackElement: undefined move '" ++ show m ++ "' for Node pattern: " ++ show_node c node
 
         (_, EndClassNode child) ->
-            if m == "endclass" then getNode c child
-            else (if m `elem` ["pos child", "neg child"] then node
-            else (if m `elem` ["class pos", "class neg", "class dc"] then error "class inference should be handled by catchup mechanism"
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndClassNode pattern: " ++ show_node c node))
+            case m of
+                ExitClass -> getNode c child
+                MvPos -> node
+                MvNeg -> node
+                MvClassPos -> error "class inference should be handled by catchup mechanism"
+                MvClassNeg -> error "class inference should be handled by catchup mechanism"
+                MvClassDc -> error "class inference should be handled by catchup mechanism"
 
         -- todo!: current limitation of the system
         -- we should keep track for each dc stack node what context it is in due to being able to traverse to the class neg and class pos nodes of a class it contains
         -- for now we keep the ugly patch to check at least for bare Unknown nodes in the pos / neg branches and then map those back at this level to the dcR.
         -- we do this to be able to test the other parts of the libarary before starting the large change to the code when fixing this.
-        (_, ClassNode position dc p n) ->
-            if m == "class pos" then (if p == (0,0) then getNode c dc else getNode c p)
-            else if m == "class neg" then (if n == (0,0) then getNode c dc else getNode c n)
-            else if m == "class dc" then getNode c dc
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for ClassNode pattern: " ++ show_node c node
+        (_, ClassNode _ dc p n) ->
+            case m of
+                MvClassPos -> if p == (0,0) then getNode c dc else getNode c p
+                MvClassNeg -> if n == (0,0) then getNode c dc else getNode c n
+                MvClassDc -> getNode c dc
+                _ -> error $ "processStackElement: undefined move '" ++ show m ++ "' for ClassNode pattern: " ++ show_node c node
 
-        (_, Leaf _) -> if m `elem` ["class pos", "class neg", "class dc"] then error "class inference should be handled by catchup mechanism"
-            else node
-        (_, Unknown) ->
-            node
-        _ -> error $ "processStackElement: Unhandled Node pattern"
+        (_, Leaf _) ->
+            case m of
+                MvClassPos -> error "class inference should be handled by catchup mechanism"
+                MvClassNeg -> error "class inference should be handled by catchup mechanism"
+                MvClassDc -> error "class inference should be handled by catchup mechanism"
+                _ -> node
+        (_, Unknown) -> node
+        _ -> error "processStackElement: Unhandled Node pattern"

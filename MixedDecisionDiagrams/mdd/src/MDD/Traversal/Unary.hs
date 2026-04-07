@@ -20,7 +20,7 @@ import MDD.Traversal.Context
 import MDD.NodeLookup
 import MDD.Traversal.Stack
 import MDD.Traversal.Support
-import MDD.Extra.Draw (debug_manipulation_unary, show_node, debug_dc_traverse_unary)
+import MDD.Extra.Draw (debug_manipulation_unary, show_node)
 
 import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
@@ -28,6 +28,70 @@ import Data.Kind (Constraint)
 import Debug.Trace (trace)
 
 -- | refactored with use of AI
+
+
+-- * Restriction: passed-target inference (shared across @Dd@ shapes)
+
+-- | When the current path has passed the next restriction coordinate (@current_path > na@),
+-- 'passedTargetKind' distinguishes three actions.
+data PassedTargetKind
+  = -- | Target lies in the same class layer: infer a standard 'Node'.
+    PassedSameClass
+  | -- | Target lies on a shallower layer: exit toward it (simple case — not 'EndClassNode').
+    PassedPreviousLayer
+  | -- | Target needs a deeper 'ClassNode': infer class structure at @infnode_position@.
+    PassedDeeperLayer
+  deriving (Eq, Show)
+
+-- | Result of comparing the traversal path to the next restriction coordinate @na@.
+data RestrictPathVsTarget
+  = -- | @current_path == na@: apply restriction here, then continue with @nas@.
+    RestrictHit
+  | -- | @current_path < na@: descend further before consuming @na@.
+    RestrictNotYetReached
+  | -- | @current_path > na@: synthesize missing structure; see 'PassedTargetKind'.
+    RestrictPassed PassedTargetKind
+  deriving (Eq, Show)
+
+-- | Staging before 'inferClassNode' in the deeper-layer case: either insert an 'EndClassNode'
+-- wrapper for the current root, or continue with the root unchanged (e.g. 'Unknown').
+type RestrictDeeperLayerStage = UnOpContext -> Node -> (UnOpContext, Node)
+
+wrapCurrentRootAsEndClass :: RestrictDeeperLayerStage
+wrapCurrentRootAsEndClass c d = insert c (EndClassNode (fst d))
+
+restrictDeeperLayerBare :: RestrictDeeperLayerStage
+restrictDeeperLayerBare c d = (c, d)
+
+-- | 'PassedSameClass': infer a normal node at @last na@ and recurse.
+restrictPassedSameClass :: forall a. (DdF3 a) => UnOpContext -> [Position] -> Bool -> Node -> (UnOpContext, Node)
+restrictPassedSameClass c (na : nas) b d =
+  let (c', d') = inferNode @a c (last na) d
+  in restrict_node_set @a c' (na : nas) b d'
+restrictPassedSameClass _ [] _ _ = error "restrictPassedSameClass: empty position list"
+
+-- | 'PassedPreviousLayer' (simple): wrap current root as 'EndClassNode' and recurse.
+restrictPassedPreviousLayerSimple :: forall a. (DdF3 a) => UnOpContext -> [Position] -> Bool -> Node -> (UnOpContext, Node)
+restrictPassedPreviousLayerSimple c (na : nas) b d =
+  let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
+  in restrict_node_set @a c1 (na : nas) b endclass_wrapped
+restrictPassedPreviousLayerSimple _ [] _ _ = error "restrictPassedPreviousLayerSimple: empty position list"
+
+-- | 'PassedDeeperLayer': stage, 'inferClassNode' at @infnode_position@, recurse.
+restrictPassedDeeperLayer ::
+  forall a. (DdF3 a) =>
+  UnOpContext ->
+  [Position] ->
+  Bool ->
+  Node ->
+  Int ->
+  RestrictDeeperLayerStage ->
+  (UnOpContext, Node)
+restrictPassedDeeperLayer c (na : nas) b d infnode_position stage =
+  let (c1, d1) = stage c d
+      (c2, d2) = inferClassNode @a c1 infnode_position d1
+  in restrict_node_set @a c2 (na : nas) b d2
+restrictPassedDeeperLayer _ [] _ _ _ _ = error "restrictPassedDeeperLayer: empty position list"
 
 
 -- * Unary Caching Helper
@@ -83,67 +147,50 @@ negation' c u@(_, Unknown) = (c, u)
 type DdUnary :: Inf -> Constraint
 class DdUnary a where
     restrict_node_set :: UnOpContext -> [Position] -> Bool -> Node -> (UnOpContext, Node)
-    traverse_dc_unary :: String -> UnOpContext -> NodeId -> UnOpContext
 
 instance (DdF3 a) => DdUnary a where
-    -- | Synchronizes the dc_stack with the main traversal for unary operations.
-    traverse_dc_unary s c@UCxt{un_dc_stack = dcRs, un_current_level = lv} d =
-            let ref = getNode c d
-            in case snd ref of
-                Leaf{} -> c
-                _      -> let new_dcRs = map (traverse_dc_generic @a s c ref) dcRs
-                              new_c = c{un_dc_stack = new_dcRs, un_current_level=lv}
-                          in debug_dc_traverse_unary s (to_str @a) c d new_c
 
 
     restrict_node_set c (na : nas) b d@(node_id, Node position pos_child neg_child)  =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
       where
         restrict_node_set_internal c (na : nas) b d@(node_id, Node position pos_child neg_child)  =
-            -- Use compare_current_target_positions to determine the appropriate action
             let current_path = (reverse $ map fst $ un_current_level c) ++ [position]
-                case_code = --trace ("comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = case " ++ show (compare_current_target_positions current_path na))
-                    (compare_current_target_positions current_path na)
-            in case case_code of
-                1 -> -- Hit: exact match, apply restrict and continue with leftover list
+                pathCmp = --trace ("comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = " ++ show (compare_current_target_positions current_path na))
+                    compare_current_target_positions current_path na
+            in case pathCmp of
+                RestrictHit ->
                     let
                         (c1, posR) = (fst traverse_pos, fst $ snd traverse_pos)
                         traverse_pos = restrict_node_set @a c_ nas b (getNode c pos_child)
-                        c_ = traverse_dc_unary @a "pos child" c node_id
+                        c_ = traverse_dc_unary @a MvPos c node_id
 
                         (c2, negR) = (fst traverse_neg, fst $ snd traverse_neg)
                         traverse_neg = restrict_node_set @a c1_ nas b (getNode c1 neg_child)
-                        c1_ = traverse_dc_unary @a "neg child" (reset_stack_un c1 c) node_id
+                        c1_ = traverse_dc_unary @a MvNeg (reset_stack_un c1 c) node_id
 
                         in if b  -- depending on b, take positive or negative evaluation
                             then applyElimRule @a c2 $ Node position posR posR
                             else applyElimRule @a c2 $ Node position negR negR
-                2 -> -- Not yet reached: continue traversing MDD
+                RestrictNotYetReached ->
                     let
                         (c1, posR) = (fst traverse_pos, fst $ snd traverse_pos)
                         traverse_pos = -- trace ("\npos: " ++ show_node c (getNode c pos_child))
                             (restrict_node_set @a c_ (na : nas) b (getNode c pos_child))
-                        c_ = traverse_dc_unary @a "pos child" c node_id
+                        c_ = traverse_dc_unary @a MvPos c node_id
 
                         (c2, negR) = (fst traverse_neg, fst $ snd traverse_neg)
                         traverse_neg = -- trace ("\nneg: " ++ show_node c1 (getNode c1 neg_child))
                             (restrict_node_set @a c1_ (na : nas) b (getNode c1 neg_child))
-                        c1_ = traverse_dc_unary @a "neg child" (reset_stack_un c1 c) node_id
+                        c1_ = traverse_dc_unary @a MvNeg (reset_stack_un c1 c) node_id
 
                         in applyElimRule @a c2 $ Node position posR negR
-                3 -> -- Same class: infer normal node at target position
-                    let (c', d') = inferNode @a c (last na) d
-                    in restrict_node_set @a c' (na : nas) b d'
-                4 -> -- Previous layer: infer EndClassNode to exit current class
-                    let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
-                    in restrict_node_set @a c1 (na : nas) b endclass_wrapped
-                5 -> -- Deeper layer: infer ClassNode at the appropriate position
-                    let
-                        infnode_position = na !! length (init current_path)
-                        (c1, d1) = insert c (EndClassNode (fst d))
-                        (c2, d2) = inferClassNode @a c1 infnode_position d1
-                    in restrict_node_set @a c2 (na : nas) b d2
-                _ -> error ("compare_current_target_positions returned unexpected case: " ++ show case_code)
+                RestrictPassed PassedSameClass -> restrictPassedSameClass @a c (na : nas) b d
+                RestrictPassed PassedPreviousLayer -> restrictPassedPreviousLayerSimple @a c (na : nas) b d
+                RestrictPassed PassedDeeperLayer ->
+                    restrictPassedDeeperLayer @a c (na : nas) b d
+                        (na !! length (init current_path))
+                        wrapCurrentRootAsEndClass
 
 
     restrict_node_set c (na : nas) b d@(node_id, ClassNode position dc p n) =
@@ -156,20 +203,19 @@ instance (DdF3 a) => DdUnary a where
                     current_path
             in if cp > na
                 then -- We've passed the target position, need to infer an ClassNode at the target
-                    let infnode_position = na !! length (init current_path)
-                        (c1, d1) = insert c (EndClassNode (fst d))
-                        (c2, d2) = inferClassNode @a c1 infnode_position d1
-                    in restrict_node_set @a c2 (na : nas) b d2
+                    restrictPassedDeeperLayer @a c (na : nas) b d
+                        (na !! length (init current_path))
+                        wrapCurrentRootAsEndClass
                 else let
-                    c_ = add_to_stack_ (position, Dc) (((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc_unary @a "class dc" c node_id)
+                    c_ = add_to_stack_ (position, Dc) (((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc_unary @a MvClassDc c node_id)
                     (c1, dcR) = restrict_node_set @Dc c_ (na : nas) b (getNode c dc)
                     (c1', dcR') = absorb_dc_unary @Dc c1 dcR
 
-                    c2_ = add_to_stack_ (position, Neg) (getNode c1' dc, dcR') (traverse_dc_unary @a "class neg" (reset_stack_un c1' c) node_id)
+                    c2_ = add_to_stack_ (position, Neg) (getNode c1' dc, dcR') (traverse_dc_unary @a MvClassNeg (reset_stack_un c1' c) node_id)
                     (c2, nR) = restrict_node_set @Neg c2_ (na : nas) b (getNode c1' n)
                     (c2', nR') = absorb_unary @Neg c2 dcR' nR
 
-                    c3_ = add_to_stack_ (position, Pos) (getNode c2' dc, dcR') (traverse_dc_unary @a "class pos" (reset_stack_un c2' c) node_id)
+                    c3_ = add_to_stack_ (position, Pos) (getNode c2' dc, dcR') (traverse_dc_unary @a MvClassPos (reset_stack_un c2' c) node_id)
                     (c3, pR) = restrict_node_set @Pos c3_ (na : nas) b (getNode c2' p)
                     (c3', pR') = absorb_unary @Pos c3 dcR' pR
 
@@ -186,18 +232,15 @@ instance (DdF3 a) => DdUnary a where
         restrict_node_set_internal c (na : nas) b d@(node_id, EndClassNode child) =
             -- For EndClassNode, current_path is just the current level (no position to append)
             let current_path = reverse $ map fst $ un_current_level c
-                case_code = -- trace ("comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = case " ++ show (determine_inference_type current_path na))
-                    (determine_inference_type current_path na)
-            in case case_code of
-                3 -> -- Same class: infer normal node at target position
-                    let (c', d') = inferNode @a c (last na) d
-                    in restrict_node_set @a c' (na : nas) b d'
-                4 -> -- Previous layer: handle EndClassNode (pop stack and continue with child)
+                infkind = -- trace ("comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = " ++ show (passedTargetKind current_path na))
+                    passedTargetKind current_path na
+            in case infkind of
+                PassedSameClass -> restrictPassedSameClass @a c (na : nas) b d
+                PassedPreviousLayer ->
+                    -- Pop stack, sync dc traversal, recurse into child (not the simple wrap+recurse path)
                     let
-                        -- Pop the inference type stack to get the inference context for the current class
                         (c_, inf) = pop_stack_ c
-                        -- Synchronize dc_stack traversal for the EndClassNode case
-                        c' = traverse_dc_unary @a "endclass" c_ node_id
+                        c' = traverse_dc_unary @a ExitClass c_ node_id
                         (c'', (r, _)) = case inf of
                              Dc -> restrict_node_set @Dc c' (na : nas) b (getNode c child)
                              Pos -> restrict_node_set @Pos c' (na : nas) b (getNode c child)
@@ -206,14 +249,10 @@ instance (DdF3 a) => DdUnary a where
                        in case un_dc_stack c3 of
                            (dcR : _) -> absorb_unary @a c3 dcR endNode
                            []        -> (c3, endNode)
-                5 -> -- Deeper layer: infer ClassNode at the appropriate position
-                    let
-                        current_lv = current_path
-                        infnode_position = na !! length current_lv  -- int at index (length current_path) in na
-                        (c1, d1) = insert c (EndClassNode (fst d))
-                        (c2, d2) = inferClassNode @a c1 infnode_position d1
-                    in restrict_node_set @a c2 (na : nas) b d2
-                _ -> error ("determine_inference_type returned unexpected case: " ++ show case_code)
+                PassedDeeperLayer ->
+                    let current_lv = current_path
+                        infnode_position = na !! length current_lv
+                    in restrictPassedDeeperLayer @a c (na : nas) b d infnode_position wrapCurrentRootAsEndClass
 
     restrict_node_set c (na : nas) b d@(_, Leaf _) =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
@@ -221,45 +260,30 @@ instance (DdF3 a) => DdUnary a where
         restrict_node_set_internal c (na : nas) b d@(_, Leaf _) =
             -- For Leaf nodes, current_path is just the current level (no position to append)
             let current_path = reverse $ map fst $ un_current_level c
-                case_code = --trace ("comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = case " ++ show (determine_inference_type current_path na))
-                    (determine_inference_type current_path na)
-            in case case_code of
-                3 -> -- Same class: infer normal node at target position
-                    let (c', d') = inferNode @a c (last na) d
-                    in restrict_node_set @a c' (na : nas) b d'
-                4 -> -- Previous layer: infer EndClassNode to exit current class
-                    let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
-                    in restrict_node_set @a c1 (na : nas) b endclass_wrapped
-                5 -> -- Deeper layer: infer ClassNode at the appropriate position
-                    let
-                        current_lv = current_path
-                        infnode_position = na !! length current_lv  -- int at index (length current_path) in na
-                        (c1, d1) = insert c (EndClassNode (fst d))
-                        (c2, d2) = inferClassNode @a c1 infnode_position d1
-                    in (restrict_node_set @a c2 (na : nas) b d2)
-                _ -> error ("compare_current_target_positions returned unexpected case: " ++ show case_code)
+                infkind = --trace ("comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = " ++ show (passedTargetKind current_path na))
+                    passedTargetKind current_path na
+            in case infkind of
+                PassedSameClass -> restrictPassedSameClass @a c (na : nas) b d
+                PassedPreviousLayer -> restrictPassedPreviousLayerSimple @a c (na : nas) b d
+                PassedDeeperLayer ->
+                    let current_lv = current_path
+                        infnode_position = na !! length current_lv
+                    in restrictPassedDeeperLayer @a c (na : nas) b d infnode_position wrapCurrentRootAsEndClass
     restrict_node_set c (na : nas) b d@(_, Unknown) =
         withDebug_restrict @a c (na : nas) b d $ \c' nas' b' d' -> restrict_node_set_internal c' nas' b' d'
       where
         restrict_node_set_internal c (na : nas) b d@(_, Unknown) =
             -- For Unknown nodes, current_path is just the current level (no position to append)
             let current_path = reverse $ map fst $ un_current_level c
-                case_code = --trace ("comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = case " ++ show (determine_inference_type current_path na))
-                    (determine_inference_type current_path na)
-            in case case_code of
-                3 -> -- Same class: infer normal node at target position
-                    let (c', d') = inferNode @a c (last na) d
-                    in restrict_node_set @a c' (na : nas) b d'
-                4 -> -- Previous layer: infer EndClassNode to exit current class
-                    let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
-                    in restrict_node_set @a c1 (na : nas) b endclass_wrapped
-                5 -> -- Deeper layer: infer ClassNode at the appropriate position
-                    let
-                        current_lv = current_path
-                        infnode_position = na !! length current_lv  -- int at index (length current_path) in na
-                        (c', d') = inferClassNode @a c infnode_position d
-                    in (restrict_node_set @a c' (na : nas) b d')
-                _ -> error ("determine_inference_type returned unexpected case: " ++ show case_code)
+                infkind = --trace ("comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = " ++ show (passedTargetKind current_path na))
+                    passedTargetKind current_path na
+            in case infkind of
+                PassedSameClass -> restrictPassedSameClass @a c (na : nas) b d
+                PassedPreviousLayer -> restrictPassedPreviousLayerSimple @a c (na : nas) b d
+                PassedDeeperLayer ->
+                    let current_lv = current_path
+                        infnode_position = na !! length current_lv
+                    in restrictPassedDeeperLayer @a c (na : nas) b d infnode_position restrictDeeperLayerBare
 
     -- base case, finished restricting, perform absorb and return result.
     restrict_node_set c _ b d =
@@ -277,35 +301,22 @@ instance (DdF3 a) => DdUnary a where
 -- * Position Comparison and Inference Type Determination
 
 
--- | Compares the current path with the target position and returns a case code (1-5).
--- |
--- | Cases:
--- |   1: Hit - current_path == na, apply restrict and continue with leftover list of positions
--- |   2: Not yet reached - current_path < na, continue traversing MDD
--- |   3-5: Passed the target - current_path > na, need to infer a node at the target
--- |
--- | When case 3-5 is returned, use `determine_inference_type` to determine the specific inference type.
-compare_current_target_positions :: Position -> Position -> Int
+-- | Compares the current path with the next restriction coordinate @na@.
+compare_current_target_positions :: Position -> Position -> RestrictPathVsTarget
 compare_current_target_positions current_path na
-    | current_path == na = 1  -- Hit: exact match
-    | current_path < na = 2   -- Not yet reached: continue traversal
-    | current_path > na = determine_inference_type (init current_path) na  -- Passed: need inference
+    | current_path == na = RestrictHit
+    | current_path < na = RestrictNotYetReached
+    | current_path > na = RestrictPassed (passedTargetKind (init current_path) na)
     | otherwise = error "compare_current_target_positions: unexpected comparison result"
 
--- | Determines what kind of inference needs to be done when we've passed the target position.
--- |
--- | This function is only called when current_path > na (case 3-5).
--- |
--- | Returns:
--- |   3: Target is in the same class (current_lv and init na match), infer normal node
--- |   4: Target is on a previous layer class progression (current_lv and init na differ), infer endclass node
--- |   5: Target requires entering a deeper class layer (init na is longer than current_level and they share a prefix), infer infnode
-determine_inference_type :: Position -> Position -> Int
-determine_inference_type current_level na
-    | null current_level || null na = error "determine_inference_type: empty position"
-    | current_level == init na = 3  -- Same class: infer normal node, with position last na
-    | length (init na) > length current_level && sharesPrefix = 5  -- Deeper layer: infer infnode
-    | otherwise = 4  -- Previous layer: infer endclass node
+-- | When @current_path > na@, classifies which structure to synthesize. The @current_level@
+-- argument is the relevant prefix (e.g. @init current_path@ from 'compare_current_target_positions'
+-- at a 'Node', or @current_path@ at 'Leaf' / 'Unknown' / 'EndClassNode').
+passedTargetKind :: Position -> Position -> PassedTargetKind
+passedTargetKind current_level na
+    | null current_level || null na = error "passedTargetKind: empty position"
+    | current_level == init na = PassedSameClass
+    | length (init na) > length current_level && sharesPrefix = PassedDeeperLayer
+    | otherwise = PassedPreviousLayer
   where
-    -- Check if current_level and na share a common prefix (up to the length of current_level)
     sharesPrefix = and (zipWith (==) current_level (take (length current_level) na))

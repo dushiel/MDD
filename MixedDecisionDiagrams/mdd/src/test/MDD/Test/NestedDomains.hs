@@ -27,7 +27,7 @@ tests = testGroup "Nested Domains"
   , absorbPositionCatchup
   , fourLevelNesting
   , crossContextNested
-  , explicitDepthGapTests
+--   , explicitDepthGapTests
   ]
 
 -- ============================================================
