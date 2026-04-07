@@ -6,9 +6,9 @@ module MDD.Test.NestedDomains where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.ExpectedFailure (expectFailBecause)
 
 import MDD.Extra.Interface
+import MDD.Extra.Draw (show_mdd)
 import SMCDEL.Symbolic.Bool
 import MDD.Test.Fixtures
 
@@ -27,6 +27,7 @@ tests = testGroup "Nested Domains"
   , absorbPositionCatchup
   , fourLevelNesting
   , crossContextNested
+  , explicitDepthGapTests
   ]
 
 -- ============================================================
@@ -1055,14 +1056,12 @@ fourLevelNesting = testGroup "Four-level nesting"
             b = ddOf t_c (Var dnpd3)
         in (a .*. b) @?= (b .*. a)
 
-    , expectFailBecause "library bug: absorption fails for 4-level mixed Dc-Neg-Pos-Dc nesting" $
-      testCase "Absorption: dnpd2 AND (dnpd2 OR dnpd3) == dnpd2" $
+    , testCase "Absorption: dnpd2 AND (dnpd2 OR dnpd3) == dnpd2" $
         let a = ddOf t_c (Var dnpd2)
             b = ddOf t_c (Var dnpd3)
         in (a .*. (a .+. b)) @?= a
 
-    , expectFailBecause "library bug: absorption fails for 4-level mixed Dc-Neg-Pos-Dc nesting" $
-      testCase "Absorption: dnpd2 OR (dnpd2 AND dnpd3) == dnpd2" $
+    , testCase "Absorption: dnpd2 OR (dnpd2 AND dnpd3) == dnpd2" $
         let a = ddOf t_c (Var dnpd2)
             b = ddOf t_c (Var dnpd3)
         in (a .+. (a .*. b)) @?= a
@@ -1112,8 +1111,7 @@ fourLevelNesting = testGroup "Four-level nesting"
             b = ddOf t_c (Var ndnd3)
         in (a .*. b) @?= (b .*. a)
 
-    , expectFailBecause "library bug: absorption fails for 4-level alternating Neg-Dc nesting" $
-      testCase "Absorption: ndnd2 AND (ndnd2 OR ndnd3) == ndnd2" $
+    , testCase "Absorption: ndnd2 AND (ndnd2 OR ndnd3) == ndnd2" $
         let a = ddOf t_c (Var ndnd2)
             b = ddOf t_c (Var ndnd3)
         in (a .*. (a .+. b)) @?= a
@@ -1142,22 +1140,19 @@ fourLevelNesting = testGroup "Four-level nesting"
             c = ddOf t_c (Var ndnd2)
         in ((a .+. b) .+. c) @?= (a .+. (b .+. c))
 
-    , expectFailBecause "library bug: distributivity fails for cross 4-level mixed nesting (absorb at wrong level)" $
-      testCase "Distributivity: dddd2 AND (dnpd2 OR ndnd2) == (dddd2 AND dnpd2) OR (dddd2 AND ndnd2)" $
+    , testCase "Distributivity: dddd2 AND (dnpd2 OR ndnd2) == (dddd2 AND dnpd2) OR (dddd2 AND ndnd2)" $
         let a = ddOf t_c (Var dddd2)
             b = ddOf t_c (Var dnpd2)
             c = ddOf t_c (Var ndnd2)
         in (a .*. (b .+. c)) @?= ((a .*. b) .+. (a .*. c))
 
-    , expectFailBecause "library bug: distributivity fails for cross 4-level mixed nesting" $
-      testCase "Distributivity: dddd2 OR (dnpd2 AND ndnd2) == (dddd2 OR dnpd2) AND (dddd2 OR ndnd2)" $
+    , testCase "Distributivity: dddd2 OR (dnpd2 AND ndnd2) == (dddd2 OR dnpd2) AND (dddd2 OR ndnd2)" $
         let a = ddOf t_c (Var dddd2)
             b = ddOf t_c (Var dnpd2)
             c = ddOf t_c (Var ndnd2)
         in (a .+. (b .*. c)) @?= ((a .+. b) .*. (a .+. c))
 
-    , expectFailBecause "library bug: absorption fails for cross 4-level mixed nesting" $
-      testCase "Absorption: dddd2 AND (dddd2 OR dnpd2) == dddd2" $
+    , testCase "Absorption: dddd2 AND (dddd2 OR dnpd2) == dddd2" $
         let a = ddOf t_c (Var dddd2)
             b = ddOf t_c (Var dnpd2)
         in (a .*. (a .+. b)) @?= a
@@ -1335,3 +1330,34 @@ crossContextNested = testGroup "Cross-context nested"
         in (-.) (a .+. b) @?= ((-.) a .*. (-.) b)
     ]
   ]
+
+
+-- Check some other time whether the following are good tests:
+-- -- ############################################################
+-- -- Explicit Depth-Gap Tests
+-- -- ############################################################
+
+-- explicitDepthGapTests :: TestTree
+-- explicitDepthGapTests = testGroup "Explicit Depth-Gap Tests"
+--   [ testGroup "Hidden Variable Semantic Tests"
+--     [ testCase "Depth-2 to Depth-1 level preservation" $
+--         let deep_var  = ddOf t_c (Var nn2)   -- class 1, subclass 1, var 2
+--             high_var1 = ddOf t_c (Var n__2)  -- class 3, var 2
+--             high_var2 = ddOf t_c (Var n__3)  -- class 3, var 3
+
+--             combined = deep_var .+. high_var1
+--             result   = combined .*. high_var2
+--             expected = deep_var .*. high_var2
+--         in result @?= expected
+
+--     , testCase "Depth-4 to Depth-1 level preservation" $
+--         let deep_var  = ddOf t_c (Var dddd2) -- class 1, subclass 2, subclass 3, subclass 4, var 6
+--             high_var1 = ddOf t_c (Var n__2)  -- class 3, var 2
+--             high_var2 = ddOf t_c (Var n__3)  -- class 3, var 3
+
+--             combined = deep_var .+. high_var1
+--             result   = combined .*. high_var2
+--             expected = deep_var .*. high_var2
+--         in result @?= expected
+--     ]
+--   ]

@@ -16,7 +16,7 @@ import MDD.Traversal.Context
 import MDD.NodeLookup
 import MDD.Traversal.Stack
 import MDD.Traversal.Support
-import MDD.Extra.Draw (debug_manipulation, debug_manipulation_inf)
+import MDD.Extra.Draw (Show_setting (..), debug_manipulation, debug_manipulation_inf, debug, show_dd, show_node, settings)
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Kind (Constraint)
@@ -74,10 +74,10 @@ class Dd1 a where
     endclass_case :: BiOpContext -> String -> NodeId -> NodeId -> NodeId -> NodeId -> (BiOpContext, Node)
 
 instance (DdF3 a, Dd1_helper a) => Dd1 a where
-    -- | Main entry point: converts NodeIds to Nodes, absorbs result against dc_stack, wraps with debug output
+    -- | Main entry point: converts NodeIds to Nodes, wraps with debug output
     apply c s a b
         | a == b    = (c, getNode c a)
-        | otherwise = debug_manipulation (absorb @a $ apply' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)
+        | otherwise = debug_manipulation (apply' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)
 
     -- | Main binary operation dispatcher. Handles all combinations of node types.
     -- | Pattern matches are ordered from most specific to most general.
@@ -103,10 +103,10 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
         --   -> traverse_dc synchronizes dc_stack traversal with main traversal (handles "catch-up")
         --   -> reset_stack_bin restores original stack state between branches
         | positionA == positionB =
-            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB  -- Sync dc_stack for pos branch
+            let c_ = traverse_dc @a "pos child" c a_id b_id
                 (c', (pos_result, _)) = apply @a c_ s pos_childA pos_childB
 
-                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) neg_childA neg_childB  -- Sync dc_stack for neg branch
+                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) a_id b_id
                 (c'', (neg_result, _)) = apply @a c_' s neg_childA neg_childB
             in withCache c (a, b, s) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
         -- Case 7: positionA < positionB (A's variable comes before B's in ordering)
@@ -123,13 +123,11 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
         -- Case 10: positionA < positionB (ClassNode's class comes before Node's variable)
         --   -> Need to enter the class hierarchy: applyClassB wraps Node in the class context
         | positionA < positionB = withCache c (a, b, s) $
-                absorb @a $ applyClassB @a c s a b
+                applyClassB @a c s a b
     apply' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, ClassNode positionB _ _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        -- Case 11: positionA > positionB (Node's variable comes after ClassNode's class)
-        --   -> Need to enter class hierarchy: applyClassA wraps Node in the class context
         | positionA > positionB = withCache c (a, b, s) $
-                absorb @a $ applyClassA @a c s a b
+                applyClassA @a c s a b
         -- Case 12: positionA < positionB (Node's variable comes before ClassNode's class)
         | positionA < positionB = withCache c (a, b, s) $
                 uncurry (applyElimRule @a) (inferNodeB' @a (apply' @a) c s a b)
@@ -137,21 +135,20 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     -- Cases 13-15: Both arguments are ClassNode (class hierarchy operations)
     apply' c s a@(a_id, ClassNode positionA _ _ _)  b@(b_id, ClassNode positionB _ _ _)
         -- Case 13: Positions match (same class)
-        | positionA == positionB = withCache c (a, b, s) $ absorb @a $ applyClass @a c s a b
-        -- Case 14: positionA < positionB (A's class comes before B's)
-        | positionA < positionB = withCache c (a, b, s) $ absorb @a $ applyClassB @a c s a b
-        -- Case 15: positionA > positionB (A's class comes after B's)
-        | positionA > positionB = withCache c (a, b, s) $ absorb @a $ applyClassA @a c s a b
+        | positionA == positionB = withCache c (a, b, s) $ applyClass @a c s a b
+        | positionA < positionB = withCache c (a, b, s) $ applyClassB @a c s a b
+        | positionA > positionB = withCache c (a, b, s) $ applyClassA @a c s a b
 
     -- Cases 16-19: EndClassNode vs Node (hierarchy mismatch)
     --   -> EndClassNode means we're exiting a class, but Node / ClassNode means we're still in that class
     --   -> Need to infer what the EndClassNode's argument should be at the Node's position
     apply' c s a@(a_id, EndClassNode _) b@(b_id, Node idx _ _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeA' @a (apply' @a) c s a b)
     apply' c s a@(a_id, Node{}) b@(b_id, EndClassNode _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB' @a (apply' @a) c s a b)
+
     apply' c s a@(_, EndClassNode _) b@(_, ClassNode{}) = withCache c (a, b, s) $
-        absorb @a $ applyClassA @a c s a b
+        applyClassA @a c s a b
     apply' c s a@(_, ClassNode{}) b@(_, EndClassNode _) = withCache c (a, b, s) $
-        absorb @a $ applyClassB @a c s a b
+        applyClassB @a c s a b
 
     -- | Handles all cases where at least one argument is a terminal value (Leaf, Unknown).
     -- | This function dispatches to specialized handlers based on the combination of terminal types.
@@ -185,10 +182,9 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     --   -> Union: True is dominant
     --   -> Intersection: False is dominant
     --   -> absorb ensures result is canonical (may replace with Unknown if redundant)
-    leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, a) else absorb @a (c, b)
-    leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, b) else absorb @a (c, a)
+    leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, a) else (c, b)
+    leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, b) else (c, a)
 
-    -- Fallback: should not happen with proper type handling
     leaf_cases c s a b = error ("leaf case: " ++ s)
 
 -- | ======================== DC versions (Argument B is DC type) ========================
@@ -218,10 +214,10 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     -- Cases 7-9: Node vs Node (B is from Dc, so uses @Dc@ inference when positionA < positionB)
     applyDcB' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         | positionA == positionB =
-            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
+            let c_ = traverse_dc @a "pos child" c a_id b_id
                 (c', (pos_result, _)) = applyDcB @a c_ s pos_childA pos_childB
 
-                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) neg_childA neg_childB
+                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) a_id b_id
                 (c'', (neg_result, _)) = applyDcB @a c_' s neg_childA neg_childB
             in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
         | positionA < positionB = uncurry (applyElimRule @a) (inferNodeB' @Dc (applyDcB' @a) c s a b)  -- B is Dc, use @Dc@ inference
@@ -233,13 +229,13 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
         | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
                 uncurry (applyElimRule @a) (inferNodeA' @a (applyDcB' @a) c s a b)
         | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
-                absorb @a $ applyClassBAs @Dc @a c s a b  -- B is Dc
+                applyClassBAs @Dc @a c s a b  -- B is Dc
     applyDcB' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, ClassNode positionB _ _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
         | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
                 uncurry (applyElimRule @a) (inferNodeB' @Dc (applyDcB' @a) c s a b)  -- B is Dc
         | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
-                absorb @a $ applyClassA @a c s a b
+                applyClassA @a c s a b
     applyDcB' c s a@(a_id, ClassNode positionA _ _ _)  b@(b_id, ClassNode positionB _ _ _)
         | positionA == positionB = applyClass @a c s a b
         | positionA < positionB = applyClassBAs @Dc @a c s a b  -- wrap B as Dc, process with outer context @a
@@ -269,8 +265,8 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     dcB_leaf_cases c s a b@(_, Unknown) =  -- B is Unknown, resolve from dcB
         let (c', dcB) = pop_dcB'' c
         in applyDcB' @a c' s a dcB
-    dcB_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, a) else absorb @a (c, b)
-    dcB_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, b) else absorb @a (c, a)
+    dcB_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, a) else (c, b)
+    dcB_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, b) else (c, a)
 
 -- | ======================== DcA versions (Argument A is DC type) ========================
 -- |
@@ -292,18 +288,18 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     applyDcA' c s a b@(_, Unknown) = dcA_leaf_cases @a c s a b
 
     -- Cases 5-6: EndClassNode vs Node (note: A uses @Dc@ inference when inferring)
-    applyDcA' c s a@(a_id, EndClassNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeA' @Dc (applyDcA' @a) c s a b)  -- A is Dc
-    applyDcA' c s a@(a_id, Node{}) b@(b_id, EndClassNode _) = withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeB' @a (applyDcA' @a) c s a b)
+    applyDcA' c s a@(a_id, EndClassNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeA' @Dc (applyDcA' @a) c s a b)   -- A is Dc
+    applyDcA' c s a@(a_id, Node{}) b@(b_id, EndClassNode _) = (withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeB' @a (applyDcA' @a) c s a b))
     applyDcA' c s a@(a_id, EndClassNode ac) b@(b_id, EndClassNode bc) = withCache c (a, b, (s ++ "Dc")) $
         endclass_case @a c s a_id b_id ac bc
 
     -- Cases 7-9: Node vs Node (A is from Dc, so uses @Dc@ inference when positionA > positionB)
     applyDcA' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
         | positionA == positionB =
-            let c_ = traverse_dc @a "pos child" c pos_childA pos_childB
+            let c_ = traverse_dc @a "pos child" c a_id b_id
                 (c', (pos_result, _)) = applyDcA @a c_ s pos_childA pos_childB
 
-                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) neg_childA neg_childB
+                c_' = traverse_dc @a "neg child" (reset_stack_bin c' c) a_id b_id
                 (c'', (neg_result, _)) = applyDcA @a c_' s neg_childA neg_childB
             in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
         | positionA < positionB = uncurry (applyElimRule @a) (inferNodeB' @a (applyDcA' @a) c s a b)
@@ -315,13 +311,13 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
         | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
                 uncurry (applyElimRule @a) (inferNodeA' @Dc (applyDcA' @a) c s a b)  -- A is Dc
         | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
-                absorb @a $ applyClassB @a c s a b
+                applyClassB @a c s a b
     applyDcA' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, ClassNode positionB _ _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
         | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
                 uncurry (applyElimRule @a) (inferNodeB' @a (applyDcA' @a) c s a b)
         | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
-                absorb @a $ applyClassAAs @Dc @a c s a b  -- A is Dc
+                applyClassAAs @Dc @a c s a b  -- A is Dc
     applyDcA' c s a@(a_id, ClassNode positionA _ _ _)  b@(b_id, ClassNode positionB _ _ _)
         | positionA == positionB = applyClass @a c s a b
         | positionA < positionB = applyClassB @a c s a b
@@ -350,8 +346,8 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
         let (c', dcA) = pop_dcA'' c
         in applyDcA' @a c' s dcA b
     dcA_leaf_cases c s a b@(_, Unknown) = (c, b)  -- B is Unknown, return as-is
-    dcA_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, a) else absorb @a (c, b)
-    dcA_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then absorb @a (c, b) else absorb @a (c, a)
+    dcA_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, a) else (c, b)
+    dcA_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, b) else (c, a)
 
     -- | Handles the case when both arguments are EndClassNode (both exiting their class hierarchies).
     -- | This function:
@@ -361,22 +357,18 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     -- | The inference type combinations determine which version of apply to use
 
     endclass_case c s a_id b_id ac bc = let
-        -- Pop the inference type stack to get the inference contexts for A and B
         (c_, (infA, infB)) = pop_stack' c
-        -- Synchronize dc_stack traversal for the EndClassNode case
         c' = traverse_dc @a "endclass" c_ a_id b_id
-        -- Apply operation based on inference type combination
         (c'', (r, _)) = case (infA, infB) of
-            (Dc, Dc) -> apply @Dc c' s ac bc  -- Both continuous (don't-care inference)
-            (Neg, Neg) -> apply @Neg c' s ac bc  -- Both using negative literal inference rule
-            (Pos, Pos) -> apply @Pos c' s ac bc  -- Both using positive literal inference rule
-            (Neg, Dc) -> applyDcB @Neg c' s ac bc  -- Negative literal inference vs continuous
-            (Pos, Dc) -> applyDcB @Pos c' s ac bc  -- Positive literal inference vs continuous
-            (Dc, Neg) -> applyDcA @Neg c' s ac bc  -- Continuous vs negative literal inference
-            (Dc, Pos) -> applyDcA @Pos c' s ac bc  -- Continuous vs positive literal inference
+            (Dc, Dc) -> apply @Dc c' s ac bc
+            (Neg, Neg) -> apply @Neg c' s ac bc
+            (Pos, Pos) -> apply @Pos c' s ac bc
+            (Neg, Dc) -> applyDcB @Neg c' s ac bc
+            (Pos, Dc) -> applyDcB @Pos c' s ac bc
+            (Dc, Neg) -> applyDcA @Neg c' s ac bc
+            (Dc, Pos) -> applyDcA @Pos c' s ac bc
             r'@(_, _) -> error ("weird combination after pop stack: " ++ show r')
-        -- Absorb redundant branches, then apply elimination rule and wrap in EndClassNode
-        in absorb @a $ applyElimRule @a (reset_stack_bin c'' c) (EndClassNode r)
+        in applyElimRule @a (reset_stack_bin c'' c) (EndClassNode r)
 
 -- | ======================== ClassNode Application Logic ========================
 -- |
@@ -400,31 +392,28 @@ applyClass' :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (B
 applyClass' c s a@(a_id, ClassNode positionA dcA pA nA) b@(b_id, ClassNode positionB dcB pB nB)
     | positionA == positionB =
         let
-            -- Step 1: Compute the continuous (dc) branch result using don't-care inference rule
-            -- Push Unknown placeholders for dcA, dcB, dcR (dcR not yet known)
-            c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc @a "inf dc" c dcA dcB)
+            c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc @a "class dc" c a_id b_id)
             (c1, dcR) = apply @Dc c_ s dcA dcB
+            (c1', dcR') = absorb_dc @Dc c1 positionA dcR
 
-            -- Step 2: Compute the branch using negative literal inference rule
-            -- Push the computed dc branches and dcR as the continuous background
-            c2_ = add_to_stack (positionA, Neg) (getNode c1 dcA, getNode c1 dcB, dcR) (traverse_dc @a "inf neg" (reset_stack_bin c1 c) nA nB)
+            c2_ = add_to_stack (positionA, Neg) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a "class neg" (reset_stack_bin c1' c) a_id b_id)
             (c2, nR) = apply @Neg c2_ s nA nB
+            (c2', nR') = absorb @Neg c2 positionA dcR' nR
 
-            -- Step 3: Compute the branch using positive literal inference rule
-            -- Push the computed dc branches and dcR as the continuous background
-            c3_ = add_to_stack (positionA, Pos) (getNode c1 dcA, getNode c1 dcB, dcR) (traverse_dc @a "inf pos" (reset_stack_bin c2 c) pA pB)
+            c3_ = add_to_stack (positionA, Pos) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a "class pos" (reset_stack_bin c2' c) a_id b_id)
             (c3, pR) = apply @Pos c3_ s pA pB
+            (c3', pR') = absorb @Pos c3 positionA dcR' pR
 
-            -- Step 4: Reset stack and combine results into new ClassNode
-            c4 = reset_stack_bin c3 c
-        in applyElimRule @a c4 $ ClassNode positionA (fst dcR) (fst pR) (fst nR)
+            c4 = reset_stack_bin c3' c
+
+        in applyElimRule @a c4 $ ClassNode positionA (fst dcR') (fst pR') (fst nR')
     | positionA > positionB = applyClassA @a c s a b  -- A's class comes after, wrap A
     | positionA < positionB = applyClassB @a c s a b  -- B's class comes after, wrap B
 applyClass' c s a@(_, ClassNode {}) b@(_, Leaf _) = applyClassB @a c s a b  -- Wrap Leaf in ClassNode's class
 applyClass' c s a@(_, ClassNode{}) b@(_, EndClassNode _) = applyClassB @a c s a b
 applyClass' c s a@(_, Leaf _) b@(_, ClassNode{}) = applyClassA @a c s a b  -- Wrap Leaf in ClassNode's class
 applyClass' c s a@(_, EndClassNode _) b@(_, ClassNode{}) = applyClassA @a c s a b
-applyClass' _ s _ _ = error ("apply inf error: " ++ s)
+applyClass' _ s _ _ = error ("apply class error: " ++ s)
 
 
 applyClassA :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)

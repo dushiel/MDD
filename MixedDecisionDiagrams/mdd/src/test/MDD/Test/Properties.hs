@@ -6,7 +6,7 @@ module MDD.Test.Properties where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.ExpectedFailure (expectFailBecause)
+
 
 import MDD.Types
 import MDD.Extra.Interface
@@ -757,8 +757,7 @@ crossDistributivityLaws = testGroup "Distributivity"
       (nv2 .+. (v2 .*. v3)) @?= ((nv2 .+. v2) .*. (nv2 .+. v3))
   , testCase "p2 AND (dc2 OR dc3) == (p2 AND dc2) OR (p2 AND dc3) (Pos over Dc)" $
       (pv2 .*. (v2 .+. v3)) @?= ((pv2 .*. v2) .+. (pv2 .*. v3))
-  , expectFailBecause "library bug: Pos-edge not reduced in cross-context OR-over-AND" $
-    testCase "p2 OR (dc2 AND dc3) == (p2 OR dc2) AND (p2 OR dc3) (Pos over Dc)" $
+  , testCase "p2 OR (dc2 AND dc3) == (p2 OR dc2) AND (p2 OR dc3) (Pos over Dc)" $
       (pv2 .+. (v2 .*. v3)) @?= ((pv2 .+. v2) .*. (pv2 .+. v3))
   ]
 

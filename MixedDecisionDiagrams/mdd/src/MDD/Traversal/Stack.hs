@@ -18,7 +18,6 @@ module MDD.Traversal.Stack
   , pop_dc
   , pop_dc'
   , move_dc
-  , traverse_dc_generic
   ) where
 
 import MDD.Types
@@ -46,9 +45,9 @@ pop_dcB'' ctx@BCxt{bin_dc_stack = (dcA, dcB : fs, dcR), bin_current_level = (lvA
 pop_dcB'' _ = error "requested dcB from empty stack"
 
 add_to_stack :: (Int, Inf) -> (Node, Node, Node) -> BiOpContext -> BiOpContext
-add_to_stack inf (dcA, dcB, dcR) ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs)} =
+add_to_stack cls (dcA, dcB, dcR) ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs)} =
     let (lvsA, lvsB) = bin_current_level ctx in
-    ctx{bin_dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), bin_current_level = (inf : lvsA, inf : lvsB)}
+    ctx{bin_dc_stack = (dcA : dcAs, dcB : dcBs, dcR : dcRs), bin_current_level = (cls : lvsA, cls : lvsB)}
 
 pop_stack' :: BiOpContext -> (BiOpContext, (Inf, Inf))
 pop_stack' ctx@BCxt{bin_dc_stack = (dcAs, dcBs, dcRs), bin_current_level = (lAs, lBs)}
@@ -76,14 +75,14 @@ reset_stack_bin :: BiOpContext -> BiOpContext -> BiOpContext
 reset_stack_bin new old = new { bin_dc_stack = bin_dc_stack old, bin_current_level = bin_current_level old }
 
 add_to_stack_ :: (Int, Inf) -> (Node, Node) -> UnOpContext -> UnOpContext
-add_to_stack_ inf (dc, dcR) ctx@UCxt{un_dc_stack = dcRs} =
+add_to_stack_ cls (dc, dcR) ctx@UCxt{un_dc_stack = dcRs} =
     let lvs = un_current_level ctx in
-    ctx{un_dc_stack = dcR : dcRs, un_current_level = (inf : lvs)}
+    ctx{un_dc_stack = dcR : dcRs, un_current_level = (cls : lvs)}
 
 add_to_level_ :: (Int, Inf) -> UnOpContext -> UnOpContext
-add_to_level_ inf ctx =
+add_to_level_ cls ctx =
     let lvs = un_current_level ctx in
-    ctx{un_current_level = inf : lvs}
+    ctx{un_current_level = cls : lvs}
 
 pop_stack_ :: UnOpContext -> (UnOpContext, Inf)
 pop_stack_ ctx@UCxt{un_dc_stack = dcRs, un_current_level = lvs} =
@@ -116,54 +115,22 @@ move_dc c m node =
 
         (_, EndClassNode child) ->
             if m == "endclass" then getNode c child
-            else (if m `elem` ["pos child", "neg child", "inf pos", "inf neg", "inf dc"] then node
-            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndClassNode pattern: " ++ show_node c node)
+            else (if m `elem` ["pos child", "neg child"] then node
+            else (if m `elem` ["class pos", "class neg", "class dc"] then error "class inference should be handled by catchup mechanism"
+            else error $ "processStackElement: undefined move '" ++ m ++ "' for EndClassNode pattern: " ++ show_node c node))
 
+        -- todo!: current limitation of the system
+        -- we should keep track for each dc stack node what context it is in due to being able to traverse to the class neg and class pos nodes of a class it contains
+        -- for now we keep the ugly patch to check at least for bare Unknown nodes in the pos / neg branches and then map those back at this level to the dcR.
+        -- we do this to be able to test the other parts of the libarary before starting the large change to the code when fixing this.
         (_, ClassNode position dc p n) ->
-            if m == "inf pos" then getNode c p
-            else if m == "inf neg" then getNode c n
-            else if m == "inf dc" then getNode c dc
+            if m == "class pos" then (if p == (0,0) then getNode c dc else getNode c p)
+            else if m == "class neg" then (if n == (0,0) then getNode c dc else getNode c n)
+            else if m == "class dc" then getNode c dc
             else error $ "processStackElement: undefined move '" ++ m ++ "' for ClassNode pattern: " ++ show_node c node
 
-        (_, Leaf _) ->
-            node
+        (_, Leaf _) -> if m `elem` ["class pos", "class neg", "class dc"] then error "class inference should be handled by catchup mechanism"
+            else node
         (_, Unknown) ->
             node
         _ -> error $ "processStackElement: Unhandled Node pattern"
-
-
-traverse_dc_generic :: (HasNodeLookup c) =>
-    (String -> c -> Node -> Int -> Node)  -- ^ catchup function (from DdF3 instance)
-    -> String -> c -> Node -> Node -> Node
-traverse_dc_generic catchupFn s c refNode dcNode =
-    case (dcNode, refNode) of
-        ( (_, Node position _ _), (_, Node idx _ _) ) ->
-            if | position > idx -> dcNode  -- dcNode ahead: no catchup needed
-               | position == idx -> move_dc c s dcNode  -- Positions match: move down
-               | position < idx -> move_dc c s (catchupFn s c dcNode idx)  -- dcNode behind: catch up
-        ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchupFn s c dcNode (-1))  -- Catch up to terminal
-        ( (_, Node{}), (_, EndClassNode{}) ) -> move_dc c s (catchupFn s c dcNode (-1))  -- Catch up to terminal
-        ( (_, EndClassNode{}), (_, EndClassNode{}) ) -> move_dc c s dcNode  -- Both EndClassNode: move down
-        ( _, (_, Unknown) ) -> dcNode  -- refNode Unknown: return as-is (Unknown resolves from dc_stack separately)
-        ( (_, Unknown), _ ) -> dcNode  -- dcNode Unknown: return as-is (resolves from stack)
-        ( (_, ClassNode position _ _ _), (_, ClassNode idx _ _ _) ) ->
-            if | position > idx -> dcNode  -- dcNode ahead: no catchup
-               | position == idx -> move_dc c s dcNode  -- Positions match: move down
-               | position < idx -> dcNode  -- dcNode behind: no catchup (ClassNode handled separately)
-        _ -> dcNode  -- Default: return as-is
-
-traverse_dcA_endclass :: BiOpContext -> NodeId -> BiOpContext
-traverse_dcA_endclass ctx refA =
-    let (dcAs, dcBs, dcRs) = bin_dc_stack ctx
-        refNode = getNode ctx refA
-        moveDc dc = traverse_dc_generic (\_ _ n _ -> n) "endclass" ctx refNode dc
-        new_dcAs = map moveDc dcAs
-    in ctx { bin_dc_stack = (new_dcAs, dcBs, dcRs) }
-
-traverse_dcB_endclass :: BiOpContext -> NodeId -> BiOpContext
-traverse_dcB_endclass ctx refB =
-    let (dcAs, dcBs, dcRs) = bin_dc_stack ctx
-        refNode = getNode ctx refB
-        moveDc dc = traverse_dc_generic (\_ _ n _ -> n) "endclass" ctx refNode dc
-        new_dcBs = map moveDc dcBs
-    in ctx { bin_dc_stack = (dcAs, new_dcBs, dcRs) }

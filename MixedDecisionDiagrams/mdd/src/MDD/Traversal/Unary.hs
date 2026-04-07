@@ -20,7 +20,7 @@ import MDD.Traversal.Context
 import MDD.NodeLookup
 import MDD.Traversal.Stack
 import MDD.Traversal.Support
-import MDD.Extra.Draw (debug_manipulation_unary)
+import MDD.Extra.Draw (debug_manipulation_unary, show_node, debug_dc_traverse_unary)
 
 import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
@@ -88,10 +88,12 @@ class DdUnary a where
 instance (DdF3 a) => DdUnary a where
     -- | Synchronizes the dc_stack with the main traversal for unary operations.
     traverse_dc_unary s c@UCxt{un_dc_stack = dcRs, un_current_level = lv} d =
-        if to_str @a == "Dc" then c
-            else let
-                new_dcRs = map (traverse_dc_generic (catchup @a) s c (getNode c d)) dcRs
-            in c{un_dc_stack = new_dcRs, un_current_level=lv}
+            let ref = getNode c d
+            in case snd ref of
+                Leaf{} -> c
+                _      -> let new_dcRs = map (traverse_dc_generic @a s c ref) dcRs
+                              new_c = c{un_dc_stack = new_dcRs, un_current_level=lv}
+                          in debug_dc_traverse_unary s (to_str @a) c d new_c
 
 
     restrict_node_set c (na : nas) b d@(node_id, Node position pos_child neg_child)  =
@@ -107,11 +109,11 @@ instance (DdF3 a) => DdUnary a where
                     let
                         (c1, posR) = (fst traverse_pos, fst $ snd traverse_pos)
                         traverse_pos = restrict_node_set @a c_ nas b (getNode c pos_child)
-                        c_ = traverse_dc_unary @a "pos child" c pos_child
+                        c_ = traverse_dc_unary @a "pos child" c node_id
 
                         (c2, negR) = (fst traverse_neg, fst $ snd traverse_neg)
                         traverse_neg = restrict_node_set @a c1_ nas b (getNode c1 neg_child)
-                        c1_ = traverse_dc_unary @a "neg child" (reset_stack_un c1 c) neg_child
+                        c1_ = traverse_dc_unary @a "neg child" (reset_stack_un c1 c) node_id
 
                         in if b  -- depending on b, take positive or negative evaluation
                             then applyElimRule @a c2 $ Node position posR posR
@@ -121,12 +123,12 @@ instance (DdF3 a) => DdUnary a where
                         (c1, posR) = (fst traverse_pos, fst $ snd traverse_pos)
                         traverse_pos = -- trace ("\npos: " ++ show_node c (getNode c pos_child))
                             (restrict_node_set @a c_ (na : nas) b (getNode c pos_child))
-                        c_ = traverse_dc_unary @a "pos child" c pos_child
+                        c_ = traverse_dc_unary @a "pos child" c node_id
 
                         (c2, negR) = (fst traverse_neg, fst $ snd traverse_neg)
                         traverse_neg = -- trace ("\nneg: " ++ show_node c1 (getNode c1 neg_child))
                             (restrict_node_set @a c1_ (na : nas) b (getNode c1 neg_child))
-                        c1_ = traverse_dc_unary @a "neg child" (reset_stack_un c1 c) neg_child
+                        c1_ = traverse_dc_unary @a "neg child" (reset_stack_un c1 c) node_id
 
                         in applyElimRule @a c2 $ Node position posR negR
                 3 -> -- Same class: infer normal node at target position
@@ -159,14 +161,19 @@ instance (DdF3 a) => DdUnary a where
                         (c2, d2) = inferClassNode @a c1 infnode_position d1
                     in restrict_node_set @a c2 (na : nas) b d2
                 else let
-                    c_ = add_to_stack_ (position, Dc) (((0, 0), Unknown), ((0, 0), Unknown)) c  -- Push Unknown for dc, Unknown for dcR (dcR not yet computed)
-                    (c1, dcR) = restrict_node_set @Dc (traverse_dc_unary @a "inf dc" c_ dc) (na : nas) b (getNode c dc)
-                    c2_ = add_to_stack_ (position, Neg) (getNode c1 dc, dcR) (reset_stack_un c1 c)
-                    (c2, nR) = ( restrict_node_set @Neg (traverse_dc_unary @a "inf neg" c2_ n) (na : nas) b (getNode c1 n))
-                    c3_ = add_to_stack_ (position, Pos) (getNode c2 dc, dcR) (reset_stack_un c2 c)
-                    (c3, pR) = restrict_node_set @Pos (traverse_dc_unary @a "inf pos" c3_ p) (na : nas) b (getNode c2 p)
+                    c_ = add_to_stack_ (position, Dc) (((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc_unary @a "class dc" c node_id)
+                    (c1, dcR) = restrict_node_set @Dc c_ (na : nas) b (getNode c dc)
+                    (c1', dcR') = absorb_dc_unary @Dc c1 dcR
 
-                    in absorb_unary @a $ applyElimRule @a (reset_stack_un c3 c) $ ClassNode position (fst dcR) (fst pR) (fst nR)
+                    c2_ = add_to_stack_ (position, Neg) (getNode c1' dc, dcR') (traverse_dc_unary @a "class neg" (reset_stack_un c1' c) node_id)
+                    (c2, nR) = restrict_node_set @Neg c2_ (na : nas) b (getNode c1' n)
+                    (c2', nR') = absorb_unary @Neg c2 dcR' nR
+
+                    c3_ = add_to_stack_ (position, Pos) (getNode c2' dc, dcR') (traverse_dc_unary @a "class pos" (reset_stack_un c2' c) node_id)
+                    (c3, pR) = restrict_node_set @Pos c3_ (na : nas) b (getNode c2' p)
+                    (c3', pR') = absorb_unary @Pos c3 dcR' pR
+
+                    in applyElimRule @a (reset_stack_un c3' c) $ ClassNode position (fst dcR') (fst pR') (fst nR')
 
     -- | Restricts/quantifies variables in an EndClassNode (class exit marker).
     -- |
@@ -195,7 +202,10 @@ instance (DdF3 a) => DdUnary a where
                              Dc -> restrict_node_set @Dc c' (na : nas) b (getNode c child)
                              Pos -> restrict_node_set @Pos c' (na : nas) b (getNode c child)
                              Neg -> restrict_node_set @Neg c' (na : nas) b (getNode c child)
-                    in absorb_unary @a $ applyElimRule' @a (reset_stack_un c'' c, EndClassNode r)
+                    in let (c3, endNode) = applyElimRule' @a (reset_stack_un c'' c, EndClassNode r)
+                       in case un_dc_stack c3 of
+                           (dcR : _) -> absorb_unary @a c3 dcR endNode
+                           []        -> (c3, endNode)
                 5 -> -- Deeper layer: infer ClassNode at the appropriate position
                     let
                         current_lv = current_path
@@ -253,7 +263,10 @@ instance (DdF3 a) => DdUnary a where
 
     -- base case, finished restricting, perform absorb and return result.
     restrict_node_set c _ b d =
-        withDebug_restrict @a c [] b d $ \c' _nas' _b' d' -> absorb_unary @a (c', d')
+        withDebug_restrict @a c [] b d $ \c' _nas' _b' d' ->
+            case un_dc_stack c' of
+                (dcR : _) -> absorb_unary @a c' dcR d'
+                []        -> (c', d')
 
     -- Fallback: should not happen with proper type handling
     restrict_node_set c nas b d = error ("nonexhaustive restrict_node_set: " ++ "\n c: \n" ++ show (getLookup c) ++ "\n nas: \n" ++ show nas ++ "\n b: \n" ++ show b ++ "\n d: \n" ++ show d)
