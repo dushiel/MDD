@@ -1,15 +1,80 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 
-module MDD.Extra.Interface where
+module MDD.Extra.Interface
+  ( -- * Re-exported: Core Types (MDD.Types)
+    MDD(..)
+  , Dd(..)
+  , Node
+  , NodeId
+  , NodeLookup
+  , Position
+  , Level(..)
+  , Level'
+  , InfL(..)
+  , LevelL(..)
+  , Path(..)
+  , l_1, l_0, l_u
+
+    -- * Re-exported: Construction (MDD.Construction)
+  , path
+  , path_
+  , add_path
+  , makeNode
+  , levelLtoPath
+
+    -- * Re-exported: Draw (MDD.Extra.Draw)
+  , drawTree3
+  , showTree
+  , show_mdd
+  , show_node
+  , show_dd
+  , settings
+
+    -- * Re-exported: Dot (MDD.Extra.Dot)
+  , generateGraphImage
+  , generateAndShow
+  , generateAndShow_c
+  , generateAndShow_h
+  , generateAndShow_ch
+  , generateAndShow_cn
+  , domainNaming
+  , domainNamingC
+
+    -- * Constants
+  , top, bot, unk
+  , top_n, bot_n, unk_n
+
+    -- * Variable Construction
+  , var, var'
+
+    -- * Operators
+  , (-.), (.*.), (.+.), (.->.), (.<->.)
+
+    -- * Combinators
+  , ite, xor
+
+    -- * Restriction
+  , restrict
+
+    -- * Set Operations
+  , conSet, disSet, xorSet
+
+    -- * Quantification
+  , forall, exist, forallSet, existSet
+
+    -- * Relabeling & Substitution
+  , relabelWith, substitSimul
+  ) where
 
 import MDD.Types
 import MDD.Traversal.Context
 import MDD.NodeLookup
-import MDD.Construction
+import MDD.Construction (path, path_, add_path, makeNode, levelLtoPath)
 import MDD.Traversal.Binary
 import MDD.Traversal.Unary
-import MDD.Extra.Draw (settings, show_dd, debug)
+import MDD.Extra.Draw (settings, show_dd, drawTree3, showTree, show_mdd, show_node)
+import MDD.Extra.Dot (generateGraphImage, generateAndShow, generateAndShow_c, generateAndShow_h, generateAndShow_ch, generateAndShow_cn, domainNaming, domainNamingC)
 import Data.List
 import Data.Maybe (fromJust)
 import Data.List (foldl')

@@ -47,15 +47,12 @@ import qualified Data.Map as Map
 
 
 -- | Mixed Decision Diagram: (NodeLookup, root Node).
--- Eq compares root NodeId only. TODO: merge NodeLookups before comparison.
+-- Eq instance is defined in MDD.NodeLookup (deep structural comparison).
 newtype MDD = MDD { unMDD :: (NodeLookup, Node) }
   deriving (Generic)
 
-instance Eq MDD where
-  (MDD (_, (id1, _))) == (MDD (_, (id2, _))) = id1 == id2
-
 instance Show MDD where
-  show (MDD (_, (_, dd))) = show dd
+  show (MDD (_, (_, d))) = show d
 
 
 -- * Node Identifiers
@@ -80,7 +77,7 @@ data Dd
   = Node Int NodeId NodeId
     -- ^ Branching node: (position, pos child, neg child)
   | ClassNode Int NodeId NodeId NodeId
-    -- ^ Class node: (position, dc, neg, pos branches)
+    -- ^ Class node: (position, dc, pos, neg branches)
   | EndClassNode NodeId
     -- ^ Class exit marker
   | Leaf Bool

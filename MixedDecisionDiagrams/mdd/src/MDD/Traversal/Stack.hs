@@ -144,7 +144,7 @@ traverse_dc_generic catchupFn s c refNode dcNode =
         ( (_, Node{}), (_, Leaf _) ) -> move_dc c s (catchupFn s c dcNode (-1))  -- Catch up to terminal
         ( (_, Node{}), (_, EndClassNode{}) ) -> move_dc c s (catchupFn s c dcNode (-1))  -- Catch up to terminal
         ( (_, EndClassNode{}), (_, EndClassNode{}) ) -> move_dc c s dcNode  -- Both EndClassNode: move down
-        ( _, (_, Unknown) ) -> move_dc c s dcNode  -- refNode Unknown: move down dcNode
+        ( _, (_, Unknown) ) -> dcNode  -- refNode Unknown: return as-is (Unknown resolves from dc_stack separately)
         ( (_, Unknown), _ ) -> dcNode  -- dcNode Unknown: return as-is (resolves from stack)
         ( (_, ClassNode position _ _ _), (_, ClassNode idx _ _ _) ) ->
             if | position > idx -> dcNode  -- dcNode ahead: no catchup

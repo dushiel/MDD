@@ -135,11 +135,11 @@ instance (DdF3 a) => DdUnary a where
                 4 -> -- Previous layer: infer EndClassNode to exit current class
                     let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
                     in restrict_node_set @a c1 (na : nas) b endclass_wrapped
-                5 -> -- Deeper layer: infer InfNode at the appropriate position
+                5 -> -- Deeper layer: infer ClassNode at the appropriate position
                     let
                         infnode_position = na !! length (init current_path)
                         (c1, d1) = insert c (EndClassNode (fst d))
-                        (c2, d2) = inferInfNode @a c1 infnode_position d1
+                        (c2, d2) = inferClassNode @a c1 infnode_position d1
                     in restrict_node_set @a c2 (na : nas) b d2
                 _ -> error ("compare_current_target_positions returned unexpected case: " ++ show case_code)
 
@@ -153,10 +153,10 @@ instance (DdF3 a) => DdUnary a where
                 cp = -- trace ("infnode!!! comparing path: " ++ show current_path ++ " with na " ++ show na ++ " = case " ++ show (compare_current_target_positions current_path na))
                     current_path
             in if cp > na
-                then -- We've passed the target position, need to infer an InfNode at the target
+                then -- We've passed the target position, need to infer an ClassNode at the target
                     let infnode_position = na !! length (init current_path)
                         (c1, d1) = insert c (EndClassNode (fst d))
-                        (c2, d2) = inferInfNode @a c1 infnode_position d1
+                        (c2, d2) = inferClassNode @a c1 infnode_position d1
                     in restrict_node_set @a c2 (na : nas) b d2
                 else let
                     c_ = add_to_stack_ (position, Dc) (((0, 0), Unknown), ((0, 0), Unknown)) c  -- Push Unknown for dc, Unknown for dcR (dcR not yet computed)
@@ -196,12 +196,12 @@ instance (DdF3 a) => DdUnary a where
                              Pos -> restrict_node_set @Pos c' (na : nas) b (getNode c child)
                              Neg -> restrict_node_set @Neg c' (na : nas) b (getNode c child)
                     in absorb_unary @a $ applyElimRule' @a (reset_stack_un c'' c, EndClassNode r)
-                5 -> -- Deeper layer: infer InfNode at the appropriate position
+                5 -> -- Deeper layer: infer ClassNode at the appropriate position
                     let
                         current_lv = current_path
                         infnode_position = na !! length current_lv  -- int at index (length current_path) in na
                         (c1, d1) = insert c (EndClassNode (fst d))
-                        (c2, d2) = inferInfNode @a c1 infnode_position d1
+                        (c2, d2) = inferClassNode @a c1 infnode_position d1
                     in restrict_node_set @a c2 (na : nas) b d2
                 _ -> error ("determine_inference_type returned unexpected case: " ++ show case_code)
 
@@ -220,12 +220,12 @@ instance (DdF3 a) => DdUnary a where
                 4 -> -- Previous layer: infer EndClassNode to exit current class
                     let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
                     in restrict_node_set @a c1 (na : nas) b endclass_wrapped
-                5 -> -- Deeper layer: infer InfNode at the appropriate position
+                5 -> -- Deeper layer: infer ClassNode at the appropriate position
                     let
                         current_lv = current_path
                         infnode_position = na !! length current_lv  -- int at index (length current_path) in na
                         (c1, d1) = insert c (EndClassNode (fst d))
-                        (c2, d2) = inferInfNode @a c1 infnode_position d1
+                        (c2, d2) = inferClassNode @a c1 infnode_position d1
                     in (restrict_node_set @a c2 (na : nas) b d2)
                 _ -> error ("compare_current_target_positions returned unexpected case: " ++ show case_code)
     restrict_node_set c (na : nas) b d@(_, Unknown) =
@@ -243,11 +243,11 @@ instance (DdF3 a) => DdUnary a where
                 4 -> -- Previous layer: infer EndClassNode to exit current class
                     let (c1, endclass_wrapped) = insert c (EndClassNode (fst d))
                     in restrict_node_set @a c1 (na : nas) b endclass_wrapped
-                5 -> -- Deeper layer: infer InfNode at the appropriate position
+                5 -> -- Deeper layer: infer ClassNode at the appropriate position
                     let
                         current_lv = current_path
                         infnode_position = na !! length current_lv  -- int at index (length current_path) in na
-                        (c', d') = inferInfNode @a c infnode_position d
+                        (c', d') = inferClassNode @a c infnode_position d
                     in (restrict_node_set @a c' (na : nas) b d')
                 _ -> error ("determine_inference_type returned unexpected case: " ++ show case_code)
 

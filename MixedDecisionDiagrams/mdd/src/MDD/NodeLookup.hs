@@ -1,14 +1,28 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TupleSections #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
-module MDD.NodeLookup where
+module MDD.NodeLookup
+  ( -- * Hashable instance
+    -- $hashable
+
+    -- * NodeLookup operations
+    init_lookup
+  , match_alternative
+  , getFreeKey
+  , insert_id
+  , unionNodeLookup
+
+    -- * MDD equality
+  , eqMDD
+  , getDdFrom
+  ) where
 
 import MDD.Types
 import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
-import GHC.Generics (Generic)
-import Data.List (sortBy)
+import qualified Data.Set as Set
 
 -- | refactored with help of AI
 
@@ -76,3 +90,41 @@ unionNodeLookup nl1 nl2 = HashMap.foldlWithKey' mergeHashed nl1 nl2
 -- todo: add referencing and dereferencing / keep count of "alive" nodes
 -- todo: hash nodes based on level
 -- todo: improve union / merge of nodelookups (espc conflic handling / for e calls between mdds)
+
+
+-- * MDD Equality (orphan instance — MDD is defined in Types, logic lives here)
+
+
+instance Eq MDD where
+  (MDD (nl1, (id1, _))) == (MDD (nl2, (id2, _))) = eqMDD nl1 id1 nl2 id2
+
+-- | Deep structural equality for MDD graphs. Recursively compares the Dd
+-- structures reachable from two root NodeIds, each in its own NodeLookup.
+-- Uses a visited set to avoid exponential blowup on shared subgraphs.
+eqMDD :: NodeLookup -> NodeId -> NodeLookup -> NodeId -> Bool
+eqMDD nl1 root1 nl2 root2 = go Set.empty root1 root2
+  where
+    go visited id1 id2
+      | id1 == id2 = True
+      | (id1, id2) `Set.member` visited = True
+      | otherwise =
+          let visited' = Set.insert (id1, id2) visited
+          in eqDd visited' (getDdFrom nl1 id1) (getDdFrom nl2 id2)
+
+    eqDd _ (Leaf b1) (Leaf b2) = b1 == b2
+    eqDd _ Unknown Unknown = True
+    eqDd vis (Node p1 pos1 neg1) (Node p2 pos2 neg2) =
+      p1 == p2 && go vis pos1 pos2 && go vis neg1 neg2
+    eqDd vis (ClassNode p1 dc1 n1 ps1) (ClassNode p2 dc2 n2 ps2) =
+      p1 == p2 && go vis dc1 dc2 && go vis n1 n2 && go vis ps1 ps2
+    eqDd vis (EndClassNode c1) (EndClassNode c2) = go vis c1 c2
+    eqDd _ _ _ = False
+
+-- | Retrieve a Dd from a NodeLookup by NodeId.
+getDdFrom :: NodeLookup -> NodeId -> Dd
+getDdFrom nl (hId, alt) =
+  case HashMap.lookup hId nl of
+    Just entry -> case Map.lookup alt entry of
+      Just te -> dd te
+      Nothing -> error $ "getDdFrom: no alternative " ++ show alt ++ " at hash " ++ show hId
+    Nothing -> error $ "getDdFrom: hash not in lookup: " ++ show hId
