@@ -75,6 +75,7 @@ import MDD.NodeLookup
 import MDD.Construction (path, path_, add_path, makeNode, levelLtoPath)
 import MDD.Traversal.Binary
 import MDD.Traversal.Unary
+import MDD.Traversal.Support (modeDc)
 import MDD.Extra.Draw (settings, show_dd, drawTree3, showTree, show_mdd, show_node)
 import MDD.Extra.Dot (generateGraphImage, generateAndShow, generateAndShow_c, generateAndShow_h, generateAndShow_ch, generateAndShow_cn, domainNaming, domainNamingC)
 import Data.Maybe (fromJust)
@@ -107,14 +108,14 @@ infix 2 .*.   -- Conjunction
 (.*.) :: MDD -> MDD -> MDD
 (.*.) (MDD (la, a)) (MDD (lb, b)) =
     let ctx = init_binary_context (unionNodeLookup la lb)
-        (ctx', r) = apply @Dc ctx "inter" (fst a) (fst b)
+        (ctx', r) = apply modeDc ctx "inter" (fst a) (fst b)
     in MDD (getLookup ctx', r)
 
 infixl 3 .+.  -- Disjunction
 (.+.) :: MDD -> MDD -> MDD
 (.+.) (MDD (la, a)) (MDD (lb, b)) =
     let ctx = init_binary_context (unionNodeLookup la lb)
-        (ctx', r) = apply @Dc ctx "union" (fst a) (fst b)
+        (ctx', r) = apply modeDc ctx "union" (fst a) (fst b)
     in MDD (getLookup ctx', r)
 
 ite :: MDD -> MDD -> MDD -> MDD
@@ -149,9 +150,9 @@ iteShared (MDD (lf, (fid, fdd))) (MDD (lg, (gid, _))) (MDD (lh, (hid, _))) =
         (uctx1, (negFid, _)) = negation uctx0 (fid, fdd)
 
         ctx0 = init_binary_context (getLookup uctx1)
-        (ctx1, (xyId, _)) = apply @Dc ctx0 "inter" fid gid
-        (ctx2, (nfhId, _)) = apply @Dc ctx1 "inter" negFid hid
-        (ctx3, result) = apply @Dc ctx2 "union" xyId nfhId
+        (ctx1, (xyId, _)) = apply modeDc ctx0 "inter" fid gid
+        (ctx2, (nfhId, _)) = apply modeDc ctx1 "inter" negFid hid
+        (ctx3, result) = apply modeDc ctx2 "union" xyId nfhId
     in MDD (getLookup ctx3, result)
 
 xor :: MDD -> MDD -> MDD
@@ -160,7 +161,7 @@ xor a b = (a .*. (-.) b) .+. ((-.) a .*. b)
 restrict :: Position -> Bool -> MDD -> MDD
 restrict n b (MDD (l, d)) =
     let ctx = init_unary_context l
-        (ctx', r) = restrict_node_set @Dc ctx [0 : n] b d -- zero is added as for the top level
+        (ctx', r) = restrict_node_set modeDc ctx [0 : n] b d -- zero is added as for the top level
     in MDD (getLookup ctx', r)
 
 

@@ -56,7 +56,7 @@ settings = ShowSetting {
             ,   display_end_classs = True
             ,   display_dc_traversal = False
 
-            ,   debug_on = False
+            ,   debug_on = True
 
             ,   debug_open = True
             ,   debug_close = True
