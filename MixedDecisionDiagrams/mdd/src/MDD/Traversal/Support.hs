@@ -66,6 +66,32 @@ compoundMode modeA modeB =
       isCompound = tmName modeA /= tmName modeB
       popDropA = isCompound || tmName modeA == "DcSourced"
       popDropB = isCompound || tmName modeB == "DcSourced"
+
+      isA_RealDc = tmName modeA `elem` ["Dc", "DcSourced"]
+      isB_RealDc = tmName modeB `elem` ["Dc", "DcSourced"]
+
+      isA_DcSourced = tmName modeA == "DcSourced"
+      isB_DcSourced = tmName modeB == "DcSourced"
+
+      negA = if not isA_RealDc && isB_RealDc then tmNegClassInf modeA else if isA_RealDc && not isB_RealDc then modeA else tmNegClassInf modeA
+      negB = if not isA_RealDc && isB_RealDc then modeB else if isA_RealDc && not isB_RealDc then tmNegClassInf modeB else tmNegClassInf modeB
+      posA = if not isA_RealDc && isB_RealDc then tmPosClassInf modeA else if isA_RealDc && not isB_RealDc then modeA else tmPosClassInf modeA
+      posB = if not isA_RealDc && isB_RealDc then modeB else if isA_RealDc && not isB_RealDc then tmPosClassInf modeB else tmPosClassInf modeB
+
+      -- Unknown returns:
+      -- If one side is a real Dc and the other is not, the non-Dc side returns Unknown.
+      -- If both are real Dcs, the one that is DcSourced pops (returns False), the other returns Unknown (returns True).
+      -- If neither is real Dc, both pop (returns False).
+      aUnkRet = if not isA_RealDc && isB_RealDc then True
+                else if isA_RealDc && not isB_RealDc then False
+                else if isA_RealDc && isB_RealDc then isB_DcSourced
+                else False
+
+      bUnkRet = if not isB_RealDc && isA_RealDc then True
+                else if isB_RealDc && not isA_RealDc then False
+                else if isA_RealDc && isB_RealDc then isA_DcSourced
+                else False
+
   in TM
   { tmName               = if tmName modeA == tmName modeB then tmName modeA else tmName modeA ++ tmName modeB
   , tmToInf              = pairToInf (tmToInf modeA) (tmToInf modeB)
@@ -80,14 +106,14 @@ compoundMode modeA modeB =
   , tmCatchup            = tmCatchup baseOp
   , tmInferClassNodeForA = tmInferClassNodeForA modeA
   , tmInferClassNodeForB = tmInferClassNodeForB modeB
-  , tmAUnknownReturn     = (not (tmIsDc modeA)) && tmIsDc modeB
-  , tmBUnknownReturn     = (not (tmIsDc modeB)) && tmIsDc modeA
+  , tmAUnknownReturn     = aUnkRet
+  , tmBUnknownReturn     = bUnkRet
   , tmDcAMode            = if not (tmIsDc modeA) then compoundMode modeA modeB else compoundMode modeDcSourced modeB
   , tmDcBMode            = if not (tmIsDc modeB) then compoundMode modeA modeB else compoundMode modeA modeDcSourced
   , tmPopADropLevel      = popDropA
   , tmPopBDropLevel      = popDropB
-  , tmNegClassInf        = compoundMode (tmNegClassInf modeA) (tmNegClassInf modeB)
-  , tmPosClassInf        = compoundMode (tmPosClassInf modeA) (tmPosClassInf modeB)
+  , tmNegClassInf        = compoundMode negA negB
+  , tmPosClassInf        = compoundMode posA posB
   }
 
 baseMode :: Inf -> TraversalMode

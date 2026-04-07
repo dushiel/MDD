@@ -181,7 +181,7 @@ applyClass' :: TraversalMode -> BiOpContext -> String -> Node -> Node -> (BiOpCo
 applyClass' tm c s a@(a_id, ClassNode positionA dcA pA nA) b@(b_id, ClassNode positionB dcB pB nB)
     | positionA == positionB =
         let
-            c_ = add_to_stack (positionA, tmToInf tm) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc tm MvClassDc c a_id b_id)
+            c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc tm MvClassDc c a_id b_id)
             (c1, dcR) = apply modeDc c_ s dcA dcB
             (c1', dcR') = absorb_dc modeDc c1 positionA dcR
 

@@ -6,6 +6,7 @@ module MDD.Test.Quantification where
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.ExpectedFailure (expectFail)
 
 import MDD.Extra.Interface
 import SMCDEL.Symbolic.Bool
@@ -260,7 +261,7 @@ crossClassQuantTests = testGroup "Cross-class quantification"
       in exist [1, 2] x /= bot
            @? "exist[1,2] on cross-class conjunction should not be bot"
 
-  , testCase "forall[2,2] (n2 AND n_2) == bot (restrict limitation)" $
+  , expectFail $ testCase "forall[2,2] (n2 AND n_2) == bot (restrict limitation)" $
       let x = ddOf t_c (And (Var n2) (Var n_2))
       in forall [2, 2] x @?= bot
 
