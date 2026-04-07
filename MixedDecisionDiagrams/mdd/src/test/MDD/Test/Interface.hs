@@ -8,8 +8,12 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import MDD.Extra.Interface
+import MDD.NodeLookup (init_lookup, unionNodeLookup)
+import MDD.Types (reference_count)
 import SMCDEL.Symbolic.Bool
 import MDD.Test.Fixtures
+import qualified Data.HashMap.Strict as HashMap
+import qualified Data.Map as Map
 
 tests :: TestTree
 tests = testGroup "Interface / Derived Operators"
@@ -19,6 +23,7 @@ tests = testGroup "Interface / Derived Operators"
   , implicationTests
   , biconditionalTests
   , setOperationTests
+  , lookupMaintenanceTests
   ]
 
 -- ============================================================
@@ -209,3 +214,29 @@ setOperationTests = testGroup "Set operations"
       let x = ddOf t_c (Var dc2)
       in xorSet [x, x] @?= bot
   ]
+
+lookupMaintenanceTests :: TestTree
+lookupMaintenanceTests = testGroup "Lookup maintenance"
+  [ testCase "gc keeps tautology lookup minimal" $
+      let x = ddOf t_c (Var dc2)
+          MDD (nl, (rootId, _)) = gcMDD (x .+. (-.) x)
+      in do
+          rootId @?= l_1
+          countEntries nl @?= 3
+
+  , testCase "unionNodeLookup sums terminal reference counts" $
+      let merged = unionNodeLookup init_lookup init_lookup
+      in do
+          lookupRefCount merged l_u @?= 2
+          lookupRefCount merged l_1 @?= 2
+          lookupRefCount merged l_0 @?= 2
+  ]
+
+countEntries :: NodeLookup -> Int
+countEntries = HashMap.foldl' (\acc entry -> acc + Map.size entry) 0
+
+lookupRefCount :: NodeLookup -> NodeId -> Int
+lookupRefCount nl (hId, alt) =
+  case HashMap.lookup hId nl >>= Map.lookup alt of
+    Just entry -> reference_count entry
+    Nothing -> error $ "missing node in lookupRefCount: " ++ show (hId, alt)

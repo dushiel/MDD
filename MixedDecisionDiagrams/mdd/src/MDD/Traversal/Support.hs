@@ -49,158 +49,7 @@ applyElimRule' (c, d) = applyElimRule @a c d
 
 
 
-absorb :: forall a. (DdF3 a) => BiOpContext -> Int -> Node -> Node -> (BiOpContext, Node)
-absorb c positionA dcR branch =
-    let (_, _, outerDcRs) = bin_dc_stack c
-        unCtx_base = binaryToUnaryContext c
-        -- Restore the correct outer inference context that might have been overwritten by pop_dcA'
-        lvs = un_current_level unCtx_base
-        fixed_lvs = case lvs of
-            ((pos, _) : rest) -> (pos, to_inf @a) : rest
-            [] -> []
-        unCtx = unCtx_base { un_dc_stack = dcR : outerDcRs, un_current_level = fixed_lvs }
-        (unCtx', branch') = myTrace (debug_naiveAbsorb_open ("absorb " ++ to_str @a ++ " pos=" ++ show positionA) unCtx dcR branch) $
-                            let r@(uc, n) = naiveAbsorb' @a unCtx dcR branch
-                            in myTrace (debug_naiveAbsorb_close ("absorb " ++ to_str @a ++ " pos=" ++ show positionA) uc dcR branch n) r
-    in (unaryToBinaryContext unCtx' c, branch')
 
-
-outerDcR :: [Node] -> Node
-outerDcR (h : _) = h
-outerDcR []      = error "requested from empty dcR stack"
-
--- | Absorb dcR against the outer dcR from the stack.
-absorb_dc :: forall a. (DdF3 a) => BiOpContext -> Int -> Node -> (BiOpContext, Node)
-absorb_dc c positionA dcR =
-    let (_, _, outerDcRs) = bin_dc_stack c
-    in absorb @a c positionA (outerDcR outerDcRs) dcR
-
-absorb_unary :: forall a. (DdF3 a) => UnOpContext -> Node -> Node -> (UnOpContext, Node)
-absorb_unary c dcR branch = naiveAbsorb @a c dcR branch
-
-absorb_dc_unary :: forall a. (DdF3 a) => UnOpContext -> Node -> (UnOpContext, Node)
-absorb_dc_unary c dcR = absorb_unary @a c (outerDcR (drop 1 (un_dc_stack c))) dcR
-
-pop_level_ :: UnOpContext -> (UnOpContext, Inf)
-pop_level_ ctx =
-    let (_ : lv@(_, inf) : lvs') = un_current_level ctx
-    in (ctx { un_current_level = lv : lvs' }, inf)
-
-
--- * DC Stack Synchronization for Naive Absorb/Traverse
-traverse_dc_unary :: forall (a :: Inf). (DdF3 a) => Move -> UnOpContext -> NodeId -> UnOpContext
-traverse_dc_unary s c d =
-    let ref = getNode c d
-    in case snd ref of
-        Leaf{} -> c
-        _      -> let new_dcRs = map (traverse_dc_generic @a s c ref) (un_dc_stack c)
-                      c' = c { un_dc_stack = new_dcRs }
-                  in debug_dc_traverse_unary (show s) (to_str @a) c d c'
-
-
--- * Traversal Helpers
-
--- | Wrap a traversal result in EndClassNode, applying the elimination rule @a.
-wrapEndClass :: forall a. (DdF3 a) => (UnOpContext, Node) -> (UnOpContext, Node)
-wrapEndClass (c', r) = applyElimRule @a c' $ EndClassNode (fst r)
-
--- | Exit the current class: sync dc_stack, pop the level, return (c_end, inf, c_after_pop).
-exitClass :: UnOpContext -> NodeId -> (UnOpContext, Inf, UnOpContext)
-exitClass c absingBId =
-    let c_end       = traverse_dc_unary @Dc ExitClass c absingBId
-        (c_, inf)   = pop_level_ c_end
-    in (c_end, inf, c_)
-
--- | Infer a ClassNode wrapper for `branch` using rule @a, then call cont with absingB fixed.
-inferClassBranch :: forall a r. (DdF3 a)
-    => UnOpContext -> Int -> Node -> Node
-    -> (UnOpContext -> Node -> Node -> r) -> r
-inferClassBranch c pos absingB branch cont =
-    let (c', b') = inferClassNode @a c pos branch
-    in cont c' absingB b'
-
--- | Infer a ClassNode wrapper for `absingB` using @Dc, then call cont with branch fixed.
-inferClassAbsing :: forall r. UnOpContext -> Int -> Node -> Node
-    -> (UnOpContext -> Node -> Node -> r) -> r
-inferClassAbsing c pos absingB branch cont =
-    let (c', a') = inferClassNode @Dc c pos absingB
-    in cont c' a' branch
-
--- | Traverse an absorbing Node's children according to the inference context, applying f.
-travNodeAbs :: forall a. (DdF3 a)
-    => UnOpContext
-    -> Node  -- absingB: the absorbing branch (must be a Node constructor)
-    -> Node  -- branch: the branch being tested
-    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))
-    -> (UnOpContext, Node)
-travNodeAbs c absingB@(absingBId, Node dcPos dcP dcN) branch f
-    | isNeg @a =
-        let c_ = traverse_dc_unary @Dc MvNeg c absingBId
-        in f c_ (getNode c dcN) branch
-    | isPos @a =
-        let c_ = traverse_dc_unary @Dc MvPos c absingBId
-        in f c_ (getNode c dcP) branch
-    | otherwise =  -- Dc: traverse both children
-        let c_p = traverse_dc_unary @Dc MvPos c absingBId
-            (c',  r1) = f c_p (getNode c dcP) branch
-            c_n = traverse_dc_unary @Dc MvNeg (reset_stack_un c' c) absingBId
-            (c'', r2) = f c_n (getNode c dcN) branch
-        in applyElimRule @a (reset_stack_un c'' c) $ Node dcPos (fst r1) (fst r2)
-travNodeAbs _ _ _ _ = error "travNodeAbs: absingB must be a Node constructor"
-
--- | Traverse a tested branch's node
--- synchronise via @b, recurse with absPos/absNeg as left args, recombine via @a.
-travNodeStep :: forall b a. (DdF3 b, DdF3 a)
-    => UnOpContext
-    -> NodeId           -- reference node for traverse_dc_unary @b
-    -> Node -> Node     -- absPos and Neg
-    -> Node             -- branch (must be a Node constructor)
-    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))
-    -> (UnOpContext, Node)
-travNodeStep c refId absPos absNeg branch@(_, Node pos p n) f =
-    let c_p = traverse_dc_unary @b MvPos c refId
-        (c',  r1) = f c_p absPos (getNode c p)
-        c_n = traverse_dc_unary @b MvNeg (reset_stack_un c' c) refId
-        (c'', r2) = f c_n absNeg (getNode c n)
-    in applyElimRule @a (reset_stack_un c'' c) $ Node pos (fst r1) (fst r2)
-travNodeStep _ _ _ _ _ _ = error "travNodeStep: branch must be a Node constructor"
-
--- | Step the branch Node with @a; absingB is fixed on both branches.
-travNodeBranch :: forall a. (DdF3 a)
-    => UnOpContext -> Node -> Node -> (UnOpContext -> Node -> Node -> (UnOpContext, Node)) -> (UnOpContext, Node)
-travNodeBranch c absingB branch@(branchId, _) = travNodeStep @a @a c branchId absingB absingB branch
-
--- | Step both Nodes at matching positions; absorbing Node uses @Dc.
-travNodeBoth :: forall a. (DdF3 a)
-    => UnOpContext -> Node -> Node -> (UnOpContext -> Node -> Node -> (UnOpContext, Node)) -> (UnOpContext, Node)
-travNodeBoth c absingB@(absingBId, Node _ dcP dcN) branch = travNodeStep @Dc @a c absingBId (getNode c dcP) (getNode c dcN) branch
-travNodeBoth _ _ _ = error "travNodeBoth: absingB must be a Node constructor"
-
--- | Traverse matching ClassNodes at the same position; absingB uses @Dc, branch uses @a.
--- Takes three callbacks — one per branch type — because each must be called with a different
--- type-level inference parameter (@Dc, @Pos, @Neg) that cannot be abstracted as a value.
-travClassBoth :: forall a. (DdF3 a)
-    => UnOpContext
-    -> Node  -- absingB (must be a ClassNode)
-    -> Node  -- branch  (must be a ClassNode, same position)
-    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))  -- fDc:  recurse on dc  branch
-    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))  -- fPos: recurse on pos branch
-    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))  -- fNeg: recurse on neg branch
-    -> (UnOpContext, Node)
-travClassBoth c absingB@(absingBId, ClassNode _ dcD dcP dcN) branch@(_, ClassNode pos d p n) fDc fPos fNeg =
-    let c_dc = traverse_dc_unary @Dc MvClassDc c absingBId
-        c_   = add_to_stack_ (pos, Dc)  (getNode c_dc dcD, ((0,0), Unknown)) c_dc
-        (c1, rD) = fDc c_ (getNode c_dc dcD) (getNode c_dc d)
-        c1'  = reset_stack_un c1 c
-        c_p  = traverse_dc_unary @Dc MvClassPos c1' absingBId
-        c2_  = add_to_stack_ (pos, Pos) (getNode c_p dcD, rD) c_p
-        (c2, rP) = fPos c2_ (getNode c_p dcP) (getNode c_p p)
-        c2'  = reset_stack_un c2 c
-        c_n  = traverse_dc_unary @Dc MvClassNeg c2' absingBId
-        c3_  = add_to_stack_ (pos, Neg) (getNode c_n dcD, rD) c_n
-        (c3, rN) = fNeg c3_ (getNode c_n dcN) (getNode c_n n)
-    in applyElimRule @a (reset_stack_un c3 c) $ ClassNode pos (fst rD) (fst rP) (fst rN)
-travClassBoth _ _ _ _ _ _ = error "travClassBoth: both arguments must be ClassNode constructors"
 
 -- * Naive Absorb Implementation
 -- Naive absorb minimizes the pos / neg branches of a class with respect to the class' resulting dc branch - Or a dc branch with respect to the outer dc branch.
@@ -564,12 +413,14 @@ traverse_dc_generic s c refNode dcNode =
             _ -> error $ "traverse_dc_generic unhandled case:\n (dcNode=" ++ show_node c dcNode
                       ++ ",\n  refNode=" ++ show_node c refNode ++ ")"
 
--- | Traversal Helper (Dd1_helper).
--- This typeclass provides functions to synchronize the dc_stack traversal with the main  MDD traversal.
--- When the main traversal skips variables (due to elimination rules), the dc_stack needs to "catch up" to stay synchronized.
+
+
+
+
+-- * Helper functions
+
 class Dd1_helper (a :: Inf) where
     traverse_dc :: Move -> BiOpContext -> NodeId -> NodeId -> BiOpContext
-
 instance (DdF3 a) => Dd1_helper a where
     -- | Synchronizes the entire dc_stack with the main traversal.
     traverse_dc s c a b = debug_dc_traverse (show s) c a b $
@@ -582,3 +433,152 @@ instance (DdF3 a) => Dd1_helper a where
                 new_dcBs = if isLeaf refB then dcBs else map (traverse_dc_generic @a s c refB) dcBs
                 new_dcRs = if isLeaf refA then dcRs else map (traverse_dc_generic @a s c refA) dcRs
             in c { bin_dc_stack = (new_dcAs, new_dcBs, new_dcRs) }
+
+absorb :: forall a. (DdF3 a) => BiOpContext -> Int -> Node -> Node -> (BiOpContext, Node)
+absorb c positionA dcR branch =
+    let (_, _, outerDcRs) = bin_dc_stack c
+        unCtx_base = binaryToUnaryContext c
+        -- Restore the correct outer inference context that might have been overwritten by pop_dcA'
+        lvs = un_current_level unCtx_base
+        fixed_lvs = case lvs of
+            ((pos, _) : rest) -> (pos, to_inf @a) : rest
+            [] -> []
+        unCtx = unCtx_base { un_dc_stack = dcR : outerDcRs, un_current_level = fixed_lvs }
+        (unCtx', branch') = myTrace (debug_naiveAbsorb_open ("absorb " ++ to_str @a ++ " pos=" ++ show positionA) unCtx dcR branch) $
+                            let r@(uc, n) = naiveAbsorb' @a unCtx dcR branch
+                            in myTrace (debug_naiveAbsorb_close ("absorb " ++ to_str @a ++ " pos=" ++ show positionA) uc dcR branch n) r
+    in (unaryToBinaryContext unCtx' c, branch')
+
+
+outerDcR :: [Node] -> Node
+outerDcR (h : _) = h
+outerDcR []      = error "requested from empty dcR stack"
+
+-- | Absorb dcR against the outer dcR from the stack.
+absorb_dc :: forall a. (DdF3 a) => BiOpContext -> Int -> Node -> (BiOpContext, Node)
+absorb_dc c positionA dcR =
+    let (_, _, outerDcRs) = bin_dc_stack c
+    in absorb @a c positionA (outerDcR outerDcRs) dcR
+
+absorb_unary :: forall a. (DdF3 a) => UnOpContext -> Node -> Node -> (UnOpContext, Node)
+absorb_unary c dcR branch = naiveAbsorb @a c dcR branch
+
+absorb_dc_unary :: forall a. (DdF3 a) => UnOpContext -> Node -> (UnOpContext, Node)
+absorb_dc_unary c dcR = absorb_unary @a c (outerDcR (drop 1 (un_dc_stack c))) dcR
+
+pop_level_ :: UnOpContext -> (UnOpContext, Inf)
+pop_level_ ctx =
+    let (_ : lv@(_, inf) : lvs') = un_current_level ctx
+    in (ctx { un_current_level = lv : lvs' }, inf)
+
+
+traverse_dc_unary :: forall (a :: Inf). (DdF3 a) => Move -> UnOpContext -> NodeId -> UnOpContext
+traverse_dc_unary s c d =
+    let ref = getNode c d
+    in case snd ref of
+        Leaf{} -> c
+        _      -> let new_dcRs = map (traverse_dc_generic @a s c ref) (un_dc_stack c)
+                      c' = c { un_dc_stack = new_dcRs }
+                  in debug_dc_traverse_unary (show s) (to_str @a) c d c'
+
+-- | Wrap a traversal result in EndClassNode, applying the elimination rule @a.
+wrapEndClass :: forall a. (DdF3 a) => (UnOpContext, Node) -> (UnOpContext, Node)
+wrapEndClass (c', r) = applyElimRule @a c' $ EndClassNode (fst r)
+
+-- | Exit the current class: sync dc_stack, pop the level, return (c_end, inf, c_after_pop).
+exitClass :: UnOpContext -> NodeId -> (UnOpContext, Inf, UnOpContext)
+exitClass c absingBId =
+    let c_end       = traverse_dc_unary @Dc ExitClass c absingBId
+        (c_, inf)   = pop_level_ c_end
+    in (c_end, inf, c_)
+
+-- | Infer a ClassNode wrapper for `branch` using rule @a, then call cont with absingB fixed.
+inferClassBranch :: forall a r. (DdF3 a)
+    => UnOpContext -> Int -> Node -> Node
+    -> (UnOpContext -> Node -> Node -> r) -> r
+inferClassBranch c pos absingB branch cont =
+    let (c', b') = inferClassNode @a c pos branch
+    in cont c' absingB b'
+
+-- | Infer a ClassNode wrapper for `absingB` using @Dc, then call cont with branch fixed.
+inferClassAbsing :: forall r. UnOpContext -> Int -> Node -> Node
+    -> (UnOpContext -> Node -> Node -> r) -> r
+inferClassAbsing c pos absingB branch cont =
+    let (c', a') = inferClassNode @Dc c pos absingB
+    in cont c' a' branch
+
+-- | Traverse an absorbing Node's children according to the inference context, applying f.
+travNodeAbs :: forall a. (DdF3 a)
+    => UnOpContext
+    -> Node  -- absingB: the absorbing branch (must be a Node constructor)
+    -> Node  -- branch: the branch being tested
+    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))
+    -> (UnOpContext, Node)
+travNodeAbs c absingB@(absingBId, Node dcPos dcP dcN) branch f
+    | isNeg @a =
+        let c_ = traverse_dc_unary @Dc MvNeg c absingBId
+        in f c_ (getNode c dcN) branch
+    | isPos @a =
+        let c_ = traverse_dc_unary @Dc MvPos c absingBId
+        in f c_ (getNode c dcP) branch
+    | otherwise =  -- Dc: traverse both children
+        let c_p = traverse_dc_unary @Dc MvPos c absingBId
+            (c',  r1) = f c_p (getNode c dcP) branch
+            c_n = traverse_dc_unary @Dc MvNeg (reset_stack_un c' c) absingBId
+            (c'', r2) = f c_n (getNode c dcN) branch
+        in applyElimRule @a (reset_stack_un c'' c) $ Node dcPos (fst r1) (fst r2)
+travNodeAbs _ _ _ _ = error "travNodeAbs: absingB must be a Node constructor"
+
+-- | Traverse a tested branch's node
+-- synchronise via @b, recurse with absPos/absNeg as left args, recombine via @a.
+travNodeStep :: forall b a. (DdF3 b, DdF3 a)
+    => UnOpContext
+    -> NodeId           -- reference node for traverse_dc_unary @b
+    -> Node -> Node     -- absPos and Neg
+    -> Node             -- branch (must be a Node constructor)
+    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))
+    -> (UnOpContext, Node)
+travNodeStep c refId absPos absNeg branch@(_, Node pos p n) f =
+    let c_p = traverse_dc_unary @b MvPos c refId
+        (c',  r1) = f c_p absPos (getNode c p)
+        c_n = traverse_dc_unary @b MvNeg (reset_stack_un c' c) refId
+        (c'', r2) = f c_n absNeg (getNode c n)
+    in applyElimRule @a (reset_stack_un c'' c) $ Node pos (fst r1) (fst r2)
+travNodeStep _ _ _ _ _ _ = error "travNodeStep: branch must be a Node constructor"
+
+-- | Step the branch Node with @a; absingB is fixed on both branches.
+travNodeBranch :: forall a. (DdF3 a)
+    => UnOpContext -> Node -> Node -> (UnOpContext -> Node -> Node -> (UnOpContext, Node)) -> (UnOpContext, Node)
+travNodeBranch c absingB branch@(branchId, _) = travNodeStep @a @a c branchId absingB absingB branch
+
+-- | Step both Nodes at matching positions; absorbing Node uses @Dc.
+travNodeBoth :: forall a. (DdF3 a)
+    => UnOpContext -> Node -> Node -> (UnOpContext -> Node -> Node -> (UnOpContext, Node)) -> (UnOpContext, Node)
+travNodeBoth c absingB@(absingBId, Node _ dcP dcN) branch = travNodeStep @Dc @a c absingBId (getNode c dcP) (getNode c dcN) branch
+travNodeBoth _ _ _ = error "travNodeBoth: absingB must be a Node constructor"
+
+-- | Traverse matching ClassNodes at the same position; absingB uses @Dc, branch uses @a.
+-- Takes three callbacks — one per branch type — because each must be called with a different
+-- type-level inference parameter (@Dc, @Pos, @Neg) that cannot be abstracted as a value.
+travClassBoth :: forall a. (DdF3 a)
+    => UnOpContext
+    -> Node  -- absingB (must be a ClassNode)
+    -> Node  -- branch  (must be a ClassNode, same position)
+    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))  -- fDc:  recurse on dc  branch
+    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))  -- fPos: recurse on pos branch
+    -> (UnOpContext -> Node -> Node -> (UnOpContext, Node))  -- fNeg: recurse on neg branch
+    -> (UnOpContext, Node)
+travClassBoth c absingB@(absingBId, ClassNode _ dcD dcP dcN) branch@(_, ClassNode pos d p n) fDc fPos fNeg =
+    let c_dc = traverse_dc_unary @Dc MvClassDc c absingBId
+        c_   = add_to_stack_ (pos, Dc)  (getNode c_dc dcD, ((0,0), Unknown)) c_dc
+        (c1, rD) = fDc c_ (getNode c_dc dcD) (getNode c_dc d)
+        c1'  = reset_stack_un c1 c
+        c_p  = traverse_dc_unary @Dc MvClassPos c1' absingBId
+        c2_  = add_to_stack_ (pos, Pos) (getNode c_p dcD, rD) c_p
+        (c2, rP) = fPos c2_ (getNode c_p dcP) (getNode c_p p)
+        c2'  = reset_stack_un c2 c
+        c_n  = traverse_dc_unary @Dc MvClassNeg c2' absingBId
+        c3_  = add_to_stack_ (pos, Neg) (getNode c_n dcD, rD) c_n
+        (c3, rN) = fNeg c3_ (getNode c_n dcN) (getNode c_n n)
+    in applyElimRule @a (reset_stack_un c3 c) $ ClassNode pos (fst rD) (fst rP) (fst rN)
+travClassBoth _ _ _ _ _ _ = error "travClassBoth: both arguments must be ClassNode constructors"

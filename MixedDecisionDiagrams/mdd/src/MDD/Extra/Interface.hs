@@ -65,6 +65,8 @@ module MDD.Extra.Interface
 
     -- * Relabeling & Substitution
   , relabelWith, substitSimul
+    -- * Memory management
+  , gcMDD
   ) where
 
 import MDD.Types
@@ -75,9 +77,8 @@ import MDD.Traversal.Binary
 import MDD.Traversal.Unary
 import MDD.Extra.Draw (settings, show_dd, drawTree3, showTree, show_mdd, show_node)
 import MDD.Extra.Dot (generateGraphImage, generateAndShow, generateAndShow_c, generateAndShow_h, generateAndShow_ch, generateAndShow_cn, domainNaming, domainNamingC)
-import Data.List
 import Data.Maybe (fromJust)
-import Data.List (foldl')
+import Data.List (foldl', intercalate, (\\), intersect, elemIndex, sort)
 
 
 top_n, bot_n, unk_n :: Node

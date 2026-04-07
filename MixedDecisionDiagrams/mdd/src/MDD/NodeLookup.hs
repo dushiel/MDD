@@ -11,6 +11,9 @@ module MDD.NodeLookup
   , match_alternative
   , getFreeKey
   , insert_id
+  , childrenOf
+  , gc
+  , gcMDD
   , unionNodeLookup
 
     -- * MDD equality
@@ -23,6 +26,7 @@ import Data.Hashable
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Data.List (foldl')
 
 -- | refactored with help of AI
 
@@ -71,6 +75,46 @@ insert_id k v nm = case HashMap.lookup k nm of
        Nothing ->
         ((k, 0), HashMap.insert k (Map.insert 0 Entry{dd = v, reference_count=1} Map.empty) nm)
 
+-- | Direct child references of a Dd node.
+childrenOf :: Dd -> [NodeId]
+childrenOf (Node _ p n) = [p, n]
+childrenOf (ClassNode _ dc p n) = [dc, p, n]
+childrenOf (EndClassNode c) = [c]
+childrenOf (Leaf _) = []
+childrenOf Unknown = []
+
+-- | Mark-and-sweep garbage collection from a set of live roots.
+-- Always preserves terminal nodes (Unknown, True, False).
+gc :: Set.Set NodeId -> NodeLookup -> NodeLookup
+gc roots nl = HashMap.mapMaybeWithKey (filterAlive alive) nl
+  where
+    pinnedRoots = Set.fromList [l_u, l_1, l_0]
+    alive = markReachable (Set.union roots pinnedRoots) nl
+
+    filterAlive reachable hId lookupEntry =
+      let filtered = Map.filterWithKey (\alt _ -> (hId, alt) `Set.member` reachable) lookupEntry
+      in if Map.null filtered then Nothing else Just filtered
+
+-- | Run garbage collection on an MDD using its root as the only external live root.
+gcMDD :: MDD -> MDD
+gcMDD (MDD (nl, root)) = MDD (gc (Set.singleton (fst root)) nl, root)
+
+-- | Compute all NodeIds reachable from the given roots.
+markReachable :: Set.Set NodeId -> NodeLookup -> Set.Set NodeId
+markReachable initialRoots nl = go initialRoots (Set.toList initialRoots)
+  where
+    go visited [] = visited
+    go visited (nid:rest) =
+      let nextChildren = case lookupDd nid of
+            Just nodeDd -> filter (`Set.notMember` visited) (childrenOf nodeDd)
+            Nothing -> []
+          visited' = foldl' (flip Set.insert) visited nextChildren
+      in go visited' (nextChildren ++ rest)
+
+    lookupDd (hId, alt) = do
+      entry <- HashMap.lookup hId nl
+      dd <$> Map.lookup alt entry
+
 -- | Merges two NodeLookups summing reference counts for identical structures
 unionNodeLookup :: NodeLookup -> NodeLookup -> NodeLookup
 unionNodeLookup nl1 nl2 = HashMap.foldlWithKey' mergeHashed nl1 nl2
@@ -81,7 +125,9 @@ unionNodeLookup nl1 nl2 = HashMap.foldlWithKey' mergeHashed nl1 nl2
           rc = reference_count tableEntry
       in case HashMap.lookup hId acc of
         Just existing -> case match_alternative d existing of
-            Just _ -> acc
+            Just (nr, existingEntry) ->
+              let merged = existingEntry { reference_count = reference_count existingEntry + rc }
+              in HashMap.insert hId (Map.insert nr merged existing) acc
             Nothing -> let k' = getFreeKey existing
                        in HashMap.insert hId (Map.insert k' (Entry d rc) existing) acc
         Nothing -> HashMap.insert hId (Map.singleton 0 (Entry d rc)) acc
