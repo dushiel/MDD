@@ -60,6 +60,10 @@ instance Hashable Dd where
   hashWithSalt s (InfNodes idx dc n1 n0 p1 p0) = s `hashWithSalt` idx `hashWithSalt` fst dc `hashWithSalt` fst n1 `hashWithSalt` fst n0 `hashWithSalt` fst p1 `hashWithSalt` fst p0
   hashWithSalt s (EndInfNode d) = s `hashWithSalt` fst d `hashWithSalt` (2::Int)
 
+
+-- i should not implement this before fixing all the bugs, else i would not know whether this has a bug
+-- todo add speedup by storing the hashed level up until this point and using that to recompute the current level.
+-- for now it is more than fine to recompute the hash of the level by iteration. (remember daniel, it is canonical by definition.)
 instance Hashable Level where
   hashWithSalt :: Int -> Level -> Int
   hashWithSalt s (L [] i) = s `hashWithSalt` i
@@ -103,7 +107,7 @@ show_context c = "Context nodelookup keys = " ++ show (HashMap.size (nodelookup 
 show_func_stack :: Context -> String
 show_func_stack Context{func_stack = fs} = "\\n" ++ show fs
 
-data FType = Union | Inter | MixedIntersection | MixedUnion | Absorb | Remove | T_and_r
+data FType = Union | Inter | MixedIntersection | MixedIntersection2 | MixedUnion | MixedUnion2 | Absorb | Remove | T_and_r
     deriving (Eq, Show)
 
 
@@ -130,7 +134,7 @@ getDd_ nm node_id = case HashMap.lookup (fst node_id) nm of
 
 
 getEntry :: Context -> NodeId -> TableEntry
-getEntry c@Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm of
+getEntry Context{nodelookup = nm} node_id = case HashMap.lookup (fst node_id) nm of
        Just result -> case Map.lookup (snd node_id) result of
           Just result2 -> result2
           Nothing -> error "Node adress without Alternative in NodeLookup"
@@ -278,7 +282,7 @@ withCache :: Context -> (NodeId, NodeId, String) -> (Context, NodeId) -> (Contex
 withCache c@Context{cache = nc} (keyA, keyB, keyFunc) func_with_args =
   case Map.lookup keyFunc nc of
     Just nc' -> case HashMap.lookup (keyA, keyB) nc' of
-      Just result -> (c, result) -- `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
+      Just result -> (c, result) `debug` (col Vivid Green "func cache:" ++ " found previous result for " ++ show (keyA, keyB))
       Nothing -> let
         (updatedContext, result) = func_with_args
         x = case getDd updatedContext result of
