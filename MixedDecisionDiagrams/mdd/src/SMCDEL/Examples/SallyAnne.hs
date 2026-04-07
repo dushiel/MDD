@@ -7,23 +7,25 @@ import Data.Tagged (Tagged(..), untag)
 import Internal.Language
 import SMCDEL.Symbolic.K_MDD
 import SMCDEL.Symbolic.S5_MDD (boolMddOf)
-import MDD.Types (InfL(..), Path(..))
+import MDD.Types (InfL(..), Path(..), MDD)
 import MDD.Interface
 import MDD.Draw (settings, show_dd)
+import MDD.Dot (generateGraphImage)
+import System.Directory (createDirectoryIfMissing, setCurrentDirectory, getCurrentDirectory, renameFile)
+import System.FilePath ((</>))
+import Control.Monad (when)
 import Debug.Trace (trace)
 
 -- =============================================================================
 -- * Setup
 -- =============================================================================
 
-domain :: [(Int, InfL)]
-domain = [(0, Dc1)]
-
 -- Vocabulary
+-- Using domains from K_MDD.hs: standardDomain for state law props, eventFactsDomain for events
 pp, tt, qq :: Prp
-pp = intToPrp domain 1 -- Sally Present
-tt = intToPrp domain 2 -- Marble in Basket
-qq = intToPrp domain 3 -- Event Variable (for Anne moves marble)
+pp = intToPrp standardDomain 1 -- Sally Present
+tt = intToPrp standardDomain 2 -- Marble in Basket
+qq = intToPrp eventFactsDomain 3 -- Event Variable (for Anne moves marble)
 
 -- Helper for Total Relation (Ignorance)
 totalRelMdd :: RelMDD
@@ -37,7 +39,7 @@ allsameMdd ps =
         mddList = map (\p ->
             let
                 -- Create temporary BelStruct for single variable
-                tempBls = BlS [p] top M.empty
+                tempBls = BlS [p] top (M.empty, Tagged top)
                 mv_node = mddOf tempBls (PrpF $ mvP p)
                 cp_node = mddOf tempBls (PrpF $ cpP p)
             in mv_node .<->. cp_node
@@ -54,7 +56,7 @@ cpRelMdd f =
         -- f is likely simple logic.
         -- If f is "Neg q", we want Rel = (-. cp_q)
         -- We construct a temporary structure to parse f
-        tempStruct = BlS [pp,tt,qq] top M.empty
+        tempStruct = BlS [pp,tt,qq] top (M.empty, Tagged top)
         node = mddOf tempStruct f
         -- This node is on standard vars. We need to shift to cp.
         -- K_MDD.cpMdd does this.
@@ -71,9 +73,10 @@ sallyInit = (BlS vocab law obs, actual)
     vocab  = [pp, tt]
     -- Law: It is publicly known that Sally is present (pp) and Marble NOT in basket (She hasn't put it in yet).
     law    = boolMddOf (Conj [PrpF pp, Neg (PrpF tt)])
-    obs    = fromList [ ("Sally", totalRelMdd), ("Anne", totalRelMdd) ]
-    -- Actual: pp, not tt (inferred in neg1) (Matches law)
-    actual = var (P' [(0, Neg1, P'' [1])])
+    -- Agent indices: "Anne" -> 0, "Sally" -> 1
+    obs    = joinRelations [ ("Anne", 0, totalRelMdd), ("Sally", 1, totalRelMdd) ]
+    -- Actual: pp, not tt (inferred in neg1, domain [0,0]), not any event (neg1 context in domain [0,1])
+    actual = var (P' [(0, Neg1, P' [(0, Neg1, P'' [1]), (1, Neg1, P'' [0])])])
 
 -- =============================================================================
 -- * Actions
@@ -88,9 +91,10 @@ sallyPutsMarble =
                 [] -- No new event vars needed (public assignment)
                 Top -- Law
                 (fromList [(tt, Top)]) -- Assignment: tt becomes True
-                (fromList [("Anne", totalRelMdd), ("Sally", totalRelMdd)]) -- Everyone sees everything (Identity on event)
+                (joinRelations [("Anne", 0, totalRelMdd), ("Sally", 1, totalRelMdd)]) -- Everyone sees everything (Identity on event)
                 -- Note: totalRelMdd is just Top.
                 -- Since there are no addprops, relations over empty set are just Top.
+                -- Agent indices must match sallyInit: "Anne" -> 0, "Sally" -> 1
     in (trf, Top)
 
 -- 2. Sally leaves
@@ -102,7 +106,8 @@ sallyLeaves =
                 []
                 Top
                 (fromList [(pp, Bot)]) -- Assignment: pp becomes False
-                (fromList [("Anne", totalRelMdd), ("Sally", totalRelMdd)])
+                (joinRelations [("Anne", 0, totalRelMdd), ("Sally", 1, totalRelMdd)])
+                -- Agent indices must match sallyInit: "Anne" -> 0, "Sally" -> 1
     in (trf, Top)
 
 -- 3. Anne puts marble in box (Moves it)
@@ -124,10 +129,11 @@ anneMovesMarble =
                 [qq] -- New event var
                 Top  -- Law
                 (M.fromList [(tt, assignTT)])
-                (M.fromList [
-                    ("Anne", allsameMdd [qq]), -- Anne distinguishes q (sees if it moved)
-                    ("Sally", cpRelMdd (Neg (PrpF qq))) -- Sally only considers worlds where q is False (didn't move)
+                (joinRelations [
+                    ("Anne", 0, allsameMdd [qq]), -- Anne distinguishes q (sees if it moved)
+                    ("Sally", 1, cpRelMdd (Neg (PrpF qq))) -- Sally only considers worlds where q is False (didn't move)
                 ])
+                -- Agent indices must match sallyInit: "Anne" -> 0, "Sally" -> 1
 
         -- The actual event that happens is q (marble moved)
         facts = PrpF qq
@@ -142,7 +148,8 @@ sallyReturns =
                 []
                 Top
                 (fromList [(pp, Top)])
-                (fromList [("Anne", totalRelMdd), ("Sally", totalRelMdd)])
+                (joinRelations [("Anne", 0, totalRelMdd), ("Sally", 1, totalRelMdd)])
+                -- Agent indices must match sallyInit: "Anne" -> 0, "Sally" -> 1
     in (trf, Top)
 
 
@@ -157,29 +164,28 @@ runSallyAnne = do
     -- 0. Init
     let scene0 = sallyInit
     putStrLn "\n[0] Initial: Sally present, No marble."
-    printStatus scene0
+    -- printStatus "scene0" scene0
 
     -- 1. Sally puts marble
     let scene1 = unsafeUpdate scene0 sallyPutsMarble
     putStrLn "\n[1] Action: Sally puts marble in basket."
-    printStatus scene1
+    -- printStatus "scene1" scene1
 
     -- 2. Sally leaves
     let scene2 = unsafeUpdate scene1 sallyLeaves
     putStrLn "\n[2] Action: Sally leaves the room."
-    printStatus scene2
-    -- putStrLn "\n===============\n\n\n\n\n\n==================\n\n"
+    -- printStatus "scene2" scene2
 
     -- 3. Anne moves marble
     let scene3 = unsafeUpdate scene2 anneMovesMarble
     putStrLn "\n[3] Action: Anne moves marble to box (Sally doesn't see)."
-    printStatus scene3
+    printStatus "scene3" scene3
 
-
+    -- error "stop"
     -- 4. Sally returns
     let scene4 = unsafeUpdate scene3 sallyReturns
     putStrLn "\n[4] Action: Sally returns."
-    printStatus scene4
+    printStatus "scene4" scene4
 
     putStrLn "\n--- Final Belief Check ---"
 
@@ -195,16 +201,49 @@ runSallyAnne = do
     let sallyBelievesHere = evalViaMdd scene4 (K "Sally" (PrpF tt))
     putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere ++ " (Expected: True)"
 
-printStatus :: BelScene -> IO ()
-printStatus scn = do
+-- | Helper function to generate a dot graph image with a custom filename
+generateGraphImageNamed :: MDD -> String -> IO (Bool, String)
+generateGraphImageNamed mdd filename = do
+    (success, message, _) <- generateGraphImage mdd True False M.empty
+    if success
+        then do
+            -- Rename the generated files to the custom filename
+            currentDir <- getCurrentDirectory
+            let oldDot = currentDir </> "graph.dot"
+                oldSvg = currentDir </> "graph.svg"
+                newDot = currentDir </> (filename ++ ".dot")
+                newSvg = currentDir </> (filename ++ ".svg")
+            renameFile oldDot newDot
+            renameFile oldSvg newSvg
+            return (True, "Generated " ++ filename ++ ".svg")
+        else return (False, message)
+
+printStatus :: String -> BelScene -> IO ()
+printStatus folderName scn@(bls@(BlS _ law obs), actual) = do
     let p = evalViaMdd scn (PrpF pp)
     let t = evalViaMdd scn (PrpF tt)
-    putStrLn $ "    Status: Sally Present=" ++ show p ++ "\n=====\n, Marble in Basket=" ++ show t ++ "\n====="
-    -- Does Anne know marble is NOT in basket?
-    -- let anneKnowsGone = evalViaMdd scn (K "Anne" (Neg (PrpF tt)))
-    -- putStrLn $ "Does Anne believe that the marble is not in the basket? " ++ show anneKnowsGone
+    putStrLn $ "    Status: Sally Present=" ++ show p ++ ", Marble in Basket=" ++ show t
 
+    -- Create folder and generate images
+    originalDir <- getCurrentDirectory
+    createDirectoryIfMissing True folderName
+    setCurrentDirectory folderName
 
-    -- -- Does Sally believe marble IS in basket?
-    -- let sallyBelievesHere = evalViaMdd scn (K "Sally" (PrpF tt))
-    -- putStrLn $ "Does Sally believe marble is still in basket? " ++ show sallyBelievesHere
+    -- Generate image for actual state
+    (success1, msg1) <- generateGraphImageNamed actual "actual_state"
+    when success1 $ putStrLn $ "    " ++ msg1
+
+    -- Generate image for state law
+    (success2, msg2) <- generateGraphImageNamed law "state_law"
+    when success2 $ putStrLn $ "    " ++ msg2
+
+    -- Generate images for all observable laws
+    mapM_ (\(agent, i) -> do
+        let relMdd = restrict (agentPos i) True (untag (snd obs))
+            filename = "obs_law_" ++ agent
+        (success, msg) <- generateGraphImageNamed relMdd filename
+        when success $ putStrLn $ "    " ++ msg
+        ) (M.toList (fst obs))
+
+    -- Restore original directory
+    setCurrentDirectory originalDir

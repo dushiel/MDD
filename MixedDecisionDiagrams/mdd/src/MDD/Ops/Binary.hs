@@ -16,7 +16,7 @@ import MDD.Context
 import MDD.Manager
 import MDD.Stack
 import MDD.Traversal
-import MDD.Draw (debug_manipulation)
+import MDD.Draw (debug_manipulation, debug_manipulation_inf)
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
 import Data.Kind (Constraint)
@@ -378,35 +378,38 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
 -- |   - For neg/pos branches: Push the computed dcR as the continuous background
 -- |
 -- | Note: The actual exception type (neg1/neg0 or pos1/pos0) depends on what dcR evaluates to.
-applyInf :: forall a. (Dd1 a, DdF3 a, Dd1_helper a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
-applyInf c s a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
+applyInf :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+applyInf c s a b = debug_manipulation_inf (applyInf' @a c s a b) s (s ++ to_str @a) c a b
+
+applyInf' :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+applyInf' c s a@(a_id, InfNodes positionA dcA pA nA) b@(b_id, InfNodes positionB dcB pB nB)
     | positionA == positionB =
         let
             -- Step 1: Compute the continuous (dc) branch result using don't-care inference rule
             -- Push Unknown placeholders for dcA, dcB, dcR (dcR not yet known)
-            c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) c
-            (c1, dcR) = apply @Dc (traverse_dc @a "inf dc" c_ dcA dcB) s dcA dcB
+            c_ = add_to_stack (positionA, Dc) (((0, 0), Unknown), ((0, 0), Unknown), ((0, 0), Unknown)) (traverse_dc @a "inf dc" c dcA dcB)
+            (c1, dcR) = apply @Dc c_ s dcA dcB
 
             -- Step 2: Compute the branch using negative literal inference rule
             -- Push the computed dc branches and dcR as the continuous background
-            c2_ = add_to_stack (positionA, Neg) (getNode c1 dcA, getNode c1 dcB, dcR) (reset_stack_bin c1 c)
-            (c2, nR) = apply @Neg (traverse_dc @a "inf neg" c2_ nA nB) s nA nB
+            c2_ = add_to_stack (positionA, Neg) (getNode c1 dcA, getNode c1 dcB, dcR) (traverse_dc @a "inf neg" (reset_stack_bin c1 c) nA nB)
+            (c2, nR) = apply @Neg c2_ s nA nB
 
             -- Step 3: Compute the branch using positive literal inference rule
             -- Push the computed dc branches and dcR as the continuous background
-            c3_ = add_to_stack (positionA, Pos) (getNode c1 dcA, getNode c1 dcB, dcR) (reset_stack_bin c2 c)
-            (c3, pR) = apply @Pos (traverse_dc @a "inf pos" c3_ pA pB) s pA pB
+            c3_ = add_to_stack (positionA, Pos) (getNode c1 dcA, getNode c1 dcB, dcR) (traverse_dc @a "inf pos" (reset_stack_bin c2 c) pA pB)
+            (c3, pR) = apply @Pos c3_ s pA pB
 
             -- Step 4: Reset stack and combine results into new InfNodes
             c4 = reset_stack_bin c3 c
         in applyElimRule @a c4 $ InfNodes positionA (fst dcR) (fst pR) (fst nR)
     | positionA > positionB = applyInfA @a c s a b  -- A's class comes after, wrap A
     | positionA < positionB = applyInfB @a c s a b  -- B's class comes after, wrap B
-applyInf c s a@(_, InfNodes {}) b@(_, Leaf _) = applyInfB @a c s a b  -- Wrap Leaf in InfNode's class
-applyInf c s a@(_, InfNodes {}) b@(_, EndInfNode _) = applyInfB @a c s a b  -- Wrap EndInfNode in InfNode's class
-applyInf c s a@(_, Leaf _) b@(_, InfNodes{}) = applyInfA @a c s a b  -- Wrap Leaf in InfNode's class
-applyInf c s a@(_, EndInfNode _) b@(_, InfNodes{}) = applyInfA @a c s a b  -- Wrap EndInfNode in InfNode's class
-applyInf c s a b = error ("apply inf error: " ++ s)
+applyInf' c s a@(_, InfNodes {}) b@(_, Leaf _) = applyInfB @a c s a b  -- Wrap Leaf in InfNode's class
+applyInf' c s a@(_, InfNodes {}) b@(_, EndInfNode _) = applyInfB @a c s a b  -- Wrap EndInfNode in InfNode's class
+applyInf' c s a@(_, Leaf _) b@(_, InfNodes{}) = applyInfA @a c s a b  -- Wrap Leaf in InfNode's class
+applyInf' c s a@(_, EndInfNode _) b@(_, InfNodes{}) = applyInfA @a c s a b  -- Wrap EndInfNode in InfNode's class
+applyInf' _ s _ _ = error ("apply inf error: " ++ s)
 
 
 applyInfA :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)

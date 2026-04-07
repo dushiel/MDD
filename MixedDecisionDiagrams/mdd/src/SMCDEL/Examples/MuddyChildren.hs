@@ -108,7 +108,7 @@ makeEquivRel vocab obsVars = Tagged final_mdd
 
 -- | Initialize K-logic Muddy Children Scene
 mudScnInitK :: Int -> Int -> K.BelScene
-mudScnInitK n m = (K.BlS vocab law obs_map, actual)
+mudScnInitK n m = (K.BlS vocab law obs_pair, actual)
   where
     vocab  = [intToPrp vocabAsPropsDomain i | i <- [1..n]]
     law = top
@@ -117,9 +117,10 @@ mudScnInitK n m = (K.BlS vocab law obs_map, actual)
         let
             my_obs_vars = sort $ delete (intToPrp vocabAsPropsDomain i) vocab
             rel = makeEquivRel vocab my_obs_vars
-        in (show i, rel)
+            agentIndex = i - 1  -- Use 0-based indices: child 1 -> index 0, child 2 -> index 1, etc.
+        in (show i, agentIndex, rel)
     obs_list = map buildObs [1..n]
-    obs_map = fromList obs_list
+    obs_pair = K.joinRelations obs_list
 
 
 -- | Run the simulation in GHCi using K-Logic structures.

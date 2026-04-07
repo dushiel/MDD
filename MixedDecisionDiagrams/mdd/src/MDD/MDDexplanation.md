@@ -140,11 +140,11 @@ The refactored codebase is organized into focused modules with clear responsibil
 - Quantification: `forall`, `exist`, `forallSet`, `existSet`
 - Utilities: `relabelWith`, `substitSimul`
 
-**Visualization** (`MDD.Draw`)
-- `settings`: Configuration for display
-- `show_dd`: String representation of MDD nodes
-- Graph generation and rendering utilities
-- debugging code
+**Visualization** (`MDD.Draw` , `MDD.Dot`)
+- `settings`: Configuration for debugging display
+- `show_dd` , `show_node` , `show_mdd`: String representation of MDD nodes
+- `drawTree3` Graph generation and rendering utilities in terminal
+- .. dot functions here??
 
 **Static Translation** (`MDD.Static`)
 - `to_static_form`: Converts MDD to static form for visualization
@@ -197,10 +197,28 @@ to build the project use "cabal build" in the project home folder.
 
 
 future addons:
-- fix absorb for unary stuff
-- refactor elimrules
 
 - add colorized drawtree setting
 - add better equality check for eq instance of MDD
 - double check whether elim rules are applied to path constructurs eventhough the parse input gets eliminated (e.g. -1 in neg1)
 - clean up type signatures
+- cull the unknowns out of the dc_stack
+- more efficient ifte implementation
+- clean up test suit
+- write about why absorb does not need the other inference cases?
+- dc catchup?
+- tests for returning to ZDD inference, catchup in
+- more efficient pop stack
+
+- more complete test suit
+- fuller example
+- add index dd to K
+- nodes on the level of infnodes
+- fun parser
+- hashing with level
+- refactor out the json logging
+
+
+- nasty bug:
+```dcA_leaf_cases c s a@(a_id, Leaf _) b@(b_id, InfNodes{}) = withCache c (a, b, s ++ "Dc") $
+        applyInfA @Dc c s a b -- todo: by going in here we are "forgetting" we are processing a Dc at the moment, so when we pop back we need to continue with interDc```

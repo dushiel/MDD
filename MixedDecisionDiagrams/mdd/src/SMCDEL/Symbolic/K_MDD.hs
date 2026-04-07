@@ -19,18 +19,70 @@ import MDD.Interface
 import MDD.Draw (settings, show_dd, show_node, show_mdd)
 
 -- =============================================================================
+-- * Domain Definitions
+-- =============================================================================
+
+-- | Standard domain (0, 0) for state law propositions
+standardDomain :: [(Int, InfL)]
+standardDomain = [(0, Dc1), (0, Dc1)]
+
+-- | Standard domain (0, 1) for event variables in transformers
+eventFactsDomain :: [(Int, InfL)]
+eventFactsDomain = [(0, Dc1), (1, Dc1)]
+
+-- | Model/Source domain (1, .. ) for observables (mv relations)
+-- (1, 0) for mv standard props, (1, 1) for mv eventfacts / variables
+mvDomain :: [(Int, InfL)]
+mvDomain = [(1, Dc1)]
+
+-- | Copy/Target domain (2, .. ) for observables (cp relations)
+-- (2, 0) for cp standard props, (2, 1) for cp eventfacts / variables
+cpDomain :: [(Int, InfL)]
+cpDomain = [(2, Dc1)]
+
+-- | Index agent domain for observables
+agentDomain :: [(Int, InfL)]
+agentDomain = [(3, Dc1)]
+
+agentPos :: Int -> Position
+agentPos i = toOrdinal (intToPrp agentDomain i)
+
+agentVar :: Int -> MDD
+agentVar i = var' (Ll agentDomain i)
+
+joinRelations :: [(Agent, Int, RelMDD)] -> (M.Map Agent Int, RelMDD)
+joinRelations rels =
+  let
+    agentMap = M.fromList (map (\(agent, i, _) -> (agent, i)) rels)
+
+    -- Combine relations: (AgentVar_i -> R_i)
+    combine (agent, i, rel) =
+        let aVar = agentVar i
+            r = untag rel
+        in aVar .->. r
+
+    combinedRel = conSet (map combine rels)
+  in (agentMap, Tagged combinedRel)
+
+-- =============================================================================
 -- * Phase 1: Relational Infrastructure
 -- =============================================================================
 
 mvP, cpP :: Prp -> Prp
-mvP (P (Ll ((_, inf):xs) i)) = P (Ll ((1, inf):xs) i)
+mvP (P (Ll ((_, inf):xs) i)) =
+    let (mvDomainNum, _) = head mvDomain
+    in P (Ll ((mvDomainNum, inf):xs) i)
 mvP p = error $ "mvP failed: Unexpected Prp structure: " ++ show p
 
-cpP (P (Ll ((_, inf):xs) i)) = P (Ll ((2, inf):xs) i)
+cpP (P (Ll ((_, inf):xs) i)) =
+    let (cpDomainNum, _) = head cpDomain
+    in P (Ll ((cpDomainNum, inf):xs) i)
 cpP p = error $ "cpP failed: Unexpected Prp structure: " ++ show p
 
 unmvcpP :: Prp -> Prp
-unmvcpP (P (Ll ((_, inf):xs) i)) = P (Ll ((0, inf):xs) i)
+unmvcpP (P (Ll ((_, inf):xs) i)) =
+    let (standardDomainNum, _) = head standardDomain
+    in P (Ll ((standardDomainNum, inf):xs) i)
 unmvcpP p = error $ "unmvcpP failed: Unexpected Prp structure: " ++ show p
 
 mv, cp :: [Prp] -> [Prp]
@@ -73,7 +125,7 @@ uncpMdd vocab tagged_node =
 -- Removed explicit Context field. It is now implicit in MDD and RelMDD.
 data BelStruct = BlS [Prp]              -- vocabulary
                      MDD                -- state law (on standard vars)
-                     (M.Map Agent RelMDD) -- observation laws
+                     (M.Map Agent Int, RelMDD) -- observation laws
                      deriving (Show)
 
 type BelScene = (BelStruct, KnState)
@@ -83,7 +135,7 @@ instance HasVocab BelStruct where
   vocabOf (BlS voc _ _) = voc
 
 instance HasAgents BelStruct where
-  agentsOf (BlS _ _ obdds) = M.keys obdds
+  agentsOf (BlS _ _ (obdds, _)) = M.keys obdds
 
 instance Pointed BelStruct KnState
 instance Pointed BelStruct Node
@@ -96,11 +148,11 @@ data Transformer = Trf
   [Prp]                 -- addprops (new event variables)
   Form                  -- event law (precondition on new vars + interaction)
   (M.Map Prp Form)      -- changelaw (assignments: p := psi)
-  (M.Map Agent RelMDD)  -- eventObs (observations of the event)
+  (M.Map Agent Int, RelMDD)  -- eventObs (observations of the event)
   deriving (Show)
 
 instance HasAgents Transformer where
-  agentsOf (Trf _ _ _ obdds) = M.keys obdds
+  agentsOf (Trf _ _ _ (obdds, _)) = M.keys obdds
 
 -- An Event is a Transformer plus a Formula describing which event(s) actually happened.
 type Event = (Transformer, Form)
@@ -131,8 +183,11 @@ mddOf bls (Equi f g)    = mddOf bls f .<->. mddOf bls g
 mddOf bls (Forall ps f) = forallSet (map toOrdinal ps) (mddOf bls f)
 mddOf bls (Exists ps f) = existSet (map toOrdinal ps) (mddOf bls f)
 
-mddOf bls@(BlS allprops lawmdd obdds) (K i form) =
+mddOf bls@(BlS allprops lawmdd (ags, obdds)) (K i form) =
   let
+    print_debug = False
+    debugTrace msg val = if print_debug then trace msg val else val
+
     -- 1. Shift Law to Target (cp)
     law_cp = untag $ cpMdd allprops lawmdd
 
@@ -141,7 +196,7 @@ mddOf bls@(BlS allprops lawmdd obdds) (K i form) =
     form_cp = untag $ cpMdd allprops form_node
 
     -- 3. Get Relation
-    omega_i = untag $ obdds ! i
+    omega_i = restrict (agentPos (ags ! i)) True (untag obdds)
 
     -- 5. Implication Chain: Law(t) -> (Rel(s,t) -> Phi(t))
     imp_res = law_cp .->. (omega_i .->. form_cp)
@@ -150,9 +205,30 @@ mddOf bls@(BlS allprops lawmdd obdds) (K i form) =
     ps_target = map toOrdinal (cp allprops)
     forall_res = forallSet ps_target imp_res
 
+    res = unmvMdd allprops (Tagged forall_res)
+
   in
     -- 7. Map Source variables (mv) back to Standard variables
-    unmvMdd allprops (Tagged forall_res)
+    debugTrace ("\n=== K Operator Debugging ===" ++
+               "\nAgent: " ++ show i ++
+               "\nFormula: " ++ show form ++
+               "\nAll props: " ++ show allprops ++
+               "\n\n--- 1. Law (cp) ---" ++
+               "\nLaw (original): " ++ show_mdd lawmdd ++
+               "\nLaw (shifted): " ++ show_mdd law_cp ++
+               "\n\n--- 2. Formula (cp) ---" ++
+               "\nFormula Node: " ++ show_mdd form_node ++
+               "\nFormula (shifted): " ++ show_mdd form_cp ++
+               "\n\n--- 3. Relation ---" ++
+               "\nOmega_i: " ++ show_mdd omega_i ++
+               "\n\n--- 5. Implication Chain ---" ++
+               "\nImp Res: " ++ show_mdd imp_res ++
+               "\n\n--- 6. Quantify Target ---" ++
+               "\nTarget Props: " ++ show ps_target ++
+               "\nForall Res: " ++ show_mdd forall_res ++
+               "\n\n--- 7. Final Result ---" ++
+               "\nFinal Result: " ++ show_mdd res ++ "\n")
+               res
 
 mddOf bls (Kw i form) =
   let
@@ -160,12 +236,12 @@ mddOf bls (Kw i form) =
       k_neg_form = mddOf bls (K i (Neg form))
   in k_form .+. k_neg_form
 
-mddOf bls@(BlS voc lawmdd obdds) (Ck ags form) =
+mddOf bls@(BlS voc lawmdd (ags, obdds)) (Ck target_ags form) =
   let
     initial_guess = top
     ps_target = map toOrdinal (cp voc)
 
-    agent_rels = map (\agent -> untag $ obdds ! agent) ags
+    agent_rels = map (\agent -> restrict (agentPos (ags ! agent)) True (untag obdds)) target_ags
     rels_disj = disSet agent_rels -- Union of relations
 
     lambda z =
@@ -207,7 +283,7 @@ mddOf bls@(BlS props _ _) (Announce ags f g) =
   let
     domain = case props of
                 (P (Ll d _):_) -> d
-                [] -> [(0, Dc1)]
+                [] -> standardDomain
     p_k = freshp props domain
     k_pos = toOrdinal p_k
     bls' = announce bls ags f
@@ -218,7 +294,7 @@ mddOf bls@(BlS props _ _) (AnnounceW ags f g) =
   let
     domain = case props of
                 (P (Ll d _):_) -> d
-                [] -> [(0, Dc1)]
+                [] -> standardDomain
     p_k = freshp props domain
     k_pos = toOrdinal p_k
 
@@ -250,8 +326,8 @@ evalViaMdd :: BelScene -> Form -> Bool
 evalViaMdd (bls@(BlS _ lawmdd _), s) f =
     let (nl, node) = unMDD s
         traceMsg = "\n \n   evaluating state s : " ++ show_dd settings nl node ++ "\n   on formula : " ++ show f
-    in trace traceMsg $
-    (let
+    in
+    trace traceMsg (let
         f_node = mddOf bls f
         check_node = s .->. f_node
     in
@@ -285,58 +361,15 @@ instance Update BelScene Form where
 getLevelL :: Prp -> LevelL
 getLevelL (P l) = l
 
--- | Shift the Action Model variables so they don't collide with the Belief Structure
-shiftPrepare :: BelStruct -> Transformer -> (Transformer, [(Prp, Prp)])
-shiftPrepare (BlS props _ _) (Trf addprops addlaw changelaw eventObs) =
-  let
-      -- Domain extraction for fresh generation
-      domain = case props of
-                  (P (Ll d _):_) -> d
-                  [] -> [(0, Dc1)]
-
-      -- Generate fresh props mapping
-      -- We need 'n' fresh props where n = length addprops
-      genFresh [] _ acc = acc
-      genFresh (p:ps) used acc =
-          let newP = freshp used domain
-          in genFresh ps (newP:used) ((p,newP):acc)
-
-      shiftRel = reverse $ genFresh addprops props []
-      shiftAddProps = map snd shiftRel
-
-      -- Relabel components
-      addlawShifted = replPsInF shiftRel addlaw
-
-      -- For changelaw: keys are existing props (no shift needed),
-      -- values might refer to addprops (shift needed)
-      changelawShifted = M.map (replPsInF shiftRel) changelaw
-
-      -- For eventObs: The relations need to be shifted.
-      -- RelMDD contains MDD. We must relabel the MDD.
-      -- The shiftRel maps P -> P'. We need ordinals.
-      shiftRelOrd = map (\(p,q) -> (toOrdinal p, toOrdinal q)) shiftRel
-
-      -- We also need to account for MV/CP shifts in relations if addprops are used in relations?
-      -- The relations in eventObs are usually over (mv addprops) and (cp addprops).
-      -- So we must shift mv->mv' and cp->cp'.
-      shiftRelMV = map (\(p,q) -> (toOrdinal (mvP p), toOrdinal (mvP q))) shiftRel
-      shiftRelCP = map (\(p,q) -> (toOrdinal (cpP p), toOrdinal (cpP q))) shiftRel
-      fullShiftRelOrd = shiftRelMV ++ shiftRelCP
-
-      eventObsShifted = M.map (\tagged ->
-          let mdd = untag tagged
-          in Tagged (relabelWith fullShiftRelOrd mdd)) eventObs
-
-  in (Trf shiftAddProps addlawShifted changelawShifted eventObsShifted, shiftRel)
-
 instance Update BelScene Event where
-  unsafeUpdate (bls@(BlS props lawmdd obs), s) (trf, eventFacts) =
+  unsafeUpdate (bls@(BlS props lawmdd (blsAgs, blsObs)), s) (trf, eventFacts) =
       let
-          -- 1. Shift the Transformer to avoid collisions
-          (Trf addprops addlaw changelaw eventObs, shiftRel) = shiftPrepare bls trf
+          print_debug = False
+          -- Helper function for conditional tracing
+          debugTrace msg val = if print_debug then trace msg val else val
 
-          -- Shift the event facts form to match the shifted addprops
-          eventFactsShifted = replPsInF shiftRel eventFacts
+          -- 1. Extract Transformer components (addprops are in eventFactsDomain (0,1), distinct from state vars (0,0))
+          (Trf addprops addlaw changelaw (trfAgs, trfObs)) = trf
 
           -- 2. Handle Assignments (Copying Logic)
           -- Identify which propositions are changing
@@ -345,7 +378,7 @@ instance Update BelScene Event where
           -- Generate Copy Props (to hold old values)
           domain = case props of
             (P (Ll d _):_) -> d
-            [] -> [(0, Dc1)]
+            [] -> standardDomain
 
           -- We need fresh props that are NOT in props AND NOT in addprops
           genCopies [] _ acc = acc
@@ -364,10 +397,10 @@ instance Update BelScene Event where
           -- So law(p) becomes law(p_copy).
           law_shifted = relabelWith copyRelOrd lawmdd
 
-          -- (b) Event Law: mddOf the shifted addlaw
+          -- (b) Event Law: mddOf the addlaw
           -- Note: mddOf requires a BelStruct. We construct a temporary one
           -- containing all necessary vars to parse the formula.
-          tempBls = BlS (props ++ addprops ++ copyChangeProps) top M.empty
+          tempBls = BlS (props ++ addprops ++ copyChangeProps) top (M.empty, Tagged top)
           law_event = mddOf tempBls addlaw
 
           -- (c) Assignment Laws: p <-> psi(p_copy)
@@ -382,36 +415,34 @@ instance Update BelScene Event where
                   p_node .<->. psi_shifted
             ) (M.toList changelaw)
 
-          newLawNode = conSet (law_shifted : law_event : assign_laws)
-          -- newLawNode = trace ("\n=== STEP 1: Shift Transformer ===" ++
-          --            "\nOriginal props: " ++ show props ++
-          --            "\nShift relation: " ++ show shiftRel ++
-          --            "\nShifted addprops: " ++ show addprops ++
-          --            "\nShifted addlaw: " ++ show addlaw ++
-          --            "\nChangelaw: " ++ show changelaw ++
-          --            "\nEvent facts (original): " ++ show eventFacts ++
-          --            "\nEvent facts (shifted): " ++ show eventFactsShifted ++
-          --            "\n\n=== STEP 2: Handle Assignments ===" ++
-          --            "\nChange props: " ++ show changeprops ++
-          --            "\nCopy relation: " ++ show copyRel ++
-          --            "\nCopy change props: " ++ show copyChangeProps ++
-          --            "\nCopy relabeling (ordinals): " ++ show copyRelOrd ++
-          --            "\n\n=== STEP 3a: Shift Old Law ===" ++
-          --            "\nOriginal law: " ++ (show_mdd  lawmdd) ++
-          --            "\nShifted law: " ++ (show_mdd  law_shifted) ++
-          --            "\n\n=== STEP 3b: Event Law ===" ++
-          --            "\nTemp vocabulary: " ++ show (props ++ addprops ++ copyChangeProps) ++
-          --            "\nEvent law formula: " ++ show addlaw ++
-          --            "\nEvent law MDD: " ++ (show_mdd law_event) ++
-          --            "\n\n=== STEP 3c: Assignment Laws ===" ++
-          --            "\nNumber of assignments: " ++ show (length assign_laws) ++
-          --            "\nAssignment laws MDDs:\n" ++
-          --            intercalate "\n" (map (\(i, al) -> "  Assignment " ++ show i ++ ": " ++
-          --              (show_mdd al))
-          --              (zip [1..] assign_laws)) ++
-          --            "\n\n=== STEP 3: Final New Law ===" ++
-          --            "\nNew law node: " ++ (show_mdd newLawNode') ++ "\n")
-          --            newLawNode'
+          newLawNode' = conSet (law_shifted : law_event : assign_laws)
+          newLawNode = debugTrace ("\n=== STEP 1: Prepare Transformer ===" ++
+                     "\nOriginal props: " ++ show props ++
+                     "\nAddprops: " ++ show addprops ++
+                     "\nAddlaw: " ++ show addlaw ++
+                     "\nChangelaw: " ++ show changelaw ++
+                     "\nEvent facts: " ++ show eventFacts ++
+                     "\n\n=== STEP 2: Handle Assignments ===" ++
+                     "\nChange props: " ++ show changeprops ++
+                     "\nCopy relation: " ++ show copyRel ++
+                     "\nCopy change props: " ++ show copyChangeProps ++
+                     "\nCopy relabeling (ordinals): " ++ show copyRelOrd ++
+                     "\n\n=== STEP 3a: Shift Old Law ===" ++
+                     "\nOriginal law: " ++ show_mdd  lawmdd ++
+                     "\nShifted law: " ++ show_mdd  law_shifted ++
+                     "\n\n=== STEP 3b: Event Law ===" ++
+                     "\nTemp vocabulary: " ++ show (props ++ addprops ++ copyChangeProps) ++
+                     "\nEvent law formula: " ++ show addlaw ++
+                     "\nEvent law MDD: " ++ show_mdd law_event ++
+                     "\n\n=== STEP 3c: Assignment Laws ===" ++
+                     "\nNumber of assignments: " ++ show (length assign_laws) ++
+                     "\nAssignment laws MDDs:\n" ++
+                     intercalate "\n" (map (\(i, al) -> "  Assignment " ++ show i ++ ": " ++
+                       (show_mdd al))
+                       (zip [1..] assign_laws)) ++
+                     "\n\n=== STEP 3: Final New Law ===" ++
+                     "\nNew law node: " ++ show_mdd newLawNode' ++ "\n")
+                     newLawNode'
 
           -- 4. Construct New Relations
           -- Agents distinguish 'addprops' via eventObs.
@@ -422,29 +453,29 @@ instance Update BelScene Event where
           copyRelCP = map (\(p,q) -> (toOrdinal (cpP p), toOrdinal (cpP q))) copyRel
           fullCopyRelOrd = copyRelMV ++ copyRelCP
 
-          newOfor i rel_tagged =
+          updateRel agent =
               let
-                  -- Old relation shifted to copies
-                  old = untag rel_tagged
-                  relOldShifted = relabelWith fullCopyRelOrd old
+                  i = blsAgs ! agent
+                  -- Old relation shifted
+                  oldRel = restrict (agentPos i) True (untag blsObs)
+                  relOldShifted = relabelWith fullCopyRelOrd oldRel
 
-                  -- Event relation (already shifted in step 1)
-                  relEvent_tagged = M.findWithDefault (Tagged top) i eventObs
-                  ev = untag relEvent_tagged
-              in
-                  Tagged (relOldShifted .*. ev)
+                  -- Event relation: both use same indices now (provided by caller)
+                  evRel = restrict (agentPos i) True (untag trfObs)
 
-          newObs = M.mapWithKey newOfor obs
-          -- newObs = trace ("\n=== STEP 4: Construct New Relations ===" ++
-          --            "\nCopy relabeling MV: " ++ show copyRelMV ++
-          --            "\nCopy relabeling CP: " ++ show copyRelCP ++
-          --            "\nFull copy relabeling: " ++ show fullCopyRelOrd ++
-          --            "\nNew observations:\n" ++
-          --            intercalate "\n" (map (\(agent, rel_tagged) ->
-          --              "  Agent " ++ show agent ++ ": " ++
-          --              (show_mdd $ untag rel_tagged))
-          --              (M.toList newObs')) ++ "\n")
-          --            newObs'
+                  newRel = relOldShifted .*. evRel
+
+                  aVar = agentVar i
+              in aVar .->. newRel
+
+          newRelMDD = conSet (map updateRel (M.keys blsAgs))
+          newObs = debugTrace ("\n=== STEP 4: Construct New Relations ===" ++
+                     "\nCopy relabeling MV: " ++ show copyRelMV ++
+                     "\nCopy relabeling CP: " ++ show copyRelCP ++
+                     "\nFull copy relabeling: " ++ show fullCopyRelOrd ++
+                     "\nNew observations (combined): " ++
+                       (show_mdd newRelMDD))
+                     (blsAgs, Tagged newRelMDD)
 
           -- 5. Construct New State
           -- s is the old state (MDD).
@@ -453,65 +484,54 @@ instance Update BelScene Event where
           -- Quantify out the originals (the new state can be either true or neg evaluations in this step)
           r = relabelWith copyRelOrd s
           eventFactsProps = propsInForm eventFacts
-          eventFactsShiftedProps = propsInForm eventFactsShifted
-          propsToQuantify = changeprops ++ eventFactsProps ++ eventFactsShiftedProps
+          propsToQuantify = changeprops ++ eventFactsProps
           r' = existSet (map toOrdinal propsToQuantify) r
-          s_copy =
-            --   trace ("\n=== STEP 5: Construct New State ===" ++
-            -- "\nOriginal state s: " ++ show_mdd s ++
-            -- "\n\n=== STEP 5a: Relabel State to Copies ===" ++
-            -- "\nRelabeling with: " ++ show copyRelOrd ++
-            -- "\nBefore quantification (r): " ++ show_mdd r ++
-            -- "\nQuantifying out: " ++ show (map toOrdinal propsToQuantify) ++
-            -- "\nAfter quantification (r'): " ++ show_mdd r' ++ "\n")
+          s_copy = debugTrace ("\n=== STEP 5: Construct New State ===" ++
+            "\nOriginal state s: " ++ show_mdd s ++
+            "\n\n=== STEP 5a: Relabel State to Copies ===" ++
+            "\nRelabeling with: " ++ show copyRelOrd ++
+            "\nBefore quantification (r): " ++ show_mdd r ++
+            "\nQuantifying out: " ++ show (map toOrdinal propsToQuantify) ++
+            "\nAfter quantification (r'): " ++ show_mdd r' ++ "\n")
             r'
 
           -- (b) Intersect with assignments and event facts
           -- This effectively calculates the new values of p based on psi(p_copy) and s(p_copy)
           -- and sets addprops based on eventFacts.
-          factsNode = mddOf tempBls eventFactsShifted
+          factsNode = mddOf tempBls eventFacts
 
           assign_laws_conj = conSet assign_laws
 
-          newStateNode =
-              -- trace ("\n=== STEP 5b: Event Facts Node ===" ++
-              --        "\nEvent facts formula: " ++ show eventFactsShifted ++
-              --        "\nFacts node: " ++ show_mdd factsNode ++
-              --        "\n\nAssignment laws conjunction: " ++
-              --        show_mdd assign_laws_conj ++
-              --        "\n\n=== STEP 5: Final New State ===" ++
-              --        "\nComponents:\n  s_copy: " ++ show_mdd s_copy ++
-              --        "\n  factsNode: " ++ show_mdd factsNode ++
-              --        "\n  assign_laws_conj: " ++ show_mdd assign_laws_conj ++
-              --        "\nFinal new state: " ++ show_mdd (conSet [s_copy, factsNode, assign_laws_conj]) ++ "\n")
+          newStateNode = debugTrace ("\n=== STEP 5b: Event Facts Node ===" ++
+                     "\nEvent facts formula: " ++ show eventFacts ++
+                     "\nFacts node: " ++ show_mdd factsNode ++
+                     "\n\nAssignment laws conjunction: " ++
+                     show_mdd assign_laws_conj ++
+                     "\n\n=== STEP 5: Final New State ===" ++
+                     "\nComponents:\n  s_copy: " ++ show_mdd s_copy ++
+                     "\n  factsNode: " ++ show_mdd factsNode ++
+                     "\n  assign_laws_conj: " ++ show_mdd assign_laws_conj ++
+                     "\nFinal new state: " ++ show_mdd (conSet [s_copy, factsNode, assign_laws_conj]) ++ "\n")
             (conSet [s_copy, factsNode, assign_laws_conj])
-          -- a method which more closely follows the true mechanisms:
-          -- from the old state: quantify out the variables which could have changed, store their values in another domain, add valuation that event has happened in yet another domain.
-          -- take the new law and apply it to the new "state" by conjunction and it should result in all quantified propositions taking on a single valuation, resulting in a sinlge path/state again
-          -- but because this is a single state we can use list/cube logic on it, so we just gather the propositions that are true and make a Neg1 path out of it.
-          -- this might actually be less efficient, so its worth it in the future to try the method above.
 
           -- 6. Final Vocabulary
-          newProps =
-              -- trace ("\n=== STEP 6: Final Vocabulary ===" ++
-              --        "\nOriginal props: " ++ show props ++
-              --        "\nAdded props: " ++ show addprops ++
-              --        "\nCopy change props: " ++ show copyChangeProps ++
-              --        "\nFinal new props: " ++ show (props ++ addprops ++ copyChangeProps) ++ "\n")
+          newProps = debugTrace ("\n=== STEP 6: Final Vocabulary ===" ++
+                     "\nOriginal props: " ++ show props ++
+                     "\nAdded props: " ++ show addprops ++
+                     "\nCopy change props: " ++ show copyChangeProps ++
+                     "\nFinal new props: " ++ show (props ++ addprops ++ copyChangeProps) ++ "\n")
                      (props ++ addprops ++ copyChangeProps)
 
       in (BlS newProps newLawNode newObs, newStateNode)
 
 
--- Simple announce wrapper (re-implemented using Transformers for consistency?
--- Or keep separate? The prompt asked for Events/Transformers logic, but legacy announce
--- is fine to keep as is for now as it's lighter).
+-- Simple announce wrapper
 announce :: BelStruct -> [Agent] -> Form -> BelStruct
-announce bls@(BlS props lawmdd obdds) ags psi =
+announce bls@(BlS props lawmdd (ags, obdds)) target_ags psi =
   let
     domain = case props of
                 (P (Ll d _):_) -> d
-                [] -> [(0, Dc1)]
+                [] -> standardDomain
     p_k = freshp props domain
     k_level = getLevelL p_k
     k_mdd = var' k_level
@@ -523,13 +543,15 @@ announce bls@(BlS props lawmdd obdds) ags psi =
     mv_k = var' (getLevelL $ mvP p_k)
     cp_k = var' (getLevelL $ cpP p_k)
 
-    newOfor i rel_tagged =
-        let rel = untag rel_tagged
-        in if i `elem` ags
-           then Tagged (rel .*. (mv_k .<->. cp_k))
-           else Tagged (rel .*. ((-.) cp_k))
+    updateRel i =
+        let
+            oldRel = restrict (agentPos (ags ! i)) True (untag obdds)
+            newRel = if i `elem` target_ags
+                     then oldRel .*. (mv_k .<->. cp_k)
+                     else oldRel .*. ((-.) cp_k)
+            aVar = agentVar (ags ! i)
+        in aVar .->. newRel
 
-    newobdds = M.mapWithKey newOfor obdds
+    newRelMdd = conSet (map updateRel (M.keys ags))
 
-  in --trace ("\n private announce to : " ++ (show ags) ++ "\n for formula: " ++ show psi ++ "\n newlaw: " ++ show_dd settings (fst newlaw) (snd newlaw) ++ "\n added freshp : " ++ show p_k ++ "\n knowledge laws: \n " ++ intercalate "\n , " (map (\(agent, rel) -> "Agent " ++ agent ++ " : " ++ show_dd settings (fst $ untag rel ) (snd $ untag rel )) (M.toList newomdds)) ++ " \n " )
-  (BlS newprops newlaw newobdds)
+  in BlS newprops newlaw (ags, Tagged newRelMdd)
