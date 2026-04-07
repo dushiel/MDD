@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
-module Internal.Language where
+module SMCDEL.Internal.Language where
 
 import Data.List (nub,intercalate,(\\), inits)
 import Data.Dynamic

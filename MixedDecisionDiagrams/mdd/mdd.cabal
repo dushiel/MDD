@@ -23,42 +23,34 @@ source-repository head
 library
   exposed-modules:
       MDD.Types
-      MDD.Manager
-      MDD.Context
+      MDD.NodeLookup
+      MDD.Traversal.Context
+      MDD.Traversal.Stack
+      MDD.Traversal.Support
+      MDD.Traversal.Unary
+      MDD.Traversal.Binary
 
-      MDD.Stack
-      MDD.Traversal
-      MDD.Ops.Unary
-      MDD.Ops.Binary
-
-      MDD.Static
       MDD.Construction
-      MDD.Draw
-      MDD.Interface
+      MDD.Extra.Static
+      MDD.Extra.Draw
+      MDD.Extra.Interface
 
-      MDD.Bool
-      MDD.Test
-      MDD.Dot
+      SMCDEL.Symbolic.Bool
+      MDD.Extra.Test
+      MDD.Extra.Dot
 
-      MDD.Example
-      -- DrawMDD
-      -- MDD
-      -- MDDi
-      -- SODDmanipulation
-      -- SupportMDD
-      -- DotDD
-      -- Example
-      -- TestMDD
-      -- SMCDEL.Internal.Help
-      -- SMCDEL.Internal.TexDisplay
-      Internal.Language
-      -- Bool_MDD
+      Examples.Bears
+
+      SMCDEL.Internal.Help
+      SMCDEL.Internal.TexDisplay
+      SMCDEL.Internal.Language
+
       SMCDEL.Symbolic.S5_MDD
       SMCDEL.Symbolic.K_MDD
       SMCDEL.Examples.MuddyChildren
       SMCDEL.Examples.SallyAnne
   other-modules:
-  -- Correctly indented section
+
   hs-source-dirs:
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
@@ -84,3 +76,25 @@ library
     , QuickCheck
     , tagged
   default-language: Haskell2010
+
+test-suite mdd-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  other-modules:
+      MDD.Test.Fixtures
+      MDD.Test.Construction
+      MDD.Test.BinaryOps
+      MDD.Test.UnaryOps
+      MDD.Test.Quantification
+      MDD.Test.Relabeling
+      MDD.Test.Interface
+      MDD.Test.NestedDomains
+      MDD.Test.Properties
+  build-depends:
+      base >=4.7 && <5
+    , mdd
+    , tasty
+    , tasty-hunit
+  ghc-options:         -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010

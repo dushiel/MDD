@@ -5,27 +5,28 @@
 module MDD.Construction where
 
 import MDD.Types
-import MDD.Manager
-import MDD.Context
+import MDD.NodeLookup
+import MDD.Traversal.Context
 import Data.List (sortBy)
 import Data.Ord (Down(..))
 import Data.Hashable
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as Map
 
--- ==========================================================================================================
--- * Basic construction of nodes and paths
--- ==========================================================================================================
+-- | Refactored with help of AI
 
--- | Helper to create a leaf node
+
+-- * Basic construction of nodes and paths
+
+
+-- short helper functions:
+
 leaf :: Bool -> Node
 leaf b = ((hash $ Leaf b, 0), Leaf b)
 
--- | Helper to get the ID of a leaf
 leafid :: Bool -> NodeId
 leafid b = (hash $ Leaf b, 0)
 
--- | Internal helper to resolve terminal mapping during construction
 l0' :: Int -> NodeId
 l0' b | b == 0 = l_u
       | otherwise = l_0
@@ -41,14 +42,14 @@ levelLtoPath (Ll [] int) = P'' [int]
 
 -- | Top-level function to create a Mixed Decision Diagram node from a LevelL
 makeNode :: NodeLookup -> LevelL -> MDD
-makeNode nl l = path nl (levelLtoPath l)
+makeNode nl l = path_ nl (levelLtoPath l)
 
 -- | Main path construction logic
-path__ :: Path -> MDD
-path__ p = MDD $ path' (-1) (init_lookup, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+path :: Path -> MDD
+path p = MDD $ path' (-1) (init_lookup, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
 
-path :: NodeLookup -> Path -> MDD
-path nl p = MDD $  path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
+path_ :: NodeLookup -> Path -> MDD
+path_ nl p = MDD $  path' (-1) (nl, (l_u, Node (-5) l_u l_u)) (sortPathDesc p)
 
 add_path :: MDD -> Path -> MDD
 add_path mdd p = let
@@ -70,27 +71,33 @@ sortPathDesc (P' taggedPaths) =
 -- | Recursive path building helper
 path' :: Int -> (NodeLookup, Node) -> Path -> (NodeLookup, Node)
 path' b (c, n) (P' ((i, inf, P'' nodelist) : pl))
-    | inf == Dc1 || inf == Dc0 = path' b (insert c' (InfNodes i rid l_u l_u)) (P' pl)
-    | inf == Pos1 = path' b (insert c' (InfNodes i (l0' b) rid l_u)) (P' pl)
-    | inf == Neg1 = path' b (insert c' (InfNodes i (l0' b) l_u rid)) (P' pl)
-    | inf == Pos0 = path' b (insert c' (InfNodes i (l1' b) rid l_u)) (P' pl)
-    | inf == Neg0 = path' b (insert c' (InfNodes i (l1' b) l_u rid)) (P' pl)
+    | inf == Dc1 || inf == Dc0 = path' b (insert c' (ClassNode i rid l_u l_u)) (P' pl)
+    | inf == Pos1 = path' b (insert c' (ClassNode i (l0' b) rid l_u)) (P' pl)
+    | inf == Neg1 = path' b (insert c' (ClassNode i (l0' b) l_u rid)) (P' pl)
+    | inf == Pos0 = path' b (insert c' (ClassNode i (l1' b) rid l_u)) (P' pl)
+    | inf == Neg0 = path' b (insert c' (ClassNode i (l1' b) l_u rid)) (P' pl)
       where
         (c', (rid, _)) = localpath' (c, n) inf nodelist
 path' b (c, n) (P' ((i, inf, pc) : pl))
-    | inf == Dc1 || inf == Dc0 = path' b (insert cDc (InfNodes i ridDc l_u l_u)) (P' pl)
-    | inf == Pos1 = path' b (insert c1 (InfNodes i (l0' b) rid1 l_u)) (P' pl)
-    | inf == Neg1 = path' b (insert c1 (InfNodes i (l0' b) l_u rid1)) (P' pl)
-    | inf == Pos0 = path' b (insert c0 (InfNodes i (l1' b) rid0 l_u)) (P' pl)
-    | inf == Neg0 = path' b (insert c0 (InfNodes i (l1' b) l_u rid0)) (P' pl)
+    | inf == Dc1 || inf == Dc0 = path' b (insert cDc (ClassNode i ridDc l_u l_u)) (P' pl)
+    | inf == Pos1 = path' b (insert c1 (ClassNode i (l0' b) rid1 l_u)) (P' pl)
+    | inf == Neg1 = path' b (insert c1 (ClassNode i (l0' b) l_u rid1)) (P' pl)
+    | inf == Pos0 = path' b (insert c0 (ClassNode i (l1' b) rid0 l_u)) (P' pl)
+    | inf == Neg0 = path' b (insert c0 (ClassNode i (l1' b) l_u rid0)) (P' pl)
       where
-        (c0, (rid0, _)) = path' 1 (c, n) pc
-        (c1, (rid1, _)) = path' 0 (c, n) pc
-        (cDc, (ridDc, _)) = path' b (c, n) pc
+        initNode = (l_u, Node (-5) l_u l_u)
+        -- Wrap consequence in EndClassNode before passing to inner domain
+        -- This ensures each nested domain level gets its own EndClassNode
+        (cW, nW) = if n == initNode then (c, n)
+                   else insert c $ EndClassNode $ fst n
+        (c0, (rid0, _)) = path' 1 (cW, nW) pc
+        (c1, (rid1, _)) = path' 0 (cW, nW) pc
+        (cDc, (ridDc, _)) = path' b (cW, nW) pc
+path' b (c, n) (P'' ints) = localpath' (c, n) Dc1 ints
 path' b (c, n) (P' []) = (c, n)
 
 
--- | Builds a localized path within a specific infinity domain
+-- | Builds a localized path within a specific variable class domain
 localpath' :: (NodeLookup, Node) -> InfL -> [Int] -> (NodeLookup, Node)
 localpath' (c, n) inf nodeList
     | inf == Dc1 = loopDc c True nodeList n
@@ -102,36 +109,36 @@ localpath' (c, n) inf nodeList
     where
         loopDc c b [] consequence = if consequence == initNode
             then (c, leaf b)
-            else insert c $ EndInfNode $ fst consequence
+            else insert c $ EndClassNode $ fst consequence
         loopDc c b (n:ns) consequence = let
           (c', (next_iter, _)) = loopDc c b ns consequence in
             if n == 0 then
               if consequence == initNode then (c, leaf b)
-                else insert c' $ EndInfNode $ fst consequence
+                else insert c' $ EndClassNode $ fst consequence
             else if n >= 0
                   then insert c' (Node n next_iter (leafid $ not b))
                   else insert c' (Node (abs n) (leafid $ not b) next_iter)
 
         loopPos c b [] consequence = if consequence == initNode
             then (c, leaf b)
-            else insert c $ EndInfNode $ fst consequence
+            else insert c $ EndClassNode $ fst consequence
         loopPos c b (n:ns) consequence = let
           (c', (next_iter, _)) = loopPos c b ns consequence in
             if n == 0  then
               if consequence == initNode then (c, leaf b)
-                else insert c' $ EndInfNode $ fst consequence
+                else insert c' $ EndClassNode $ fst consequence
             else if n >= 0
                   then insert c' (Node n next_iter l_u )
                       else insert c' (Node (abs n) l_u next_iter )
 
         loopNeg c b [] consequence = if consequence == initNode
             then (c, leaf b)
-            else insert c $ EndInfNode $ fst consequence
+            else insert c $ EndClassNode $ fst consequence
         loopNeg c b (n:ns) consequence = let
           (c', (next_iter, _)) = loopNeg c b ns consequence in
             if n == 0  then
               if consequence == initNode then (c, leaf b)
-                else insert c' $ EndInfNode $ fst consequence
+                else insert c' $ EndClassNode $ fst consequence
             else if n >= 0
                   then insert c' (Node n next_iter l_u)
                       else insert c' (Node (abs n) l_u next_iter)

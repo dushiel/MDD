@@ -3,4 +3,6 @@ dist-newstyle/
 graph.svg
 graph.dot
 debug.log
+output/
+compare/
 *~

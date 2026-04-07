@@ -5,13 +5,15 @@ import Data.Map.Strict (fromList)
 import qualified Data.Map.Strict as M
 
 import SMCDEL.Internal.Help (seteq)
-import Internal.Language
+import SMCDEL.Internal.Language
 import SMCDEL.Symbolic.S5_MDD
 import qualified SMCDEL.Symbolic.K_MDD as K
 import Data.Tagged (Tagged(..), untag)
 import MDD.Types hiding (Neg)
-import MDD.Interface
-import MDD.Draw (settings, show_dd, drawTree3, debug)
+import MDD.Extra.Interface
+-- import MDD.Extra.Draw (settings, show_dd, drawTree3, debug)
+
+-- * made with help of AI
 
 -- | The default domain index for variables in this puzzle.
 vocabAsPropsDomain :: [(Int, InfL)]
@@ -79,14 +81,13 @@ runMuddy n m = do
           loop (round + 1) nextScene
 
 -- =============================================================================
--- * Phase 3: K-Logic Implementation
+-- * K-Logic Implementation
 -- =============================================================================
 
--- | Helper to create an explicit equivalence relation MDD for K-logic.
+
 makeEquivRel :: [Prp] -> [Prp] -> K.RelMDD
 makeEquivRel vocab obsVars = Tagged final_mdd
   where
-    -- Start with Top in the relational context
     topRel = top
     combine mdd_acc p =
         let
@@ -106,7 +107,7 @@ makeEquivRel vocab obsVars = Tagged final_mdd
 
     final_mdd = foldl combine topRel obsVars
 
--- | Initialize K-logic Muddy Children Scene
+
 mudScnInitK :: Int -> Int -> K.BelScene
 mudScnInitK n m = (K.BlS vocab law obs_pair, actual)
   where
@@ -117,13 +118,13 @@ mudScnInitK n m = (K.BlS vocab law obs_pair, actual)
         let
             my_obs_vars = sort $ delete (intToPrp vocabAsPropsDomain i) vocab
             rel = makeEquivRel vocab my_obs_vars
-            agentIndex = i - 1  -- Use 0-based indices: child 1 -> index 0, child 2 -> index 1, etc.
+            agentIndex = i - 1
         in (show i, agentIndex, rel)
     obs_list = map buildObs [1..n]
     obs_pair = K.joinRelations obs_list
 
 
--- | Run the simulation in GHCi using K-Logic structures.
+
 runMuddyK :: Int -> Int -> IO ()
 runMuddyK n m = do
   putStrLn $ "Initializing K-puzzle with " ++ show n ++ " children, " ++ show m ++ " muddy."
@@ -135,8 +136,8 @@ runMuddyK n m = do
   let afterFather@(K.BlS _ statelaw obs_laws, _) = unsafeUpdate startState (father n)
   putStrLn "Round 0: Father announces 'At least one child is muddy'."
 
-  putStrLn "State Law first one:"
-  drawTree3 statelaw
+  -- putStrLn "State Law first one:"
+  -- drawTree3 statelaw
 
 
   -- putStrLn "Observation Laws:"
@@ -144,7 +145,7 @@ runMuddyK n m = do
   --     putStrLn $ "Agent " ++ agent
   --     drawTree3 (untag rel)
   --   ) (M.toList obs_laws)
-  putStrLn "==================================="
+  -- putStrLn "==================================="
 
   -- 3. Loop
   loopK 1 afterFather
@@ -163,8 +164,8 @@ runMuddyK n m = do
                 putStrLn $ "Round " ++ show round ++ ": Nobody knows. Announcing 'Nobody knows'..."
                 let nextScene@(K.BlS _ law obs_laws, _) = unsafeUpdate currentScene (nobodyknows n)
 
-                putStrLn "State Law: ---------------- "
-                drawTree3 law
+                -- putStrLn "State Law: ---------------- "
+                -- drawTree3 law
 
                 -- putStrLn "Observation Laws:"
                 -- mapM_ (\(agent, rel) -> do

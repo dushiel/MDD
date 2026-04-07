@@ -1,22 +1,20 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 
-module MDD.Interface where
+module MDD.Extra.Interface where
 
 import MDD.Types
-import MDD.Context
-import MDD.Manager
+import MDD.Traversal.Context
+import MDD.NodeLookup
 import MDD.Construction
-import MDD.Ops.Binary
-import MDD.Ops.Unary
-import MDD.Draw (settings, show_dd, debug)
+import MDD.Traversal.Binary
+import MDD.Traversal.Unary
+import MDD.Extra.Draw (settings, show_dd, debug)
 import Data.List
 import Data.Maybe (fromJust)
 import Data.List (foldl')
 
--- |======================================== Dd Manipulation operators interactive ==============================================
 
--- Constants for standard leaf nodes
 top_n, bot_n, unk_n :: Node
 top_n = (l_1, Leaf True)
 bot_n = (l_0, Leaf False)
@@ -28,25 +26,25 @@ bot = MDD (init_lookup, bot_n)
 unk = MDD (init_lookup, unk_n)
 
 var :: Path -> MDD
-var p = path init_lookup p
+var p = path p
 
 var' :: LevelL -> MDD
 var' l = makeNode init_lookup l
 
-(-.) :: MDD -> MDD
+(-.) :: MDD -> MDD -- Negation
 (-.) (MDD (la, a)) =
     let ctx = init_unary_context la
         (ctx', r) = negation ctx a
     in MDD (getLookup ctx', r)
 
-infix 2 .*.   -- Conjunction / product
+infix 2 .*.   -- Conjunction
 (.*.) :: MDD -> MDD -> MDD
 (.*.) (MDD (la, a)) (MDD (lb, b)) =
     let ctx = init_binary_context (unionNodeLookup la lb)
         (ctx', r) = apply @Dc ctx "inter" (fst a) (fst b)
     in MDD (getLookup ctx', r)
 
-infixl 3 .+.  -- Disjunction / sum
+infixl 3 .+.  -- Disjunction
 (.+.) :: MDD -> MDD -> MDD
 (.+.) (MDD (la, a)) (MDD (lb, b)) =
     let ctx = init_binary_context (unionNodeLookup la lb)
@@ -62,16 +60,16 @@ xor a b = (a .*. (-.) b) .+. ((-.) a .*. b)
 restrict :: Position -> Bool -> MDD -> MDD
 restrict n b (MDD (l, d)) =
     let ctx = init_unary_context l
-        (ctx', r) = restrict_node_set @Dc ctx [0 : n] b d
+        (ctx', r) = restrict_node_set @Dc ctx [0 : n] b d -- zero is added as for the top level
     in MDD (getLookup ctx', r)
 
--- | Convert a Position to a Path representation for BDD construction
+
 position_as_BDD :: Position -> Bool -> Path
 position_as_BDD [] _ = error "no list provided"
 position_as_BDD [n] b = if b then P'' [n] else P'' [-n]
 position_as_BDD (n : ns) b = P' [(n, Dc1, position_as_BDD ns b)]
 
--- | Swap variables in an MDD by swapping two lists of positions
+
 ddSwapVars :: MDD -> [Position] -> [Position] -> MDD
 ddSwapVars (MDD (mgr, z)) [n1] [n2] =
         ite (var $ position_as_BDD n2 True)
@@ -95,7 +93,7 @@ ddSwapVars (MDD (mgr, z)) (n1:ns1) (n2:ns2) =
       a00 = restrict n2 False (restrict n1 False (MDD (mgr, z)))
 ddSwapVars (MDD (mgr, z)) n1 n2 = error $ "not covered case? \n" ++ intercalate ", \n" [show_dd settings mgr z, show n1, show n2]
 
--- | Relabel a DD with a list of pairs.
+
 relabelWith :: [(Position, Position)] -> MDD -> MDD
 relabelWith r d = loop d disjointListOfLists where
   normalize [] = []
@@ -122,7 +120,7 @@ relabelWith r d = loop d disjointListOfLists where
   loop d_ [] = d_
   loop d_ (n:ns) = loop (uncurry (ddSwapVars d_) n) ns
 
--- | Simultaneous substitution.
+
 substitSimul :: [(Position, Node)] -> MDD -> MDD
 substitSimul [] m = m
 substitSimul ((n, psi) : ns) m =
@@ -130,46 +128,38 @@ substitSimul ((n, psi) : ns) m =
         (substitSimul ns (restrict n True m))
         (substitSimul ns (restrict n False m))
 
--- | Implication operator
+
 infixl 1 .->.
 (.->.) :: MDD -> MDD -> MDD
 (.->.) a b = (-.) a .+. b
 
--- | Equivalence operator
 infixl 1 .<->.
 (.<->.) :: MDD -> MDD -> MDD
 (.<->.) a b = (a .*. b) .+. ((-.) a .*. (-.) b)
 
--- | Conjunction over a list
 conSet :: [MDD] -> MDD
 conSet [] = top
 conSet (d:ds) = foldl' (.*.) d ds
 
--- | Disjunction over a list
 disSet :: [MDD] -> MDD
 disSet [] = bot
 disSet (d:ds) = foldl' (.+.) d ds
 
--- | XOR over a list
 xorSet :: [MDD] -> MDD
 xorSet [] = top
 xorSet (d:ds) = foldl' xor d ds
 
--- | Universal quantification over a single position
 forall :: Position -> MDD -> MDD
 forall n d = (restrict n False d) .*. (restrict n True d)
 
--- | Existential quantification over a single position
 exist :: Position -> MDD -> MDD
 exist n d = (restrict n False d) .+. (restrict n True d)
 
--- | Universal quantification over a list of positions
 forallSet :: [Position] -> MDD -> MDD
 forallSet [] d = d
 forallSet [n] d = forall n d
 forallSet (n : ns) d = (restrict n False (forallSet ns d)) .*. (restrict n True (forallSet ns d))
 
--- | Existential quantification over a list of positions
 existSet :: [Position] -> MDD -> MDD
 existSet [] d = d
 existSet [n] d = exist n d
