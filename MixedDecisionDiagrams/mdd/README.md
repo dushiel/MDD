@@ -174,7 +174,7 @@ drawTree3 $ example_mdd_1 .*. example_mdd_2
 
 Note that there are bugs expected still, some discovered and not yet improved, some undiscovered.
 
-`import MDD.Extra.Test` contains a test of everything (tautologies and handcrafted checks) that works. Calling `test` runs all tests.
+`import MDD.Extra.Test` contains a test of everything (tautologies and handcrafted checks) that works. Calling `test` runs all tests. A more extensive test suite is on the top of my todo list.
 
 An example of it working is modelchecking logic puzzles as modelled in SMCDEL with knowledge/belief-structs. This library contains an adapted version of SMCDELs modules.
 
@@ -220,7 +220,7 @@ Running the runSallyAnne with a True flag generates an output folder in the root
 
 Notably the K_MDD.hs module has some MDD specific changes, such that it show cases some of the added capabilities of the added variable domains. The mixing nature (the additional expressivity) of the MDD is not really show-case-able, in the sense that these problems are already representable in either one of BDDs or ZDDs - instead of requiring both.
 
-In `src\Examples\Ontology.hs` you can find a "simpel" example of modelling systems where MDDs can show both their mixed nature and their ability to model infinite variable domains.
+In `src\Examples\Bears.hs` you can find a "simpel" example of modelling systems where MDDs can show both their mixed nature and their ability to model infinite variable domains. I would really recommend reading this script as it doubles as a more in-depth tutorial for MDD modelling.
 
 In `src\MDD\Extra\MDDexplanation.md` you can find a more in depth explanation of the library and its design / codebase. Note that this file is mainly constructed for AI usage, and can sometimes be jarring to read for humans. A proper human readable report of the MDD library is still on the todo list.
 

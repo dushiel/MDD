@@ -13,7 +13,6 @@ import System.FilePath ((</>))
 
 
 
-
 -- The common, albeit oversimplified, survival rhyme for bear encounters is:
 -- "If it's brown, lay down; if it's black, fight back; if it's white, say goodnight"
 -- take that saying as a toy model to play around with MDDs
@@ -21,23 +20,33 @@ import System.FilePath ((</>))
 -- a naive model, with some assumptions to make it "work":
 -- it describes an agent.
 -- It has a visual input, an action choice it can make, and determines this based on rules in written language,
--- input gets mapped onto words -> rules onto sentences -> resulting words get mapped onto actions.
+-- input gets mapped onto words -> the words trigger sentence-based rules -> resulting words get mapped onto actions.
+-- when a single action of a predefined list is considered valid, it is chosen automatically
 
+-- Class address mapping:
+--   [1]       Visual Input (post classification by e.g. a CNN)
+--   [1,i]     Object i in visual input
+--   [1,i,1]   Shape classification of i (human-like, tree-like, bear-like, etc)
+--   [1,i,2]   Color classification of i (black, blue, red, yellow, etc)
+--   [2]       Sentence-based rule
+--   [2,i]     Word at position i in a sentence
+--   [2,i,j]   Symbol at position j in a word
+--   [3]       Actions (eat, lay-down, pray, fight, etc)
 
--- input visuals (e.g. neural network classifier which decides the most important shape and corresponding color in the current input visual):
---      colors (brown, black, white, blue, red, yellow, green, purple, etc)
---      recognizable_shapes (human-like, tree-like, bear-like, etc)
--- rule based sentences (e.g. provided by humans):
---      sentences are build up from any number of words, which in turn are build up from any number of symbols
---      for this toy model, the rules that can trigger actions consist of 4 words (2 input, 1 connector, 1 action, see explanation below)
--- actions options:
---      once only one action of a predefined list is considered valid, it is chosen automatically
---      predfined list, e.g.: eat, lay-down, pray, fight, etc
+-- the class domains are possibly infinite in the sense that they are extendable with any new <color, shape, symbol, word, action, sentence> variable one can think of
+-- this is an "advantage" of the class variable functionality of MDDs
 
--- scene 0 Alice sees no bear, but knows the saying
--- scene 1 Alice sees a black bear and runs.
+-- for this toy model, we assume that the rules that can trigger actions consist of 4 words:
+-- 2 input words (e.g. brown bear), 1 connector word ("then"), 1 action word (e.g. "lay-down")
+-- this becomes clearer when reading the code below
 
+-- the goal is to model:
+-- scene 0: the agent sees no bear, but knows the saying (as rules)
+-- scene 1: the agent (while knowing the rules) sees a black bear and runs.
 
+-- This toy model is not grounded in epistemic logic
+-- thus does not use SMCDEL's knowledge/belief structs
+-- (to avoid any confusion ;)
 
 -- ============================================================================
 -- Class [1]: Visual Input (objects of interest, their shape and color)
@@ -72,45 +81,34 @@ color i sl = var $ color_of i $ P'' [colors Map.! s | s <- sl]
 
 
 -- ============================================================================
--- Class [2]: Rules as given in Sentences / Words / Symbols
+-- Class [2]: Rules stated in Sentences / Words / Symbols
 -- ============================================================================
-
-sentence_label :: Path -> Path
-sentence_label c = P' [(2, Dc1, c)]
-
--- | A word (string) placed at a specific position in a sentence.
--- The non-specified words are inferred to be dc (to be able to combine them with other word_at , as long as those are at different positions),
--- and non-specified symbol position within the word are inferred to be Neg (single determined choice).
-word_at :: Int -> String -> MDD
-word_at pos "*" = var $ sentence_label $ P' [(pos, Dc1, P'' [0])]  -- wildcard: any word at this position (don't-care)
-word_at pos w   = var $ sentence_label $ P' [(pos, Dc1, wordPath w)]
-
-wordPath :: String -> Path
-wordPath w = P' [ symbolEntry j c | (j, c) <- zip [1..] w ]
-  where
-    symbolEntry j '*' = (j, Dc1, P'' [0])   -- wildcard: any symbol at this position (don't-care)
-    symbolEntry j c   = (j, Neg1, P'' [symbols Map.! c])
-
--- | End-of-sentence: after n words, remaining word positions are inferred to be Neg empty (to make it a single specified sentence).
--- Marks that no more words follow after position n (in Neg1 context).
--- Until position n, match any (Dc1 Top) words
-end_of_sentence :: Int -> MDD
-end_of_sentence n = var $
-    P' [(2, Neg1, P' [(j, Dc1, P'' [0]) | j <- [1..n]])]
-
--- Build a complete sentence as a conjunction of words at positions 1..n, and then limit such that no other words follow after n
-sentence :: [String] -> MDD
-sentence ws = conSet (wordMDDs ++ [endMarker])
-  where
-    wordMDDs  = [word_at pos w | (pos, w) <- zip [1..] ws]
-    endMarker = end_of_sentence (length ws)
 
 -- Possible infinte vocabulary of symbols for a word
 symbols :: Map.Map Char Int
-symbols = Map.fromList $ zip " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" [1..]
+symbols = Map.fromList $ zip "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890,.!?():-" [1..]
 
--- Wildcard support: "*" as a word in word_at means "any word" (Dc1 Top).
--- '*' as a character in wordPath means "any symbol at that position" (Dc1 Top).
+-- sub-path representing a single word (to be wrapped by word position in sentence)
+wordPath :: String -> Path
+wordPath w = P' [ symbolEntry j c | (j, c) <- zip [1..] w ]
+  where
+    symbolEntry j '*' = (j, Dc1, P'' [0])   -- wildcard symbol special case: any symbol is allowed at this position (don't-care Top)
+    symbolEntry j c   = (j, Neg1, P'' [symbols Map.! c]) -- symbols are in Neg1, because only the selected symbol is positive, all other symbols are inferred to be negative (not present/allowed)
+
+-- | A word (string) placed at a specific position in a sentence.
+-- The non-specified words are inferred to be dc (to be able to combine them with other word_at's, as long as those are at different positions),
+word_at :: Int -> String -> Path
+word_at pos "*" = P' [(pos, Dc1, P'' [0])]  -- wildcard word special case: any word at this position (don't-care)
+word_at pos w   = P' [(pos, Neg1, wordPath w)]
+-- wordPath is in Neg inference such that all symbols after len(w) are inferred to be Neg
+
+-- Build a sentence MDD from a path of words at positions 1..n, where Neg1 context indicates that all other words after position n evaluate negatively
+sentence :: [String] -> MDD
+sentence ws = var $ P' [(2, Neg1, P' wordEntries)]
+  where
+    wordEntries = concatMap unP' [word_at pos w | (pos, w) <- zip [1..] ws]
+    unP' (P' xs) = xs
+    unP' _       = []
 
 -- ============================================================================
 -- Class [3]: Actions, selected to be executed when only one is valid
@@ -146,8 +144,11 @@ rules = disSet [rule1, rule2, rule3]
 
 
 -- ============================================================================
--- Scenes: visual input triggers rule -> action activation
+-- agent_specifics for rules: visual input triggers input-words in rule which triggers action-words for action selection
 -- ============================================================================
+
+
+-- Remember word "wildcard": "*" allows any word
 
 -- "seeing bear-like + brown" implies input words "bear" "brown"
 scene_brown_bear :: MDD
@@ -171,11 +172,16 @@ word4_to_action = conSet
 agent_specifics :: MDD
 agent_specifics = conSet [scene_brown_bear, scene_black_bear, scene_white_bear, word4_to_action]
 
--- Scene 0: Alice sees no bear, but knows the saying (rules are loaded)
+-- ============================================================================
+-- scenes
+-- ============================================================================
+
+
+-- Scene 0: The agent sees no bear, but knows the saying (rules are loaded)
 scene0 :: MDD
 scene0 = agent_specifics .*. rules
 
--- Scene 1: Alice sees a black bear
+-- Scene 1: The agent sees a black bear
 scene1 :: MDD
 scene1 = conSet [scene0, shape 1 ["bear-like"], color 1 ["black"]]
 
@@ -187,16 +193,6 @@ check = top == (scene1 .->. action "fight")
 -- ============================================================================
 -- Visualization / Naming
 -- ============================================================================
-
--- Class address mapping:
---   [1]       Visual Input
---   [1,i]     Object i
---   [1,i,1]   Shape
---   [1,i,2]   Color
---   [2]       Sentences
---   [2,i]     Word i
---   [2,i,j]   Symbol j
---   [3]       Actions
 
 -- | English ordinal suffix for a number: 1 -> "1st", 2 -> "2nd", etc.
 ordinal :: Int -> String
@@ -223,13 +219,9 @@ namingMap = Map.unions
   , Map.fromList [ ([0,2,w], ordinal w ++ " word") | w <- [1..4] ]
     -- Symbol-position names: [0,2,w,s] -> "1st symbol", "2nd symbol", ...
   , Map.fromList [ ([0,2,w,s], ordinal s ++ " symbol") | w <- [1..4], s <- [1..8] ]
-    -- Leaf-level: shape values at [0,1,1,1]
   , domainNaming [0,1,1,1] shapes
-    -- Leaf-level: color values at [0,1,1,2]
   , domainNaming [0,1,1,2] colors
-    -- Leaf-level: symbol values at [0,2,w,s] for each word position w and symbol position s
   , Map.unions [ domainNamingC [0,2,w,s] symbols | w <- [1..4], s <- [1..8] ]
-    -- Leaf-level: action values at [0,3]
   , domainNaming [0,3] actions
   ]
 
@@ -260,12 +252,11 @@ run = do
   putStrLn "\n=== Agent specifics (visuals-to-words + 4th-word-to-action) ==="
   generateNamed "agent_specifics" agent_specifics
 
-  putStrLn "\n=== Scene 0: Alice knows the saying ==="
+  putStrLn "\n=== Scene 0: The agent knows the saying ==="
   generateNamed "scene0_rules" scene0
 
-  putStrLn "\n=== Scene 1: Alice sees a black bear ==="
+  putStrLn "\n=== Scene 1: The agent sees a black bear ==="
   generateNamed "scene1_black_bear" scene1
 
   putStrLn $ "\nCheck (seeing black bear -> fight == Top): " ++ show check
   putStrLn "Done. Output in output/bears/"
-
