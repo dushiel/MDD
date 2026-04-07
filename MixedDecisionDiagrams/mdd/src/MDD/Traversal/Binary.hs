@@ -56,21 +56,16 @@ withCache c@BCxt{bin_cache = nc, bin_dc_stack = dck} ((keyA, _), (keyB, _), keyF
 
 
 -- | The Dd1 typeclass defines binary operations (union, intersection) parameterized by
--- | the inference type @a@ (Dc, Neg, or Pos). The inference type determines which elimination
--- | rules are applied during traversal (see DdF3 in MDD.Traversal).
+-- | the inference type @a@ (any of Dc, Neg, Pos, NegDc, DcNeg, PosDc, DcPos).
+-- | Compound types encode asymmetric traversal where one operand is in Dc role.
+-- | See DdF3 in MDD.Traversal.Support for per-mode method implementations.
 
 type Dd1 :: Inf -> Constraint
 class Dd1 a where
+    -- | Unified leaf/terminal dispatcher (handles all seven Inf modes).
     leaf_cases :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
-    dcB_leaf_cases :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
-    dcA_leaf_cases :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
     apply :: BiOpContext -> String -> NodeId -> NodeId -> (BiOpContext, Node)
-    applyDcB :: BiOpContext -> String -> NodeId -> NodeId -> (BiOpContext, Node)
-    applyDcA :: BiOpContext -> String -> NodeId -> NodeId -> (BiOpContext, Node)
-
     apply' :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
-    applyDcB' :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
-    applyDcA' :: BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
     endclass_case :: BiOpContext -> String -> NodeId -> NodeId -> NodeId -> NodeId -> (BiOpContext, Node)
 
 instance (DdF3 a, Dd1_helper a) => Dd1 a where
@@ -79,29 +74,23 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
         | a == b    = (c, getNode c a)
         | otherwise = debug_manipulation (apply' @a c s (getNode c a) (getNode c b)) s (s ++ to_str @a) c (getNode c a) (getNode c b)
 
-    -- | Main binary operation dispatcher. Handles all combinations of node types.
-    -- | Pattern matches are ordered from most specific to most general.
+    -- | Unified binary operation dispatcher for all seven Inf modes.
+    -- | Compound modes (NegDc, DcNeg, PosDc, DcPos) behave identically to the simple
+    -- | modes structurally; the asymmetry is captured by DdF3 method dispatch
+    -- | (inferNodeA/B, applyElimRule, inferClassNodeForA/B).
 
     -- Cases 1-4: At least one argument is a terminal (Leaf or Unknown)
-    --   -> Delegate to leaf_cases for terminal handling
     apply' c s a@(_, Leaf _) b = leaf_cases @a c s a b
     apply' c s a b@(_, Leaf _) = leaf_cases @a c s a b
     apply' c s a@(_, Unknown) b = leaf_cases @a c s a b
     apply' c s a b@(_, Unknown) = leaf_cases @a c s a b
 
-    -- Case 5: Both arguments are EndClassNode (both exiting their respective classes)
-    --   -> Pop the inference type stack to determine which inference context to use
-    --   -> Then apply operation in the parent class context
+    -- Case 5: Both arguments are EndClassNode — pop level stack and re-dispatch
     apply' c s a@(a_id, EndClassNode ac) b@(b_id, EndClassNode bc) = withCache c (a, b, s) $
         endclass_case @a c s a_id b_id ac bc
 
-    -- Cases 6-8: Both arguments are regular Nodes (variable nodes)
-    --   -> Compare positions to determine traversal strategy
-    apply' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
-        -- Case 6: Positions match (same variable)
-        --   -> Traverse both positive and negative branches in parallel
-        --   -> traverse_dc synchronizes dc_stack traversal with main traversal (handles "catch-up")
-        --   -> reset_stack_bin restores original stack state between branches
+    -- Cases 6-8: Both arguments are regular Nodes
+    apply' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, Node positionB pos_childB neg_childB)
         | positionA == positionB =
             let c_ = traverse_dc @a MvPos c a_id b_id
                 (c', (pos_result, _)) = apply @a c_ s pos_childA pos_childB
@@ -109,282 +98,145 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
                 c_' = traverse_dc @a MvNeg (reset_stack_bin c' c) a_id b_id
                 (c'', (neg_result, _)) = apply @a c_' s neg_childA neg_childB
             in withCache c (a, b, s) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
-        -- Case 7: positionA < positionB (A's variable comes before B's in ordering)
         | positionA < positionB = uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
-        -- Case 8: positionA > positionB (B's variable comes before A's)
         | positionA > positionB = uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
 
-    -- Cases 9-12: ClassNode vs Node (entering/exiting class hierarchy)
-    apply' c s a@(a_id, ClassNode positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
+    -- Cases 9-12: ClassNode vs Node
+    apply' c s a@(a_id, ClassNode positionA _ _ _) b@(b_id, Node positionB _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        -- Case 9: positionA > positionB (ClassNode's class comes after Node's variable)
         | positionA > positionB = withCache c (a, b, s) $
                 uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
-        -- Case 10: positionA < positionB (ClassNode's class comes before Node's variable)
-        --   -> Need to enter the class hierarchy: applyClassB wraps Node in the class context
         | positionA < positionB = withCache c (a, b, s) $
                 applyClassB @a c s a b
-    apply' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, ClassNode positionB _ _ _)
+    apply' c s a@(a_id, Node positionA _ _) b@(b_id, ClassNode positionB _ _ _)
         | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
         | positionA > positionB = withCache c (a, b, s) $
                 applyClassA @a c s a b
-        -- Case 12: positionA < positionB (Node's variable comes before ClassNode's class)
         | positionA < positionB = withCache c (a, b, s) $
                 uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
 
-    -- Cases 13-15: Both arguments are ClassNode (class hierarchy operations)
-    apply' c s a@(a_id, ClassNode positionA _ _ _)  b@(b_id, ClassNode positionB _ _ _)
-        -- Case 13: Positions match (same class)
+    -- Cases 13-15: Both arguments are ClassNode
+    apply' c s a@(a_id, ClassNode positionA _ _ _) b@(b_id, ClassNode positionB _ _ _)
         | positionA == positionB = withCache c (a, b, s) $ applyClass @a c s a b
-        | positionA < positionB = withCache c (a, b, s) $ applyClassB @a c s a b
-        | positionA > positionB = withCache c (a, b, s) $ applyClassA @a c s a b
+        | positionA < positionB  = withCache c (a, b, s) $ applyClassB @a c s a b
+        | positionA > positionB  = withCache c (a, b, s) $ applyClassA @a c s a b
 
-    -- Cases 16-19: EndClassNode vs Node (hierarchy mismatch)
-    --   -> EndClassNode means we're exiting a class, but Node / ClassNode means we're still in that class
-    --   -> Need to infer what the EndClassNode's argument should be at the Node's position
-    apply' c s a@(a_id, EndClassNode _) b@(b_id, Node idx _ _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
-    apply' c s a@(a_id, Node{}) b@(b_id, EndClassNode _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
+    -- Cases 16-19: EndClassNode vs Node/ClassNode
+    apply' c s a@(a_id, EndClassNode _) b@(b_id, Node{})     = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
+    apply' c s a@(a_id, Node{})         b@(b_id, EndClassNode _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
+    apply' c s a@(_, EndClassNode _)    b@(_, ClassNode{})   = withCache c (a, b, s) $ applyClassA @a c s a b
+    apply' c s a@(_, ClassNode{})       b@(_, EndClassNode _) = withCache c (a, b, s) $ applyClassB @a c s a b
 
-    apply' c s a@(_, EndClassNode _) b@(_, ClassNode{}) = withCache c (a, b, s) $
-        applyClassA @a c s a b
-    apply' c s a@(_, ClassNode{}) b@(_, EndClassNode _) = withCache c (a, b, s) $
-        applyClassB @a c s a b
-
-    -- | Handles all cases where at least one argument is a terminal value (Leaf, Unknown).
-    -- | This function dispatches to specialized handlers based on the combination of terminal types.
+    -- | Unified leaf/terminal handler for all seven Inf modes.
+    -- | Unknown resolution uses DdF3 methods (aUnknownReturn, bUnknownReturn, dcAMode, dcBMode,
+    -- | popADropLevel, popBDropLevel) so compound modes inherit the correct Dc-asymmetric behavior.
     leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
-    leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b )
-    leaf_cases c s a@(a_id, Leaf True) b@(b_id, EndClassNode bc) = withCache c (a, b, s) $
-        endclass_case @a c s a_id b_id (1,0) bc
-    leaf_cases c s a@(a_id, EndClassNode ac) b@(b_id, Leaf True) = withCache c (a, b, s) $
-        endclass_case @a c s a_id b_id ac (1,0)
-    leaf_cases c s a@(a_id, Leaf False) b@(b_id, EndClassNode bc) = withCache c (a, b, s) $
-        endclass_case @a c s a_id b_id (2,0) bc
-    leaf_cases c s a@(a_id, EndClassNode ac) b@(b_id, Leaf False) = withCache c (a, b, s) $
-        endclass_case @a c s a_id b_id ac (2,0)
-    leaf_cases c s a@(a_id, Leaf _) b@(b_id, ClassNode{}) = withCache c (a, b, s) $
-        applyClassA @a c s a b
-    leaf_cases c s a@(a_id, ClassNode {}) b@(b_id, Leaf _) = withCache c (a, b, s) $
-        applyClassB @a c s a b
+    leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
+    leaf_cases c s a@(a_id, Leaf boolA) b@(b_id, EndClassNode bc) = 
+        withCache c (a, b, s) $ endclass_case @a c s a_id b_id (if boolA then (1,0) else (2,0)) bc
+    leaf_cases c s a@(a_id, EndClassNode ac) b@(b_id, Leaf boolB) = 
+        withCache c (a, b, s) $ endclass_case @a c s a_id b_id ac (if boolB then (1,0) else (2,0))
+    -- Leaf vs ClassNode: use inferClassNodeForA/B so compound modes wrap with the correct projection.
+    leaf_cases c s a@(_, Leaf _)     b@(_, ClassNode{}) = withCache c (a, b, s) $ applyClassA @a c s a b
+    leaf_cases c s a@(_, ClassNode{}) b@(_, Leaf _)     = withCache c (a, b, s) $ applyClassB @a c s a b
 
-    -- Unknown resolution
-    --   -> When Unknown is encountered, we need to look up the dc branch from the dc_stack
-    --   -> dcA and dcB are the continuous branches for arguments A and B respectively
-    leaf_cases c s a@(_, Unknown) b@(_, Unknown) = (c , a)  -- Both Unknown: return first (they'll resolve the same as in dcR, no matter whether union or intersection is used)
-    leaf_cases c s a@(_, Unknown) b =
-        let (c', dcA) = pop_dcA' c
-        in applyDcA' @a c' s dcA b
-    leaf_cases c s a b@(_, Unknown) =
-        let (c', dcB) = pop_dcB' c
-        in applyDcB' @a c' s a dcB
+    -- Unknown resolution (unified across all Inf modes via DdF3 methods)
+    leaf_cases c s a@(_, Unknown) b@(_, Unknown) = (c, a)
+    leaf_cases c s a@(_, Unknown) b
+        | aUnknownReturn @a = (c, a)
+        | otherwise =
+            let (c', dcA) = pop_dc_stack DcA (popADropLevel @a) c
+            in apply'_with (dcAMode @a) c' s dcA b
+    leaf_cases c s a b@(_, Unknown)
+        | bUnknownReturn @a = (c, b)
+        | otherwise =
+            let (c', dcB) = pop_dc_stack DcB (popBDropLevel @a) c
+            in apply'_with (dcBMode @a) c' s a dcB
 
-    -- Cases 12-13: Union/Intersection base cases for Leaf vs Leaf
-    --   -> Union: True is dominant
-    --   -> Intersection: False is dominant
-    --   -> absorb ensures result is canonical (may replace with Unknown if redundant)
-    leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, a) else (c, b)
-    leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, b) else (c, a)
+    -- Leaf vs Leaf base cases
+    leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf _) = if boolA then (c, a) else (c, b)
+    leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf _) = if boolA then (c, b) else (c, a)
 
     leaf_cases c s a b = error ("leaf case: " ++ s)
 
--- | ======================== DC versions (Argument B is DC type) ========================
--- |
--- | These functions handle binary operations where argument B comes from a Dc (continuous/don't-care) branch.
--- | The key difference is that when inferring nodes for B, we use @Dc@ inference rules instead of @a@.
--- | This is because B represents the continuous background, so its elimination rules follow Dc semantics.
-    -- |   - When inferring nodes for B, uses @Dc@ inference rules (inferNodeB @Dc)
-    -- |   - Cache key includes "Dc" suffix to distinguish from regular operations
-    -- |   - All cases mirror apply' but with Dc-specific inference for argument B
-
-    -- | Entry point for applyDcB: converts NodeIds to Nodes and wraps with debug
-    applyDcB c s a b = debug_manipulation (applyDcB' @a c s (getNode c a) (getNode c b)) s (s ++ "DcB " ++ to_str @a) c (getNode c a) (getNode c b)
-
-    -- Cases 1-4: Terminal values -> delegate to dcB_leaf_cases
-    applyDcB' c s a@(_, Leaf _) b = dcB_leaf_cases @a c s a b
-    applyDcB' c s a b@(_, Leaf _) = dcB_leaf_cases @a c s a b
-    applyDcB' c s a@(_, Unknown) b = dcB_leaf_cases @a c s a b
-    applyDcB' c s a b@(_, Unknown) = dcB_leaf_cases @a c s a b
-
-    -- Cases 5-6: EndClassNode vs Node (note: B uses @Dc@ inference when inferring)
-    applyDcB' c s a@(a_id, EndClassNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeA @a (applyDcB' @a) c s a b)
-    applyDcB' c s a@(a_id, Node{}) b@(b_id, EndClassNode _) = withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeB @Dc (applyDcB' @a) c s a b)
-    applyDcB' c s a@(a_id, EndClassNode ac) b@(b_id, EndClassNode bc) = withCache c (a, b, (s ++ "Dc")) $
-        endclass_case @a c s a_id b_id ac bc
-
-    -- Cases 7-9: Node vs Node (B is from Dc, so uses @Dc@ inference when positionA < positionB)
-    applyDcB' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
-        | positionA == positionB =
-            let c_ = traverse_dc @a MvPos c a_id b_id
-                (c', (pos_result, _)) = applyDcB @a c_ s pos_childA pos_childB
-
-                c_' = traverse_dc @a MvNeg (reset_stack_bin c' c) a_id b_id
-                (c'', (neg_result, _)) = applyDcB @a c_' s neg_childA neg_childB
-            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
-        | positionA < positionB = uncurry (applyElimRule @a) (inferNodeB @Dc (applyDcB' @a) c s a b)  -- B is Dc, use @Dc@ inference
-        | positionA > positionB = uncurry (applyElimRule @a) (inferNodeA @a (applyDcB' @a) c s a b)
-
-    -- Cases 10-15: ClassNode vs Node/ClassNode/EndClassNode (similar to apply', but B uses @Dc@ when wrapping)
-    applyDcB' c s a@(a_id, ClassNode positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
-                uncurry (applyElimRule @a) (inferNodeA @a (applyDcB' @a) c s a b)
-        | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
-                applyClassBAs @Dc @a c s a b  -- B is Dc
-    applyDcB' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, ClassNode positionB _ _ _)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
-                uncurry (applyElimRule @a) (inferNodeB @Dc (applyDcB' @a) c s a b)  -- B is Dc
-        | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
-                applyClassA @a c s a b
-    applyDcB' c s a@(a_id, ClassNode positionA _ _ _)  b@(b_id, ClassNode positionB _ _ _)
-        | positionA == positionB = applyClass @a c s a b
-        | positionA < positionB = applyClassBAs @Dc @a c s a b  -- wrap B as Dc, process with outer context @a
-        | positionA > positionB = applyClassA @a c s a b
-    applyDcB' c s a@(_, EndClassNode _) b@(_, ClassNode{}) = withCache c (a, b, (s ++ "Dc")) $ applyClassA @a c s a b
-    applyDcB' c s a@(_, ClassNode{}) b@(_, EndClassNode _) = withCache c (a, b, (s ++ "Dc")) $ applyClassBAs @Dc @a c s a b
-
-
-    dcB_leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s ++ "Dc") $ uncurry (applyElimRule @a) (inferNodeA @a (applyDcB' @a) c s a b )
-    dcB_leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s ++ "Dc") $ uncurry (applyElimRule @a) (inferNodeB @Dc (applyDcB' @a) c s a b)  -- B is Dc
-    dcB_leaf_cases c s a@(a_id, Leaf True) b@(b_id, EndClassNode bc) = withCache c (a, b, s ++ "Dc") $
-        endclass_case @a c s a_id b_id (1,0) bc
-    dcB_leaf_cases c s a@(a_id, EndClassNode ac) b@(b_id, Leaf True) = withCache c (a, b, s ++ "Dc") $
-        endclass_case @a c s a_id b_id ac (1,0)
-    dcB_leaf_cases c s a@(a_id, Leaf False) b@(b_id, EndClassNode bc) = withCache c (a, b, s ++ "Dc") $
-        endclass_case @a c s a_id b_id (2,0) bc
-    dcB_leaf_cases c s a@(a_id, EndClassNode ac) b@(b_id, Leaf False) = withCache c (a, b, s ++ "Dc") $
-        endclass_case @a c s a_id b_id ac (2,0)
-    dcB_leaf_cases c s a@(a_id, Leaf _) b@(b_id, ClassNode{}) = withCache c (a, b, s ++ "Dc") $
-        applyClassA @a c s a b
-    dcB_leaf_cases c s a@(a_id, ClassNode {}) b@(b_id, Leaf _) = withCache c (a, b, s ++ "Dc") $
-        applyClassBAs @Dc @a c s a b  -- wrap B as Dc, process with outer context @a
-
-    -- Unknown resolution: if A is Unknown, return it (it will resolve to dcA elsewhere)
-    -- If B is Unknown, resolve it by popping dcB from stack
-    dcB_leaf_cases c s a@(_, Unknown) b = (c, a)  -- A is Unknown, return as-is
-    dcB_leaf_cases c s a b@(_, Unknown) =  -- B is Unknown, resolve from dcB
-        let (c', dcB) = pop_dcB'' c
-        in applyDcB' @a c' s a dcB
-    dcB_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, a) else (c, b)
-    dcB_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, b) else (c, a)
-
--- | ======================== DcA versions (Argument A is DC type) ========================
--- |
--- | These functions handle binary operations where argument A comes from a Dc (continuous/don't-care) branch.
--- | The key difference is that when inferring nodes for A, we use @Dc@ inference rules instead of @a@.
--- | This is the mirror of applyDcB, but for argument A.
-    -- |   - When inferring nodes for A, uses @Dc@ inference rules (inferNodeA @Dc)
-    -- |   - Cache key includes "Dc" suffix to distinguish from regular operations
-    -- |   - All cases mirror apply' but with Dc-specific inference for argument A
-
-
-    -- | Entry point for applyDcA: converts NodeIds to Nodes and wraps with debug
-    applyDcA c s a b = debug_manipulation (applyDcA' @a c s (getNode c a) (getNode c b)) s (s ++ "DcA " ++ to_str @a) c (getNode c a) (getNode c b)
-
-    -- Cases 1-4: Terminal values -> delegate to dcA_leaf_cases
-    applyDcA' c s a@(_, Leaf _) b = dcA_leaf_cases @a c s a b
-    applyDcA' c s a b@(_, Leaf _) = dcA_leaf_cases @a c s a b
-    applyDcA' c s a@(_, Unknown) b = dcA_leaf_cases @a c s a b
-    applyDcA' c s a b@(_, Unknown) = dcA_leaf_cases @a c s a b
-
-    -- Cases 5-6: EndClassNode vs Node (note: A uses @Dc@ inference when inferring)
-    applyDcA' c s a@(a_id, EndClassNode _) b@(b_id, Node idx _ _) = withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeA @Dc (applyDcA' @a) c s a b)   -- A is Dc
-    applyDcA' c s a@(a_id, Node{}) b@(b_id, EndClassNode _) = (withCache c (a, b, (s ++ "Dc")) $ uncurry (applyElimRule @a) (inferNodeB @a (applyDcA' @a) c s a b))
-    applyDcA' c s a@(a_id, EndClassNode ac) b@(b_id, EndClassNode bc) = withCache c (a, b, (s ++ "Dc")) $
-        endclass_case @a c s a_id b_id ac bc
-
-    -- Cases 7-9: Node vs Node (A is from Dc, so uses @Dc@ inference when positionA > positionB)
-    applyDcA' c s a@(a_id, Node positionA pos_childA neg_childA)  b@(b_id, Node positionB pos_childB neg_childB)
-        | positionA == positionB =
-            let c_ = traverse_dc @a MvPos c a_id b_id
-                (c', (pos_result, _)) = applyDcA @a c_ s pos_childA pos_childB
-
-                c_' = traverse_dc @a MvNeg (reset_stack_bin c' c) a_id b_id
-                (c'', (neg_result, _)) = applyDcA @a c_' s neg_childA neg_childB
-            in withCache c (a, b, (s ++ "Dc")) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
-        | positionA < positionB = uncurry (applyElimRule @a) (inferNodeB @a (applyDcA' @a) c s a b)
-        | positionA > positionB = uncurry (applyElimRule @a) (inferNodeA @Dc (applyDcA' @a) c s a b)  -- A is Dc, use @Dc@ inference
-
-    -- Cases 10-15: ClassNode vs Node/ClassNode/EndClassNode (similar to apply', but A uses @Dc@ when wrapping)
-    applyDcA' c s a@(a_id, ClassNode positionA _ _ _) b@(b_id, Node positionB pos_childB neg_childB)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
-                uncurry (applyElimRule @a) (inferNodeA @Dc (applyDcA' @a) c s a b)  -- A is Dc
-        | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
-                applyClassB @a c s a b
-    applyDcA' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, ClassNode positionB _ _ _)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA < positionB = withCache c (a, b, (s ++ "Dc")) $
-                uncurry (applyElimRule @a) (inferNodeB @a (applyDcA' @a) c s a b)
-        | positionA > positionB = withCache c (a, b, (s ++ "Dc")) $
-                applyClassAAs @Dc @a c s a b  -- A is Dc
-    applyDcA' c s a@(a_id, ClassNode positionA _ _ _)  b@(b_id, ClassNode positionB _ _ _)
-        | positionA == positionB = applyClass @a c s a b
-        | positionA < positionB = applyClassB @a c s a b
-        | positionA > positionB = applyClassAAs @Dc @a c s a b  -- wrap A as Dc, process with outer context @a
-    applyDcA' c s a@(_, EndClassNode _) b@(_, ClassNode{}) = withCache c (a, b, (s ++ "Dc")) $ applyClassAAs @Dc @a c s a b
-    applyDcA' c s a@(_, ClassNode{}) b@(_, EndClassNode _) = withCache c (a, b, (s ++ "Dc")) $ applyClassB @a c s a b
-
-    dcA_leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s ++ "Dc") $ uncurry (applyElimRule @a) (inferNodeA @Dc (applyDcA' @a) c s a b )  -- A is Dc
-    dcA_leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s ++ "Dc") $ uncurry (applyElimRule @a) (inferNodeB @a (applyDcA' @a) c s a b)
-    dcA_leaf_cases c s a@(a_id, Leaf True) b@(b_id, EndClassNode bc) = withCache c (a, b, s ++ "Dc") $
-        endclass_case @a c s a_id b_id (1,0) bc
-    dcA_leaf_cases c s a@(a_id, EndClassNode ac) b@(b_id, Leaf True) = withCache c (a, b, s ++ "Dc") $
-        endclass_case @a c s a_id b_id ac (1,0)
-    dcA_leaf_cases c s a@(a_id, Leaf False) b@(b_id, EndClassNode bc) = withCache c (a, b, s ++ "Dc") $
-        endclass_case @a c s a_id b_id (2,0) bc
-    dcA_leaf_cases c s a@(a_id, EndClassNode ac) b@(b_id, Leaf False) = withCache c (a, b, s ++ "Dc") $
-        endclass_case @a c s a_id b_id ac (2,0)
-    dcA_leaf_cases c s a@(a_id, Leaf _) b@(b_id, ClassNode{}) = withCache c (a, b, s ++ "Dc") $
-        applyClassAAs @Dc @a c s a b  -- wrap A as Dc, process with outer context @a
-    dcA_leaf_cases c s a@(a_id, ClassNode {}) b@(b_id, Leaf _) = withCache c (a, b, s ++ "Dc") $
-        applyClassB @a c s a b
-
-    -- Unknown resolution: if A is Unknown, resolve it by popping dcA from stack
-    -- If B is Unknown, return it as-is (it will resolve to dcB elsewhere)
-    dcA_leaf_cases c s a@(_, Unknown) b =  -- A is Unknown, resolve from dcA
-        let (c', dcA) = pop_dcA'' c
-        in applyDcA' @a c' s dcA b
-    dcA_leaf_cases c s a b@(_, Unknown) = (c, b)  -- B is Unknown, return as-is
-    dcA_leaf_cases c "union" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, a) else (c, b)
-    dcA_leaf_cases c "inter" a@(_, Leaf boolA) b@(_, Leaf boolB) = if boolA then (c, b) else (c, a)
-
-    -- | Handles the case when both arguments are EndClassNode (both exiting their class hierarchies).
-    -- | This function:
-    -- |   1. Pops the inference type stack to determine which inference contexts (Dc/Neg/Pos) were used
-    -- |   2. Applies the appropriate binary operation based on the combination of inference types
-    -- |   3. Wraps the result in an EndClassNode to maintain the class hierarchy structure
-    -- | The inference type combinations determine which version of apply to use
-
-    endclass_case c s a_id b_id ac bc = let
-        (c_, (infA, infB)) = pop_stack' c
-        c' = traverse_dc @a ExitClass c_ a_id b_id
-        (c'', (r, _)) = case (infA, infB) of
-            (Dc, Dc) -> apply @Dc c' s ac bc
-            (Neg, Neg) -> apply @Neg c' s ac bc
-            (Pos, Pos) -> apply @Pos c' s ac bc
-            (Neg, Dc) -> applyDcB @Neg c' s ac bc
-            (Pos, Dc) -> applyDcB @Pos c' s ac bc
-            (Dc, Neg) -> applyDcA @Neg c' s ac bc
-            (Dc, Pos) -> applyDcA @Pos c' s ac bc
-            r'@(_, _) -> error ("weird combination after pop stack: " ++ show r')
+    -- | Pops the level stack, maps (infA, infB) to the appropriate Inf mode,
+    -- | and re-dispatches via apply_with. Compound pairs produced by applyClass'
+    -- | (e.g. NegDc, NegDc) now round-trip correctly back into compound apply.
+    endclass_case c s a_id b_id ac bc =
+        let (c_, (infA, infB)) = pop_stack' c
+            c' = traverse_dc @a ExitClass c_ a_id b_id
+            (c'', (r, _)) = apply_with (pairToInf infA infB) c' s ac bc
         in applyElimRule @a (reset_stack_bin c'' c) (EndClassNode r)
+
+
+-- | Map a (infA, infB) level-stack pair to the unified Inf mode for apply_with.
+-- | Symmetric pairs map to the simple mode; asymmetric / compound pairs map to
+-- | the corresponding compound constructor.  Legacy (Neg,Dc) etc. arise when
+-- | pop_dcA'/pop_dcB' mutate the level entry before endclass_case is reached.
+pairToInf :: Inf -> Inf -> Inf
+pairToInf Dc    Dc    = Dc
+pairToInf Neg   Neg   = Neg
+pairToInf Pos   Pos   = Pos
+pairToInf NegDc NegDc = NegDc
+pairToInf DcNeg DcNeg = DcNeg
+pairToInf PosDc PosDc = PosDc
+pairToInf DcPos DcPos = DcPos
+pairToInf DcDcA DcDcA = DcDcA
+pairToInf DcDcB DcDcB = DcDcB
+-- Legacy asymmetric primitive pairs (pop_dcA'/pop_dcB' mutated a simple level entry to Dc):
+pairToInf Neg   Dc    = NegDc
+pairToInf Pos   Dc    = PosDc
+pairToInf Dc    Neg   = DcNeg
+pairToInf Dc    Pos   = DcPos
+-- Compound level vs bare Dc (pop_dc_stack dropLevel in a compound context promotes the parent
+-- entry to Dc, while the other side still holds the compound entry from one level up):
+pairToInf NegDc Dc    = NegDc  -- B resolved Unknown; A-side compound context unchanged
+pairToInf PosDc Dc    = PosDc
+pairToInf Dc    DcNeg = DcNeg  -- A resolved Unknown; B-side compound context unchanged
+pairToInf Dc    DcPos = DcPos
+pairToInf DcDcA Dc    = DcDcA
+pairToInf Dc    DcDcB = DcDcB
+pairToInf a     b     = error ("pairToInf: unexpected level-stack pair: " ++ show a ++ ", " ++ show b)
+
+
+-- | Runtime dispatch on Inf to select the appropriate apply entry point.
+-- | Used by leaf_cases for Unknown resolution and by applyClass' for inner branches.
+apply_with :: Inf -> BiOpContext -> String -> NodeId -> NodeId -> (BiOpContext, Node)
+apply_with Dc    = apply @Dc
+apply_with Neg   = apply @Neg
+apply_with Pos   = apply @Pos
+apply_with NegDc = apply @NegDc
+apply_with DcNeg = apply @DcNeg
+apply_with PosDc = apply @PosDc
+apply_with DcPos = apply @DcPos
+apply_with DcDcA = apply @DcDcA
+apply_with DcDcB = apply @DcDcB
+
+-- | Runtime dispatch on Inf to select the appropriate apply' entry point.
+apply'_with :: Inf -> BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
+apply'_with Dc    = apply' @Dc
+apply'_with Neg   = apply' @Neg
+apply'_with Pos   = apply' @Pos
+apply'_with NegDc = apply' @NegDc
+apply'_with DcNeg = apply' @DcNeg
+apply'_with PosDc = apply' @PosDc
+apply'_with DcPos = apply' @DcPos
+apply'_with DcDcA = apply' @DcDcA
+apply'_with DcDcB = apply' @DcDcB
+
 
 -- | ======================== ClassNode Application Logic ========================
 -- |
--- | These functions handle binary operations when at least one argument is an ClassNode (class-defining node).
+-- | Algorithm:
+-- |   1. Compute dcR via apply @Dc on the two dc children.
+-- |   2. Compute nR via apply_with (negClassInf @a) on the neg children.
+-- |      Under compound modes (e.g. NegDc) this stays in the compound mode,
+-- |      so the Dc-asymmetry is preserved across nested class boundaries.
+-- |   3. Compute pR via apply_with (posClassInf @a) on the pos children.
+-- |   4. Absorb nR and pR against dcR; combine into ClassNode.
 -- |
--- | The algorithm:
--- |   1. First compute dcR (the resulting continuous branch using the don't-care literal inference/elimination rule) by applying operation to dcA and dcB
--- |   2. Then compute nR (branch using negative literal inference/elimination rule) using dcR as the continuous background
--- |   3. Then compute pR (branch using positive literal inference/elimination rule) using dcR as the continuous background
--- |   4. Combine results into a new ClassNode with the three computed branches
--- |
--- | The dc_stack is updated at each step:
--- |   - For dc branch: Push Unknown placeholders (dcR not yet computed)
--- |   - For neg/pos branches: Push the computed dcR as the continuous background
--- |
--- | Note: The actual exception type (neg1/neg0 or pos1/pos0) depends on what dcR evaluates to.
+-- | Level stack: negClassInf/posClassInf are pushed (not plain Neg/Pos) so that
+-- | endclass_case sees compound pairs and dispatches back to the correct mode.
 applyClass :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
 applyClass c s a b = debug_manipulation_inf (applyClass' @a c s a b) s (s ++ to_str @a) c a b
 
@@ -396,45 +248,45 @@ applyClass' c s a@(a_id, ClassNode positionA dcA pA nA) b@(b_id, ClassNode posit
             (c1, dcR) = apply @Dc c_ s dcA dcB
             (c1', dcR') = absorb_dc @Dc c1 positionA dcR
 
-            c2_ = add_to_stack (positionA, Neg) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a MvClassNeg (reset_stack_bin c1' c) a_id b_id)
-            (c2, nR) = apply @Neg c2_ s nA nB
+            -- Helper function for pos/neg branches. Note that we must use applyElimRule's
+            -- typeclass method application, but `absorb` also needs type application.
+            -- To avoid rank-N polymorphism issues, we keep the calls explicit but 
+            -- share the structural boilerplate via a let-binding.
+            
+            nInf = negClassInf @a
+            c2_ = add_to_stack (positionA, nInf) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a MvClassNeg (reset_stack_bin c1' c) a_id b_id)
+            (c2, nR) = apply_with nInf c2_ s nA nB
             (c2', nR') = absorb @Neg c2 positionA dcR' nR
 
-            c3_ = add_to_stack (positionA, Pos) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a MvClassPos (reset_stack_bin c2' c) a_id b_id)
-            (c3, pR) = apply @Pos c3_ s pA pB
+            pInf = posClassInf @a
+            c3_ = add_to_stack (positionA, pInf) (getNode c dcA, getNode c dcB, dcR) (traverse_dc @a MvClassPos (reset_stack_bin c2' c) a_id b_id)
+            (c3, pR) = apply_with pInf c3_ s pA pB
             (c3', pR') = absorb @Pos c3 positionA dcR' pR
 
-            c4 = reset_stack_bin c3' c
-
-        in applyElimRule @a c4 $ ClassNode positionA (fst dcR') (fst pR') (fst nR')
-    | positionA > positionB = applyClassA @a c s a b  -- A's class comes after, wrap A
-    | positionA < positionB = applyClassB @a c s a b  -- B's class comes after, wrap B
-applyClass' c s a@(_, ClassNode {}) b@(_, Leaf _) = applyClassB @a c s a b  -- Wrap Leaf in ClassNode's class
+        in applyElimRule @a (reset_stack_bin c3' c) $ ClassNode positionA (fst dcR') (fst pR') (fst nR')
+    | positionA > positionB = applyClassA @a c s a b
+    | positionA < positionB = applyClassB @a c s a b
+applyClass' c s a@(_, ClassNode{}) b@(_, Leaf _)        = applyClassB @a c s a b
 applyClass' c s a@(_, ClassNode{}) b@(_, EndClassNode _) = applyClassB @a c s a b
-applyClass' c s a@(_, Leaf _) b@(_, ClassNode{}) = applyClassA @a c s a b  -- Wrap Leaf in ClassNode's class
+applyClass' c s a@(_, Leaf _)        b@(_, ClassNode{}) = applyClassA @a c s a b
 applyClass' c s a@(_, EndClassNode _) b@(_, ClassNode{}) = applyClassA @a c s a b
 applyClass' _ s _ _ = error ("apply class error: " ++ s)
 
 
+-- | Wrap the non-ClassNode A-side using A's inference projection (inferClassNodeForA @a),
+-- | then enter applyClass @a.  For compound modes (e.g. NegDc) this uses @Neg for A
+-- | instead of the compound type itself, preserving correct class-node structure.
 applyClassA :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
-applyClassA = applyClassAAs @a @a
-
--- | Like applyClassA, but wraps A using inference type @w@ while processing with inference type @a@.
-applyClassAAs :: forall w a. (DdF3 w, DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
-applyClassAAs c s (a_id, _) b@(_, ClassNode positionB _ _ _) = let
-        (c', r) = insert c (EndClassNode a_id)
-        (c'', r') = inferClassNode @w c' positionB r
+applyClassA c s (a_id, _) b@(_, ClassNode positionB _ _ _) =
+    let (c', r)   = insert c (EndClassNode a_id)
+        (c'', r') = inferClassNodeForA @a c' positionB r
     in applyClass @a c'' s r' b
-applyClassAAs _ _ _ _ = error "should not be possible"
+applyClassA _ _ _ _ = error "applyClassA: B must be a ClassNode"
 
+-- | Wrap the non-ClassNode B-side using B's inference projection (inferClassNodeForB @a).
 applyClassB :: forall a. (DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
-applyClassB = applyClassBAs @a @a
-
--- | Like applyClassB, but wraps B using inference type @w@ while processing with inference type @a@.
--- Used when B comes from a Dc branch (wrap as Dc) but the result lives in a different context.
-applyClassBAs :: forall w a. (DdF3 w, DdF3 a) => BiOpContext -> String -> Node -> Node -> (BiOpContext, Node)
-applyClassBAs c s a@(_, ClassNode positionA _ _ _) b@(b_id, _) = let
-        (c', r) = insert c (EndClassNode b_id)
-        (c'', r') = inferClassNode @w c' positionA r
+applyClassB c s a@(_, ClassNode positionA _ _ _) (b_id, _) =
+    let (c', r)   = insert c (EndClassNode b_id)
+        (c'', r') = inferClassNodeForB @a c' positionA r
     in applyClass @a c'' s a r'
-applyClassBAs _ _ _ _ = error "should not be possible"
+applyClassB _ _ _ _ = error "applyClassB: A must be a ClassNode"

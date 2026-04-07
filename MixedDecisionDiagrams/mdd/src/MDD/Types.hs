@@ -69,7 +69,15 @@ type NodeId = (HashedId, Int)
 
 
 -- | Inference types: Dc (don't-care), Pos (positive literal), Neg (negative literal).
+-- Compound constructors encode asymmetric traversal modes where one operand is in Dc role:
+--   XY means side A uses context X, side B uses context Y.
+--   NegDc: A=Neg, B=Dc  (replaces applyDcB' @Neg)
+--   DcNeg: A=Dc,  B=Neg (replaces applyDcA' @Neg)
+--   PosDc: A=Pos, B=Dc  (replaces applyDcB' @Pos)
+--   DcPos: A=Dc,  B=Pos (replaces applyDcA' @Pos)
 data Inf = Dc | Neg | Pos
+         | NegDc | DcNeg | PosDc | DcPos
+         | DcDcA | DcDcB
   deriving (Eq, Show, Generic, Hashable)
 
 -- | Decision diagram node types.

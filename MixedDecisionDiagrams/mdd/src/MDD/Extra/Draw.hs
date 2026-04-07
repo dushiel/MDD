@@ -58,16 +58,16 @@ settings = ShowSetting {
 
             ,   debug_on = False
 
-            ,   debug_open = False
+            ,   debug_open = True
             ,   debug_close = True
             ,   debug_shorten_close = False
 
-            ,   debug_dc_stack = False
+            ,   debug_dc_stack = True
             ,   display_level = False
-            ,   display_dcAs = False
+            ,   display_dcAs = True
             ,   display_dcBs = False
             ,   display_dcRs = False
-            ,   display_naiveAbsorb = False
+            ,   display_naiveAbsorb = True
 }
 
 -- * Color Utilities

@@ -119,6 +119,7 @@ infixl 3 .+.  -- Disjunction
 
 ite :: MDD -> MDD -> MDD -> MDD
 ite f g h
+    | not iteOptimizationsEnabled = (f .*. g) .+. ((-.) f .*. h)
     | isTop f = g
     | isBot f = h
     | g == h = g
@@ -135,6 +136,11 @@ ite f g h
 
     isBot (MDD (_, (_, Leaf False))) = True
     isBot _ = False
+
+-- Toggle for Option B+C ITE improvements.
+-- Keep default False to preserve previous behavior unless explicitly enabled.
+iteOptimizationsEnabled :: Bool
+iteOptimizationsEnabled = False
 
 iteShared :: MDD -> MDD -> MDD -> MDD
 iteShared (MDD (lf, (fid, fdd))) (MDD (lg, (gid, _))) (MDD (lh, (hid, _))) =

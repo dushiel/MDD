@@ -44,6 +44,36 @@ class DdF3 (a :: Inf) where
     isPos :: Bool
     isDc :: Bool
 
+    -- | Infer a ClassNode for the A-side.
+    -- For compound modes, projects A's inference type (e.g. NegDc -> @Neg).
+    inferClassNodeForA :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
+    -- | Infer a ClassNode for the B-side.
+    -- For compound modes, projects B's inference type (e.g. NegDc -> @Dc).
+    inferClassNodeForB :: (HasNodeLookup c) => c -> Int -> Node -> (c, Node)
+
+    -- | In leaf_cases, when A is Unknown: True = return A as-is; False = pop dcA and recurse.
+    -- Compound modes where A is already in Dc role return True (A was already popped).
+    aUnknownReturn :: Bool
+    -- | In leaf_cases, when B is Unknown: True = return B as-is; False = pop dcB and recurse.
+    -- Compound modes where B is already in Dc role return True.
+    bUnknownReturn :: Bool
+
+    -- | Which Inf mode to recurse with after popping dcA for an Unknown on A.
+    dcAMode :: Inf
+    -- | Which Inf mode to recurse with after popping dcB for an Unknown on B.
+    dcBMode :: Inf
+
+    -- | True = use pop_dc_stack ... True (dropLevel) when resolving Unknown A.
+    popADropLevel :: Bool
+    -- | True = use pop_dc_stack ... True (dropLevel) when resolving Unknown B.
+    popBDropLevel :: Bool
+
+    -- | Inf to push on level stack and use for the neg-branch traversal inside applyClass'.
+    -- Compound modes carry the asymmetry into the nested class (e.g. NegDc -> NegDc).
+    negClassInf :: Inf
+    -- | Inf to push on level stack and use for the pos-branch traversal inside applyClass'.
+    posClassInf :: Inf
+
 applyElimRule' :: forall a. (DdF3 a) => (UnOpContext, Dd) -> (UnOpContext, Node)
 applyElimRule' (c, d) = applyElimRule @a c d
 
@@ -261,6 +291,16 @@ instance DdF3 Dc where
     isNeg = False
     isPos = False
     isDc  = True
+    inferClassNodeForA = inferClassNode @Dc
+    inferClassNodeForB = inferClassNode @Dc
+    aUnknownReturn = False
+    bUnknownReturn = False
+    dcAMode = DcDcA
+    dcBMode = DcDcB
+    popADropLevel = False
+    popBDropLevel = False
+    negClassInf = Neg
+    posClassInf = Pos
 
 -- | Instance for Pos (Positive literal) inference/elimination rule.
 instance DdF3 Pos where
@@ -306,6 +346,16 @@ instance DdF3 Pos where
     isNeg = False
     isPos = True
     isDc  = False
+    inferClassNodeForA = inferClassNode @Pos
+    inferClassNodeForB = inferClassNode @Pos
+    aUnknownReturn = False
+    bUnknownReturn = False
+    dcAMode = DcPos
+    dcBMode = PosDc
+    popADropLevel = False
+    popBDropLevel = False
+    negClassInf = Neg
+    posClassInf = Pos
 
 -- | Instance for Neg (Negative literal) inference/elimination rule.
 instance DdF3 Neg where
@@ -346,6 +396,117 @@ instance DdF3 Neg where
     isNeg = True
     isPos = False
     isDc  = False
+    inferClassNodeForA = inferClassNode @Neg
+    inferClassNodeForB = inferClassNode @Neg
+    aUnknownReturn = False
+    bUnknownReturn = False
+    dcAMode = DcNeg
+    dcBMode = NegDc
+    popADropLevel = False
+    popBDropLevel = False
+    negClassInf = Neg
+    posClassInf = Pos
+
+
+-- * Compound DdF3 instances (asymmetric traversal modes)
+-- Each compound mode XY means: side A is in context X, side B is in context Y.
+-- Methods delegate to the simple instances for the respective A/B projections.
+
+-- | NegDc: A=Neg, B=Dc (replaces applyDcB' @Neg)
+instance DdF3 NegDc where
+    inferNodeA f c s a b = inferNodeA @Neg f c s a b
+    inferNodeB f c s a b = inferNodeB @Dc  f c s a b
+    applyElimRule         = applyElimRule @Neg
+    inferNode             = inferNode     @Neg
+    inferClassNode        = inferClassNode @Neg
+    catchup               = catchup @Neg
+    to_str = "NegDc"; to_inf = NegDc; isNeg = True; isPos = False; isDc = False
+    inferClassNodeForA    = inferClassNode @Neg
+    inferClassNodeForB    = inferClassNode @Dc
+    aUnknownReturn = True;  bUnknownReturn = False
+    dcAMode = NegDc;        dcBMode = NegDc
+    popADropLevel = True;   popBDropLevel = True
+    negClassInf = NegDc;    posClassInf = PosDc
+
+-- | DcNeg: A=Dc, B=Neg (replaces applyDcA' @Neg)
+instance DdF3 DcNeg where
+    inferNodeA f c s a b = inferNodeA @Dc  f c s a b
+    inferNodeB f c s a b = inferNodeB @Neg f c s a b
+    applyElimRule         = applyElimRule @Neg
+    inferNode             = inferNode     @Dc
+    inferClassNode        = inferClassNode @Dc
+    catchup               = catchup @Neg
+    to_str = "DcNeg"; to_inf = DcNeg; isNeg = True; isPos = False; isDc = False
+    inferClassNodeForA    = inferClassNode @Dc
+    inferClassNodeForB    = inferClassNode @Neg
+    aUnknownReturn = False; bUnknownReturn = True
+    dcAMode = DcNeg;        dcBMode = DcNeg
+    popADropLevel = True;   popBDropLevel = True
+    negClassInf = DcNeg;    posClassInf = DcPos
+
+-- | PosDc: A=Pos, B=Dc (replaces applyDcB' @Pos)
+instance DdF3 PosDc where
+    inferNodeA f c s a b = inferNodeA @Pos f c s a b
+    inferNodeB f c s a b = inferNodeB @Dc  f c s a b
+    applyElimRule         = applyElimRule @Pos
+    inferNode             = inferNode     @Pos
+    inferClassNode        = inferClassNode @Pos
+    catchup               = catchup @Pos
+    to_str = "PosDc"; to_inf = PosDc; isNeg = False; isPos = True; isDc = False
+    inferClassNodeForA    = inferClassNode @Pos
+    inferClassNodeForB    = inferClassNode @Dc
+    aUnknownReturn = True;  bUnknownReturn = False
+    dcAMode = PosDc;        dcBMode = PosDc
+    popADropLevel = True;   popBDropLevel = True
+    negClassInf = NegDc;    posClassInf = PosDc
+
+-- | DcPos: A=Dc, B=Pos (replaces applyDcA' @Pos)
+instance DdF3 DcPos where
+    inferNodeA f c s a b = inferNodeA @Dc  f c s a b
+    inferNodeB f c s a b = inferNodeB @Pos f c s a b
+    applyElimRule         = applyElimRule @Pos
+    inferNode             = inferNode     @Dc
+    inferClassNode        = inferClassNode @Dc
+    catchup               = catchup @Pos
+    to_str = "DcPos"; to_inf = DcPos; isNeg = False; isPos = True; isDc = False
+    inferClassNodeForA    = inferClassNode @Dc
+    inferClassNodeForB    = inferClassNode @Pos
+    aUnknownReturn = False; bUnknownReturn = True
+    dcAMode = DcPos;        dcBMode = DcPos
+    popADropLevel = True;   popBDropLevel = True
+    negClassInf = DcNeg;    posClassInf = DcPos
+
+-- | DcDcA: A=Dc (sourced), B=Dc (replaces applyDcA' @Dc)
+instance DdF3 DcDcA where
+    inferNodeA f c s a b = inferNodeA @Dc f c s a b
+    inferNodeB f c s a b = inferNodeB @Dc f c s a b
+    applyElimRule         = applyElimRule @Dc
+    inferNode             = inferNode     @Dc
+    inferClassNode        = inferClassNode @Dc
+    catchup               = catchup @Dc
+    to_str = "DcDcA"; to_inf = DcDcA; isNeg = False; isPos = False; isDc = True
+    inferClassNodeForA    = inferClassNode @Dc
+    inferClassNodeForB    = inferClassNode @Dc
+    aUnknownReturn = False; bUnknownReturn = True
+    dcAMode = DcDcA;        dcBMode = DcDcA
+    popADropLevel = True;   popBDropLevel = True
+    negClassInf = Neg;      posClassInf = Pos
+
+-- | DcDcB: A=Dc, B=Dc (sourced) (replaces applyDcB' @Dc)
+instance DdF3 DcDcB where
+    inferNodeA f c s a b = inferNodeA @Dc f c s a b
+    inferNodeB f c s a b = inferNodeB @Dc f c s a b
+    applyElimRule         = applyElimRule @Dc
+    inferNode             = inferNode     @Dc
+    inferClassNode        = inferClassNode @Dc
+    catchup               = catchup @Dc
+    to_str = "DcDcB"; to_inf = DcDcB; isNeg = False; isPos = False; isDc = True
+    inferClassNodeForA    = inferClassNode @Dc
+    inferClassNodeForB    = inferClassNode @Dc
+    aUnknownReturn = True;  bUnknownReturn = False
+    dcAMode = DcDcB;        dcBMode = DcDcB
+    popADropLevel = True;   popBDropLevel = True
+    negClassInf = Neg;      posClassInf = Pos
 
 -- | Synchronize a single dc_stack element with the main traversal.
 traverse_dc_generic :: forall (a :: Inf) c. (DdF3 a, HasNodeLookup c) =>
