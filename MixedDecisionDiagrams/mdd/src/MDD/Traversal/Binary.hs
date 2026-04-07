@@ -80,66 +80,60 @@ instance (DdF3 a, Dd1_helper a) => Dd1 a where
     -- | (inferNodeA/B, applyElimRule, inferClassNodeForA/B).
 
     -- Cases 1-4: At least one argument is a terminal (Leaf or Unknown)
-    apply' c s a@(_, Leaf _) b = leaf_cases @a c s a b
-    apply' c s a b@(_, Leaf _) = leaf_cases @a c s a b
-    apply' c s a@(_, Unknown) b = leaf_cases @a c s a b
-    apply' c s a b@(_, Unknown) = leaf_cases @a c s a b
+    apply' c s a@(a_id, a_dd) b@(b_id, b_dd)
+        -- 1. Unknowns are placeholders and must be resolved before positioning is evaluated.
+        | a_dd == Unknown || b_dd == Unknown = leaf_cases @a c s a b
+        
+        -- 2. Positional Comparison
+        | posA == posB = case (a_dd, b_dd) of
+            (Node _ pos_childA neg_childA, Node _ pos_childB neg_childB) ->
+                let c_ = traverse_dc @a MvPos c a_id b_id
+                    (c', (pos_result, _)) = apply @a c_ s pos_childA pos_childB
 
-    -- Case 5: Both arguments are EndClassNode — pop level stack and re-dispatch
-    apply' c s a@(a_id, EndClassNode ac) b@(b_id, EndClassNode bc) = withCache c (a, b, s) $
-        endclass_case @a c s a_id b_id ac bc
-
-    -- Cases 6-8: Both arguments are regular Nodes
-    apply' c s a@(a_id, Node positionA pos_childA neg_childA) b@(b_id, Node positionB pos_childB neg_childB)
-        | positionA == positionB =
-            let c_ = traverse_dc @a MvPos c a_id b_id
-                (c', (pos_result, _)) = apply @a c_ s pos_childA pos_childB
-
-                c_' = traverse_dc @a MvNeg (reset_stack_bin c' c) a_id b_id
-                (c'', (neg_result, _)) = apply @a c_' s neg_childA neg_childB
-            in withCache c (a, b, s) $ applyElimRule @a (reset_stack_bin c'' c) (Node positionA pos_result neg_result)
-        | positionA < positionB = uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
-        | positionA > positionB = uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
-
-    -- Cases 9-12: ClassNode vs Node
-    apply' c s a@(a_id, ClassNode positionA _ _ _) b@(b_id, Node positionB _ _)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA > positionB = withCache c (a, b, s) $
-                uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
-        | positionA < positionB = withCache c (a, b, s) $
-                applyClassB @a c s a b
-    apply' c s a@(a_id, Node positionA _ _) b@(b_id, ClassNode positionB _ _ _)
-        | positionA == positionB = error "undefined, multiple options possible for interpreting node in a context to sub nodes"
-        | positionA > positionB = withCache c (a, b, s) $
-                applyClassA @a c s a b
-        | positionA < positionB = withCache c (a, b, s) $
-                uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
-
-    -- Cases 13-15: Both arguments are ClassNode
-    apply' c s a@(a_id, ClassNode positionA _ _ _) b@(b_id, ClassNode positionB _ _ _)
-        | positionA == positionB = withCache c (a, b, s) $ applyClass @a c s a b
-        | positionA < positionB  = withCache c (a, b, s) $ applyClassB @a c s a b
-        | positionA > positionB  = withCache c (a, b, s) $ applyClassA @a c s a b
-
-    -- Cases 16-19: EndClassNode vs Node/ClassNode
-    apply' c s a@(a_id, EndClassNode _) b@(b_id, Node{})     = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
-    apply' c s a@(a_id, Node{})         b@(b_id, EndClassNode _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
-    apply' c s a@(_, EndClassNode _)    b@(_, ClassNode{})   = withCache c (a, b, s) $ applyClassA @a c s a b
-    apply' c s a@(_, ClassNode{})       b@(_, EndClassNode _) = withCache c (a, b, s) $ applyClassB @a c s a b
+                    c_' = traverse_dc @a MvNeg (reset_stack_bin c' c) a_id b_id
+                    (c'', (neg_result, _)) = apply @a c_' s neg_childA neg_childB
+                in withCache c (a, b, s) $ applyElimRule @a (reset_stack_bin c'' c) (Node posA pos_result neg_result)
+            (ClassNode{}, ClassNode{}) -> withCache c (a, b, s) $ applyClass @a c s a b
+            (EndClassNode ac, EndClassNode bc) -> withCache c (a, b, s) $ endclass_case @a c s a_id b_id ac bc
+            (Leaf _, Leaf _) -> leaf_cases @a c s a b
+            _ -> error "apply': Same position but mismatched constructors!"
+            
+        -- 3. Asymmetric Inference
+        | posA > posB = matchAndInferA b_dd
+        | posA < posB = matchAndInferB a_dd
+        | otherwise   = error "apply': Unreachable position comparison"
+      where
+        posA = nodePosition a_dd
+        posB = nodePosition b_dd
+        
+        -- Match on the "smaller" node (B) to infer structure for the "larger" node (A)
+        matchAndInferA (Node{})       = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
+        matchAndInferA (ClassNode{})  = withCache c (a, b, s) $ applyClassA @a c s a b
+        matchAndInferA (EndClassNode bc) = 
+            -- If B is EndClassNode, A must be a Leaf (since posA > posB). 
+            -- Convert Leaf A to EndClassNode representation (l_1 / l_0) and exit class.
+            let ac = case a_dd of
+                        Leaf True  -> l_1
+                        Leaf False -> l_0
+                        _          -> error "apply': expected Leaf for EndClassNode inference"
+            in withCache c (a, b, s) $ endclass_case @a c s a_id b_id ac bc
+        matchAndInferA _ = error "apply': Unexpected node type for matchAndInferA"
+            
+        -- Match on the "smaller" node (A) to infer structure for the "larger" node (B)
+        matchAndInferB (Node{})       = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
+        matchAndInferB (ClassNode{})  = withCache c (a, b, s) $ applyClassB @a c s a b
+        matchAndInferB (EndClassNode ac) = 
+            let bc = case b_dd of
+                        Leaf True  -> l_1
+                        Leaf False -> l_0
+                        _          -> error "apply': expected Leaf for EndClassNode inference"
+            in withCache c (a, b, s) $ endclass_case @a c s a_id b_id ac bc
+        matchAndInferB _ = error "apply': Unexpected node type for matchAndInferB"
 
     -- | Unified leaf/terminal handler for all seven Inf modes.
     -- | Unknown resolution uses DdF3 methods (aUnknownReturn, bUnknownReturn, dcAMode, dcBMode,
     -- | popADropLevel, popBDropLevel) so compound modes inherit the correct Dc-asymmetric behavior.
-    leaf_cases c s a@(_, Leaf _) b@(_, Node{}) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeA @a (apply' @a) c s a b)
-    leaf_cases c s a@(_, Node{}) b@(_, Leaf _) = withCache c (a, b, s) $ uncurry (applyElimRule @a) (inferNodeB @a (apply' @a) c s a b)
-    leaf_cases c s a@(a_id, Leaf boolA) b@(b_id, EndClassNode bc) = 
-        withCache c (a, b, s) $ endclass_case @a c s a_id b_id (if boolA then (1,0) else (2,0)) bc
-    leaf_cases c s a@(a_id, EndClassNode ac) b@(b_id, Leaf boolB) = 
-        withCache c (a, b, s) $ endclass_case @a c s a_id b_id ac (if boolB then (1,0) else (2,0))
-    -- Leaf vs ClassNode: use inferClassNodeForA/B so compound modes wrap with the correct projection.
-    leaf_cases c s a@(_, Leaf _)     b@(_, ClassNode{}) = withCache c (a, b, s) $ applyClassA @a c s a b
-    leaf_cases c s a@(_, ClassNode{}) b@(_, Leaf _)     = withCache c (a, b, s) $ applyClassB @a c s a b
-
+    
     -- Unknown resolution (unified across all Inf modes via DdF3 methods)
     leaf_cases c s a@(_, Unknown) b@(_, Unknown) = (c, a)
     leaf_cases c s a@(_, Unknown) b
